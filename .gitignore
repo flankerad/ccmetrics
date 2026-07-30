@@ -1,3 +1,9 @@
 .clauaid/*
 !.clauaid/arch/
 !.clauaid/archive/
+
+# python build artifacts
+__pycache__/
+*.egg-info/
+*.pyc
+.venv/
