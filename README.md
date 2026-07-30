@@ -14,7 +14,7 @@
 ![deps](https://img.shields.io/badge/runtime%20deps-zero-8957e5)
 ![data](https://img.shields.io/badge/your%20data-never%20leaves%20your%20machine-8957e5)
 
-<sub>[Why](#why) · [Use](#use) · [Install](#install) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy--the-hard-rules) · [Compared](#compared-to-the-alternatives) · [Numbers](#numbers-you-can-defend) · [Status](#status)</sub>
+<sub>[Why](#why) · [Use](#use) · [Install](#install) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy--the-hard-rules) · [Numbers](#numbers-you-can-defend) · [Status](#status)</sub>
 
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
@@ -89,21 +89,6 @@ Every saving shown links its arithmetic: the detector hits it sums, the threshol
 - **Read-only against `~/.claude`.** It cannot damage your Claude Code install or sessions.
 - **Proposes, never applies.** No file of yours is ever edited. You read the fix, you paste it.
 - One state file (SQLite, capped under 100 MB); delete it any time — nothing of yours is lost.
-
-## Compared to the alternatives
-
-| | usage charts | trends over time | leak detection | paste-ready fixes | trusts the right fields | local & read-only |
-|---|---|---|---|---|---|---|
-| [`ccusage`](https://github.com/ryoppippi/ccusage) | ✅ day/week/month | ➖ reports, no trend | ❌ | ❌ | ❌ streaming fields | ✅ |
-| [`sniffly`](https://github.com/chiphuyen/sniffly) | ✅ transcript archaeology | ➖ | ❌ | ❌ | ➖ | ✅ browses transcripts |
-| [`ccflare`](https://github.com/snipeship/ccflare) | ✅ via proxy | ✅ | ❌ | ❌ | ✅ intercepts traffic | ❌ proxy in the path |
-| [`claude-code-templates`](https://github.com/davila7/claude-code-templates) | ✅ live session monitor | ❌ | ❌ | ❌ | ➖ | ✅ |
-| [`claudetop`](https://github.com/liorwn/claudetop) | ✅ live terminal HUD | ❌ single session | ❌ | ❌ | ➖ | ✅ |
-| [`viberank`](https://github.com/sculptdotfun/viberank) | ✅ leaderboard | ➖ | ❌ | ❌ | ❌ inherits ccusage | ❌ uploads to cloud |
-| built-in `/usage` | ✅ point-in-time | ❌ | ➖ two flags | ❌ | ✅ | ✅ |
-| **ccmetrics** | ✅ | ✅ | ✅ 12 detectors | ✅ | ✅ no proxy needed | ✅ |
-
-Each tool is good at its own axis — account routing (`ccflare`), error archaeology (`sniffly`), live HUD (`claudetop`), leaderboards (`viberank`). None pairs accurate cost attribution with detected leaks and a concrete fix; that gap is this tool.
 
 ## Numbers you can defend
 
