@@ -4,7 +4,7 @@
 
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
-> **Status: pre-release.** Spec and dashboard design are final; v1 is being built. Star/watch to catch the release.
+> **Status: v0.1.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, and the localhost dashboard work end-to-end (56-test suite green). Packaging to PyPI is next; until then: `pip install -e .` from a clone.
 
 ```
 ┌ LIVE ── burn 12%/hr │ ctx 61% │ cache-hit 94% │ session $0.83 (floor) ┐
@@ -100,7 +100,8 @@ One install covers every project on the machine: it reads all of `~/.claude/proj
 - [x] Research: JSONL schema, pricing, prior art (verified against a 540 MB / 1,536-session corpus)
 - [x] Spec: 7 requirement areas, 12 detectors, all open questions closed
 - [x] Dashboard mockup approved
-- [ ] v1: ingest → SQLite → detectors → console + dash
+- [x] v0.1.0: ingest → SQLite → 12 detectors → console + dash + live tiles (56 tests green; cold ingest of 522 MB in ~5 s)
+- [ ] PyPI release (`uv tool install ccmetrics`)
 - [ ] Optional OTEL ingestion for exact costs
 
 ## License

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ccmetrics"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Read-only leak meter for Claude Code sessions: where the tokens go, what it floors at, what to paste to fix it."
 requires-python = ">=3.11"
 dependencies = []

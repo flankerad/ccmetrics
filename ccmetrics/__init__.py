@@ -4,4 +4,4 @@ Metadata only: counts, byte sizes, timestamps, tool names, paths, digests.
 Never message text, file bodies, or tool-result bodies.
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
