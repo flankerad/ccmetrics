@@ -4,7 +4,7 @@
 
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
-> **Status: v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, and the localhost dashboard work end-to-end (56-test suite green). Packaging to PyPI is next; until then: `pip install -e .` from a clone.
+> **Status: v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, and the localhost dashboard work end-to-end, plus optional OTEL exact costs (70-test suite green). Packaging to PyPI is next; until then: `pip install -e .` from a clone.
 
 ```
 ┌ LIVE ── burn 12%/hr │ ctx 61% │ cache-hit 94% │ session $0.83 (floor) ┐
