@@ -1,5 +1,11 @@
 # ccmetrics
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <img src="docs/assets/logo-light.svg" width="560"
+       alt="ccmetrics logo: a spend sparkline whose hottest bar leaks orange token drops — cc in Claude orange, metrics in the theme text color">
+</picture>
+
 **Find where Claude Code burns your tokens — and get a paste-ready fix for each leak.**
 
 ![python](https://img.shields.io/badge/python-3.11%2B-3572A5)
