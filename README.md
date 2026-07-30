@@ -2,9 +2,15 @@
 
 **Find where Claude Code burns your tokens — and get a paste-ready fix for each leak.**
 
-`/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
+![python](https://img.shields.io/badge/python-3.11%2B-3572A5)
+![license](https://img.shields.io/badge/license-Apache--2.0-3fb950)
+![CI](https://github.com/flankerad/ccmetrics/actions/workflows/ci.yml/badge.svg)
+![deps](https://img.shields.io/badge/runtime%20deps-zero-8957e5)
+![data](https://img.shields.io/badge/your%20data-never%20leaves%20your%20machine-8957e5)
 
-> **Status: v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, and the localhost dashboard work end-to-end, plus optional OTEL exact costs (70-test suite green). Packaging to PyPI is next; until then: `pip install -e .` from a clone.
+<sub>[Why](#why) · [Use](#use) · [Install](#install) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy--the-hard-rules) · [Compared](#compared-to-the-alternatives) · [Numbers](#numbers-you-can-defend) · [Status](#status)</sub>
+
+`/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
 ```
 ┌ LIVE ── burn 12%/hr │ ctx 61% │ cache-hit 94% │ session $0.83 (floor) ┐
@@ -16,32 +22,42 @@ TOP LEAKS                              SAVES        FIX
 ▸ per-project ▸ per-session ▸ per-turn timeline
 ```
 
-## Why this exists
+## Why
 
-Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/`. Almost nobody reads it — and the tools that do read it get the numbers wrong:
+Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/`. Almost nobody reads it — and the tools that do get the numbers wrong:
 
-- **The obvious token fields lie.** `usage.input_tokens` / `output_tokens` are streaming placeholders that undercount by 100–174×. Most usage dashboards sum them anyway.
-- **The cache fields are accurate.** `ccmetrics` builds every dollar figure from cache reads/writes and Anthropic's published multipliers (1.25× / 2× / 0.1×), labelled as a **floor** — never a guess dressed up as a fact.
-- **Nobody closes the loop.** Existing tools show you charts. None of them detect *leak patterns* and attach a fix you can paste.
+- **The obvious token fields lie.** `usage.input_tokens` / `output_tokens` are streaming placeholders that undercount by 100–174×. Most dashboards sum them anyway.
+- **The cache fields are accurate.** Every dollar figure here is built from cache reads/writes × Anthropic's published multipliers (1.25× / 2× / 0.1×), labelled as a **floor** — never a guess dressed up as a fact.
+- **Nobody closes the loop.** Existing tools show charts. None detect *leak patterns* and attach a fix you can paste.
 
-## What it does
-
-Two surfaces, one store:
+## Use
 
 ```bash
-ccmetrics        # inside a repo → that repo's console summary: top leaks + fixes
+ccmetrics        # inside a repo → that repo's summary: top leaks + paste-ready fixes
 ccmetrics dash   # anywhere → global dashboard in your browser, per-project drill-down
+ccmetrics otel   # optional → local OTEL receiver (127.0.0.1:4318) for exact costs
 ```
 
-**The dashboard glance view** (zero clicks needed):
+The dashboard glance view, zero clicks: live session tiles (burn rate, context %, cache-hit, spend — a runaway session gets flagged *while it's running*), 30-day spend trend, token mix, top leaks ranked by `tokens saved ÷ effort` each with a copy button, and a per-project table.
 
-- **Live session tiles** — burn rate, context-window %, cache-hit ratio, spend so far. Updates every turn. A runaway session gets flagged *while it's still running*.
-- **30-day spend trend** — floor + a labelled output estimate band. Never a fake-precise total.
-- **Token mix** — where the volume actually goes (spoiler: cache reads dominate).
-- **Top leaks, ranked by `tokens saved ÷ effort`** — each with a copy button holding the actual fix.
-- **Per-project table** — spend, trend delta, and each project's worst leak; click through to that repo's own view.
+## Install
 
-**12 leak detectors**, each with a pre-written fix template filled from your own numbers:
+Python 3.11+. Zero runtime dependencies — stdlib SQLite, stdlib HTTP server, one static HTML page.
+
+```bash
+# today (from a clone — not on PyPI yet):
+git clone https://github.com/flankerad/ccmetrics && cd ccmetrics
+uv tool install .            # or: pipx install . / pip install -e .
+
+# after the PyPI release:
+uv tool install ccmetrics    # or: pipx install ccmetrics
+```
+
+One install covers every project on the machine: it reads all of `~/.claude/projects/`, keeps per-project data separate, and rolls it up globally in the dash.
+
+## The 12 leak detectors
+
+Each ships a pre-written fix template filled from your own numbers:
 
 | # | Leak | Fix shape |
 |---|------|-----------|
@@ -58,56 +74,41 @@ ccmetrics dash   # anywhere → global dashboard in your browser, per-project dr
 | 11 | Runaway live session (burn ≫ your own p90) | live warning |
 | 12 | File re-read waste (same file read 3×+, unchanged) | `CLAUDE.md` read-discipline line |
 
-Every saving shown links its arithmetic: the detector hits it sums, the threshold it crossed, and the pricing constant (with source URL) it used. No unsourced claims.
-
-## Install
-
-Requires Python 3.11+. Zero runtime dependencies — stdlib SQLite and stdlib HTTP server, one static HTML page.
-
-```bash
-# today (from a clone — not on PyPI yet):
-git clone <this repo> && cd ccmetrics
-uv tool install .            # or: pipx install . / pip install -e .
-
-# after the PyPI release:
-uv tool install ccmetrics    # or: pipx install ccmetrics
-```
-
-One install covers every project on the machine: it reads all of `~/.claude/projects/`, keeps per-project data separate, and rolls it up globally in the dash.
+Every saving shown links its arithmetic: the detector hits it sums, the threshold it crossed, and the pricing constant (with source URL) it used.
 
 ## Privacy — the hard rules
 
 - **Local only.** No network egress of usage data, no account, no cloud, no telemetry.
-- **Metadata only.** Stores counts, byte sizes, timestamps, tool names, file paths, and hashes — **never** prompt text, file contents, or tool-result bodies. Your transcripts stay where they are, as the only copy.
+- **Metadata only.** Stores counts, byte sizes, timestamps, tool names, file paths, and hashes — **never** prompt text, file contents, or tool-result bodies.
 - **Read-only against `~/.claude`.** It cannot damage your Claude Code install or sessions.
 - **Proposes, never applies.** No file of yours is ever edited. You read the fix, you paste it.
-- One state file (SQLite, capped under 100 MB), delete it any time — nothing of yours is lost.
+- One state file (SQLite, capped under 100 MB); delete it any time — nothing of yours is lost.
 
-## How it compares
+## Compared to the alternatives
 
-| | usage charts | trends over time | leak detection | paste-ready fixes | trusts the right fields |
-|---|---|---|---|---|---|
-| `ccusage` | ✅ | ➖ | ❌ | ❌ | ❌ |
-| `sniffly` | ✅ transcript archaeology | ➖ | ❌ | ❌ | ➖ |
-| `ccflare` | ✅ via proxy | ✅ | ❌ | ❌ | ✅ (intercepts traffic) |
-| built-in `/usage` | ✅ point-in-time | ❌ | ➖ two flags | ❌ | ✅ |
-| **ccmetrics** | ✅ | ✅ | ✅ 12 detectors | ✅ | ✅ no proxy needed |
+| | usage charts | trends over time | leak detection | paste-ready fixes | trusts the right fields | local & read-only |
+|---|---|---|---|---|---|---|
+| [`ccusage`](https://github.com/ryoppippi/ccusage) | ✅ day/week/month | ➖ reports, no trend | ❌ | ❌ | ❌ streaming fields | ✅ |
+| [`sniffly`](https://github.com/chiphuyen/sniffly) | ✅ transcript archaeology | ➖ | ❌ | ❌ | ➖ | ✅ browses transcripts |
+| [`ccflare`](https://github.com/snipeship/ccflare) | ✅ via proxy | ✅ | ❌ | ❌ | ✅ intercepts traffic | ❌ proxy in the path |
+| [`claude-code-templates`](https://github.com/davila7/claude-code-templates) | ✅ live session monitor | ❌ | ❌ | ❌ | ➖ | ✅ |
+| [`claudetop`](https://github.com/liorwn/claudetop) | ✅ live terminal HUD | ❌ single session | ❌ | ❌ | ➖ | ✅ |
+| [`viberank`](https://github.com/sculptdotfun/viberank) | ✅ leaderboard | ➖ | ❌ | ❌ | ❌ inherits ccusage | ❌ uploads to cloud |
+| built-in `/usage` | ✅ point-in-time | ❌ | ➖ two flags | ❌ | ✅ | ✅ |
+| **ccmetrics** | ✅ | ✅ | ✅ 12 detectors | ✅ | ✅ no proxy needed | ✅ |
+
+Each tool is good at its own axis — account routing (`ccflare`), error archaeology (`sniffly`), live HUD (`claudetop`), leaderboards (`viberank`). None pairs accurate cost attribution with detected leaks and a concrete fix; that gap is this tool.
 
 ## Numbers you can defend
 
 - Dollar figures are a **floor** computed from accurate cache fields × published Anthropic multipliers. Output cost appears as a clearly-labelled byte-derived *range*, never silently summed in.
 - Cost confidence is a visible UI state: approximate (JSONL-only) vs exact (optional OTEL upgrade).
 - Every pricing constant and detector threshold lives in one versioned lookup file, each entry with a source URL.
-- Wrong-but-confident is the failure mode this tool is built to avoid: anything not derivable is shown as unknown.
+- Anything not derivable is shown as unknown — wrong-but-confident is the failure mode this tool exists to avoid.
 
-## Roadmap
+## Status
 
-- [x] Research: JSONL schema, pricing, prior art (verified against a 540 MB / 1,536-session corpus)
-- [x] Spec: 7 requirement areas, 12 detectors, all open questions closed
-- [x] Dashboard mockup approved
-- [x] v0.1.0: ingest → SQLite → 12 detectors → console + dash + live tiles (56 tests green; cold ingest of 522 MB in ~5 s)
-- [ ] PyPI release (`uv tool install ccmetrics`)
-- [x] Optional OTEL ingestion for exact costs (v0.2.0 — `ccmetrics otel`, receiver on 127.0.0.1:4318)
+**v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, localhost dashboard, and optional OTEL exact costs work end-to-end (70-test suite green; cold ingest of a 522 MB corpus in ~5 s). Next: PyPI release.
 
 ## License
 
