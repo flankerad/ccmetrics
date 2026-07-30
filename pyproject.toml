@@ -1,14 +1,21 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ccmetrics"
 version = "0.2.0"
 description = "Read-only leak meter for Claude Code sessions: where the tokens go, what it floors at, what to paste to fix it."
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
-license = { text = "MIT" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "flankerad" }]
+
+[project.urls]
+Homepage = "https://github.com/flankerad/ccmetrics"
+Issues = "https://github.com/flankerad/ccmetrics/issues"
 
 [project.scripts]
 ccmetrics = "ccmetrics.cli:main"

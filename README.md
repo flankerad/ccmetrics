@@ -111,4 +111,4 @@ One install covers every project on the machine: it reads all of `~/.claude/proj
 
 ## License
 
-MIT (planned with v1 release).
+Apache-2.0 — see [LICENSE](LICENSE).

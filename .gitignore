@@ -7,3 +7,22 @@ __pycache__/
 *.egg-info/
 *.pyc
 .venv/
+build/
+dist/
+.pytest_cache/
+
+# internal working docs (local only)
+CLAUDE.md
+DECISIONS.md
+DEPS.md
+FAILURES.md
+GOALS.md
+INDEX.md
+PLAN-v1.md
+PRD-build-a-brand-new.md
+REPO_MAP.md
+RESEARCH-build-a-brand-new.md
+SESSION_LOG.md
+TODO.md
+.claude/
+.clauaid.json
