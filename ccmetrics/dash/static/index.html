@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ccmetrics · glance</title>
+<!--
+  One self-contained file: inline CSS + inline JS, zero external requests
+  (no fonts, no CDN, no analytics). Everything it draws comes from the local
+  /api/* endpoints, which carry counts and timestamps only.
+  Palette/typography contract is fixed and colourblind-validated - do not
+  substitute colours.
+-->
+<style>
+:root {
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#5b5b58;
+  --hair:#e3e3df; --hair-strong:#cfcfc9;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --seq-line:#256abf; --seq-fill:#b7d3f6; --brand:#175E3B;
+  --chip:#eef1ee; --shadow:0 1px 2px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --muted:#a3a39d;
+    --hair:#2c2c2a; --hair-strong:#3d3d3a;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+    --seq-line:#6da7ec; --seq-fill:#184f95; --brand:#5FBF8A;
+    --chip:#242422; --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="light"] {
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#5b5b58;
+  --hair:#e3e3df; --hair-strong:#cfcfc9;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --seq-line:#256abf; --seq-fill:#b7d3f6; --brand:#175E3B;
+  --chip:#eef1ee; --shadow:0 1px 2px rgba(0,0,0,.05);
+}
+:root[data-theme="dark"] {
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --muted:#a3a39d;
+  --hair:#2c2c2a; --hair-strong:#3d3d3a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+  --seq-line:#6da7ec; --seq-fill:#184f95; --brand:#5FBF8A;
+  --chip:#242422; --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+
+* { box-sizing:border-box; }
+html,body { margin:0; padding:0; }
+body {
+  background:var(--page); color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap { max-width:1060px; margin:0 auto; padding:24px 20px 64px; }
+.num { font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
+
+header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.brand { font-weight:650; letter-spacing:-.01em; color:var(--brand); font-size:16px; }
+.scope { color:var(--muted); font-size:13px; }
+.spacer { flex:1 1 auto; }
+.chip {
+  display:inline-flex; align-items:center; gap:6px; padding:3px 9px;
+  border:1px solid var(--hair-strong); border-radius:999px;
+  background:var(--chip); color:var(--muted); font-size:12px; white-space:nowrap;
+}
+button.link {
+  background:none; border:none; color:var(--s1); cursor:pointer;
+  font:inherit; padding:0; text-decoration:underline; text-underline-offset:2px;
+}
+button.ghost {
+  background:var(--surface); border:1px solid var(--hair-strong); border-radius:6px;
+  color:var(--muted); cursor:pointer; font:inherit; font-size:12px; padding:3px 9px;
+}
+button.ghost:hover { color:var(--ink); border-color:var(--muted); }
+
+section { margin-bottom:22px; }
+.card {
+  background:var(--surface); border:1px solid var(--hair); border-radius:10px;
+  box-shadow:var(--shadow);
+}
+.card-head {
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+  padding:12px 16px; border-bottom:1px solid var(--hair);
+}
+.card-title { font-size:12px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
+.card-body { padding:14px 16px 16px; }
+
+/* live tiles */
+.tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--hair); }
+.tile { background:var(--surface); padding:12px 16px; min-height:74px; }
+.tile:first-child { border-radius:10px 0 0 10px; }
+.tile:last-child { border-radius:0 10px 10px 0; }
+.tile .label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+.tile .value { font-size:22px; font-weight:600; letter-spacing:-.02em; margin-top:2px; }
+.tile .sub { font-size:12px; color:var(--muted); }
+.tile.unknown .value { color:var(--muted); font-weight:500; }
+.live-bar { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--s3); flex:0 0 auto; }
+.dot.off { background:var(--muted); }
+.warn {
+  margin-top:10px; padding:9px 12px; border-radius:8px;
+  border:1px solid var(--s2); color:var(--ink); background:var(--surface); font-size:13px;
+}
+.warn b { color:var(--s2); }
+
+/* charts */
+.chart { position:relative; width:100%; }
+.chart svg { display:block; width:100%; }
+.grid-line { stroke:var(--hair); stroke-width:1; shape-rendering:crispEdges; }
+.axis-line { stroke:var(--hair-strong); stroke-width:1; shape-rendering:crispEdges; }
+.axis-text { fill:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; }
+.seq-fill { fill:var(--seq-fill); }
+.seq-line { stroke:var(--seq-line); stroke-width:1.75; fill:none; }
+.band-fill { fill:var(--s2); opacity:.22; }
+.band-line { stroke:var(--s2); stroke-width:1; fill:none; opacity:.55; stroke-dasharray:3 3; }
+.cross { stroke:var(--ink); stroke-width:1; opacity:.35; shape-rendering:crispEdges; }
+.dot-mark { fill:var(--seq-line); }
+.f1 { fill:var(--s1); } .f2 { fill:var(--s2); } .f3 { fill:var(--s3); } .f4 { fill:var(--s4); }
+.tip {
+  position:absolute; pointer-events:none; z-index:5; min-width:150px;
+  background:var(--surface); border:1px solid var(--hair-strong); border-radius:8px;
+  box-shadow:var(--shadow); padding:8px 10px; font-size:12px; display:none;
+}
+.tip .t-date { color:var(--muted); font-size:11px; margin-bottom:3px; }
+.tip .row { display:flex; justify-content:space-between; gap:14px; }
+
+/* legend */
+.legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; }
+.legend .item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+.swatch { width:10px; height:10px; border-radius:2px; flex:0 0 auto; }
+.legend .val { color:var(--ink); font-variant-numeric:tabular-nums; }
+
+/* tables */
+table { width:100%; border-collapse:collapse; }
+th {
+  text-align:left; font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; padding:0 10px 7px; border-bottom:1px solid var(--hair-strong);
+}
+td { padding:9px 10px; border-bottom:1px solid var(--hair); vertical-align:top; }
+tbody tr:last-child td { border-bottom:none; }
+th.r, td.r { text-align:right; }
+tr.clickable { cursor:pointer; }
+tr.clickable:hover td { background:var(--chip); }
+.rank { color:var(--muted); font-variant-numeric:tabular-nums; }
+.leak-name { font-weight:550; }
+.fixline { color:var(--muted); font-size:12px; margin-top:3px; white-space:pre-wrap; word-break:break-word; }
+.effort { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; border:1px solid; }
+.effort.paste { color:var(--s3); border-color:var(--s3); }
+.effort.habit { color:var(--s4); border-color:var(--s4); }
+.effort.restructure { color:var(--s2); border-color:var(--s2); }
+button.copy {
+  background:var(--surface); border:1px solid var(--hair-strong); border-radius:6px;
+  color:var(--ink); cursor:pointer; font:inherit; font-size:12px; padding:3px 10px; white-space:nowrap;
+}
+button.copy:hover { border-color:var(--s1); color:var(--s1); }
+button.copy.done { border-color:var(--s3); color:var(--s3); }
+.muted { color:var(--muted); }
+.empty { color:var(--muted); padding:6px 10px; }
+footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:14px; flex-wrap:wrap; }
+.delta.up { color:var(--s2); } .delta.down { color:var(--s3); }
+.bignum { font-size:26px; font-weight:620; letter-spacing:-.02em; }
+.spend-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="brand">ccmetrics</span>
+  <span class="scope" id="scope-label">all projects · last 30 days</span>
+  <button class="link" id="back" style="display:none">&larr; back to all projects</button>
+  <span class="spacer"></span>
+  <span class="chip" id="confidence" title="Cost is a documented lower bound derived from cache fields only (PRD R4). No OTEL stream present.">&approx; floor &middot; JSONL-only</span>
+  <button class="ghost" id="theme">theme</button>
+</header>
+
+<!-- LIVE tiles (PRD R7) -->
+<section>
+  <div class="live-bar">
+    <span class="dot off" id="live-dot"></span>
+    <span class="card-title">live session</span>
+    <span class="scope" id="live-meta">connecting&hellip;</span>
+  </div>
+  <div class="tiles" id="tiles">
+    <div class="tile" id="tile-burn">
+      <div class="label">burn rate</div>
+      <div class="value num" id="tile-burn-value">&mdash;</div>
+      <div class="sub num" id="tile-burn-sub">&nbsp;</div>
+    </div>
+    <div class="tile" id="tile-ctx">
+      <div class="label">context</div>
+      <div class="value num" id="tile-ctx-value">&mdash;</div>
+      <div class="sub num" id="tile-ctx-sub">&nbsp;</div>
+    </div>
+    <div class="tile" id="tile-cache">
+      <div class="label">cache-hit</div>
+      <div class="value num" id="tile-cache-value">&mdash;</div>
+      <div class="sub num" id="tile-cache-sub">&nbsp;</div>
+    </div>
+    <div class="tile" id="tile-spend">
+      <div class="label">session floor</div>
+      <div class="value num" id="tile-spend-value">&mdash;</div>
+      <div class="sub num" id="tile-spend-sub">&nbsp;</div>
+    </div>
+  </div>
+  <div class="warn" id="live-warning" style="display:none"></div>
+</section>
+
+<!-- 30d spend -->
+<section class="card">
+  <div class="card-head">
+    <span class="card-title">spend &middot; 30 days</span>
+    <span class="spacer"></span>
+    <span class="scope" id="spend-headline">&nbsp;</span>
+  </div>
+  <div class="card-body">
+    <div class="chart" id="chart-spend"><div class="tip" id="tip-spend"></div></div>
+    <div class="legend" id="legend-spend"></div>
+  </div>
+</section>
+
+<!-- token mix -->
+<section class="card">
+  <div class="card-head">
+    <span class="card-title">token mix &middot; 30 days</span>
+    <span class="spacer"></span>
+    <span class="scope" id="mix-headline">&nbsp;</span>
+  </div>
+  <div class="card-body">
+    <div class="chart" id="chart-mix"><div class="tip" id="tip-mix"></div></div>
+    <div class="legend" id="legend-mix"></div>
+  </div>
+</section>
+
+<!-- top leaks -->
+<section class="card">
+  <div class="card-head">
+    <span class="card-title">top leaks</span>
+    <span class="scope">ranked by billable-equivalent tokens saved &divide; effort</span>
+    <span class="spacer"></span>
+    <button class="link" id="all-leaks">show all</button>
+  </div>
+  <div class="card-body">
+    <table id="leaks-table">
+      <thead>
+        <tr>
+          <th style="width:22px"></th>
+          <th>leak</th>
+          <th class="r" style="width:110px">saves</th>
+          <th class="r" style="width:90px">floor $</th>
+          <th style="width:110px">effort</th>
+          <th class="r" style="width:80px">fix</th>
+        </tr>
+      </thead>
+      <tbody id="leaks-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- per-project -->
+<section class="card" id="projects-card">
+  <div class="card-head">
+    <span class="card-title">projects</span>
+    <span class="scope">click a row to scope everything above to that project</span>
+  </div>
+  <div class="card-body">
+    <table id="projects-table">
+      <thead>
+        <tr>
+          <th>project</th>
+          <th class="r" style="width:90px">floor $</th>
+          <th class="r" style="width:110px">billable tok</th>
+          <th class="r" style="width:90px">cache-hit</th>
+          <th class="r" style="width:100px">vs prior 30d</th>
+          <th style="width:230px">top leak</th>
+        </tr>
+      </thead>
+      <tbody id="projects-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <span id="foot-meta">&nbsp;</span>
+  <span class="spacer"></span>
+  <span>read-only &middot; metadata only &middot; localhost only</span>
+</footer>
+
+</div>
+
+<script>
+(function () {
+"use strict";
+
+var state = { scope: null, allLeaks: false, summary: null, findings: [], projects: null, live: null };
+
+// ---------- formatting ----------
+function fmtUsd(v) {
+  if (v === null || v === undefined) return "unknown";
+  if (v === 0) return "$0.00";
+  if (v < 0.01) return "<$0.01";
+  if (v < 1000) return "$" + v.toFixed(2);
+  return "$" + Math.round(v).toLocaleString("en-US");
+}
+function fmtUsdRange(r) {
+  if (!r) return "unknown";
+  return fmtUsd(r[0]) + "–" + fmtUsd(r[1]);
+}
+function fmtTok(n) {
+  if (n === null || n === undefined) return "unknown";
+  var a = Math.abs(n);
+  if (a >= 1e9) return (n / 1e9).toFixed(1) + "B";
+  if (a >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  return String(Math.round(n));
+}
+function fmtPct(x, digits) {
+  if (x === null || x === undefined) return "unknown";
+  return (x * 100).toFixed(digits === undefined ? 0 : digits) + "%";
+}
+var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(iso) {
+  var p = String(iso).split("-");
+  return MONTHS[parseInt(p[1], 10) - 1] + " " + parseInt(p[2], 10);
+}
+function el(id) { return document.getElementById(id); }
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function mk(tag, cls, text) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = text;
+  return n;
+}
+var SVGNS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs) {
+  var n = document.createElementNS(SVGNS, tag);
+  for (var k in attrs) if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]);
+  return n;
+}
+
+// ---------- data ----------
+function get(url) {
+  return fetch(url, { headers: { "Accept": "application/json" } }).then(function (r) {
+    if (!r.ok) throw new Error(url + " -> " + r.status);
+    return r.json();
+  });
+}
+
+function load() {
+  var scope = state.scope;
+  var sumUrl = scope ? "/api/project/" + encodeURIComponent(scope) : "/api/summary";
+  var findUrl = "/api/findings" + (scope ? "?project=" + encodeURIComponent(scope) : "");
+  get(sumUrl).then(function (d) { state.summary = d; renderSummary(); }).catch(showErr);
+  get(findUrl).then(function (d) { state.findings = d.findings || []; renderLeaks(); }).catch(showErr);
+  if (!state.projects) {
+    get("/api/projects").then(function (d) { state.projects = d; renderProjects(); }).catch(showErr);
+  } else { renderProjects(); }
+  get("/api/meta").then(function (m) {
+    el("foot-meta").textContent =
+      "ccmetrics " + m.version + " · state db " + ((m.db_bytes || 0) / 1e6).toFixed(1) +
+      " MB · " + (m.corpus_files || "?") + " session files · last ingest " +
+      (m.last_ingest || "never");
+  }).catch(function () {});
+}
+
+function showErr(e) {
+  var b = el("leaks-body");
+  clear(b);
+  var tr = mk("tr"); var td = mk("td", "empty", String(e.message || e));
+  td.setAttribute("colspan", "6"); tr.appendChild(td); b.appendChild(tr);
+}
+
+function setScope(key) {
+  state.scope = key;
+  el("scope-label").textContent = (key ? key : "all projects") + " · last 30 days";
+  el("back").style.display = key ? "" : "none";
+  el("projects-card").style.display = key ? "none" : "";
+  window.scrollTo(0, 0);
+  load();
+  pollLive();
+}
+
+// ---------- summary + charts ----------
+function renderSummary() {
+  var d = state.summary;
+  if (!d) return;
+  var s = d.spend, t = d.tokens;
+  var head = fmtUsd(s.floor_usd) + " floor";
+  if (!s.floor_priced) head += " + unknown";
+  head += "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
+  el("spend-headline").textContent = head;
+  el("mix-headline").textContent =
+    fmtTok(t.billable_equiv) + " billable-equivalent input tokens · cache-hit " +
+    fmtPct(t.cache_hit) + " · " + d.totals.turns.toLocaleString("en-US") + " turns · " +
+    d.totals.sessions.toLocaleString("en-US") + " sessions";
+  drawSpend(d.series);
+  drawMix(t);
+}
+
+function drawSpend(series) {
+  var host = el("chart-spend");
+  var tip = el("tip-spend");
+  var old = host.querySelector("svg");
+  if (old) host.removeChild(old);
+  var W = Math.max(320, host.clientWidth || 640), H = 210;
+  var padL = 46, padR = 12, padT = 12, padB = 22;
+  var iw = W - padL - padR, ih = H - padT - padB;
+  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
+                       "aria-label": "daily spend floor with estimated output band, last 30 days" });
+
+  var n = series.length;
+  var maxV = 0;
+  series.forEach(function (p) {
+    var f = p.floor_usd || 0;
+    maxV = Math.max(maxV, f + (p.est_hi || 0));
+  });
+  if (maxV <= 0) maxV = 1;
+  maxV = maxV * 1.08;
+  var x = function (i) { return padL + (n <= 1 ? iw / 2 : iw * i / (n - 1)); };
+  var y = function (v) { return padT + ih - (ih * v / maxV); };
+
+  // grid + y labels
+  for (var g = 0; g <= 4; g++) {
+    var v = maxV * g / 4, yy = Math.round(y(v)) + 0.5;
+    s.appendChild(svg("line", { class: g === 0 ? "axis-line" : "grid-line",
+                                x1: padL, x2: W - padR, y1: yy, y2: yy }));
+    var lab = svg("text", { class: "axis-text", x: padL - 6, y: yy + 3, "text-anchor": "end" });
+    lab.textContent = g === 0 ? "$0" : "$" + (v >= 10 ? Math.round(v) : v.toFixed(1));
+    s.appendChild(lab);
+  }
+
+  // est-output band (floor .. floor+est_hi), drawn above the floor, never summed in
+  var top = [], bottom = [];
+  series.forEach(function (p, i) {
+    var f = p.floor_usd || 0;
+    top.push(x(i) + "," + y(f + (p.est_hi || 0)));
+    bottom.push(x(i) + "," + y(f + (p.est_lo || 0)));
+  });
+  s.appendChild(svg("polygon", { class: "band-fill",
+                                 points: top.join(" ") + " " + bottom.reverse().join(" ") }));
+  s.appendChild(svg("polyline", { class: "band-line", points: top.join(" ") }));
+
+  // floor area + line
+  var line = [];
+  series.forEach(function (p, i) { line.push(x(i) + "," + y(p.floor_usd || 0)); });
+  s.appendChild(svg("polygon", { class: "seq-fill",
+      points: x(0) + "," + y(0) + " " + line.join(" ") + " " + x(n - 1) + "," + y(0) }));
+  s.appendChild(svg("polyline", { class: "seq-line", points: line.join(" ") }));
+
+  // x labels
+  var step = Math.max(1, Math.round(n / 6));
+  for (var i = 0; i < n; i += step) {
+    var tx = svg("text", { class: "axis-text", x: x(i), y: H - 6, "text-anchor": "middle" });
+    tx.textContent = fmtDate(series[i].date);
+    s.appendChild(tx);
+  }
+
+  // crosshair
+  var cross = svg("line", { class: "cross", x1: 0, x2: 0, y1: padT, y2: padT + ih, opacity: 0 });
+  var mark = svg("circle", { class: "dot-mark", r: 3, cx: 0, cy: 0, opacity: 0 });
+  s.appendChild(cross); s.appendChild(mark);
+  var hit = svg("rect", { x: padL, y: padT, width: iw, height: ih, fill: "transparent" });
+  s.appendChild(hit);
+
+  function move(ev) {
+    var r = s.getBoundingClientRect();
+    var px = (ev.clientX - r.left) * (W / r.width);
+    var i = Math.round((px - padL) / (n <= 1 ? 1 : iw / (n - 1)));
+    i = Math.max(0, Math.min(n - 1, i));
+    var p = series[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
+    mark.setAttribute("cx", x(i)); mark.setAttribute("cy", y(p.floor_usd || 0));
+    mark.setAttribute("opacity", 1);
+    clear(tip);
+    tip.appendChild(mk("div", "t-date", fmtDate(p.date) + " · " + p.turns + " turns"));
+    tip.appendChild(row("floor", p.floor_usd === null ? "unknown" : fmtUsd(p.floor_usd)));
+    tip.appendChild(row("est. output", fmtUsdRange([p.est_lo, p.est_hi])));
+    tip.appendChild(row("billable tok", fmtTok(p.equiv)));
+    tip.appendChild(row("cache read", fmtTok(p.cread)));
+    tip.style.display = "block";
+    var hostRect = host.getBoundingClientRect();
+    var left = (x(i) / W) * hostRect.width + 12;
+    if (left + 175 > hostRect.width) left -= 195;
+    tip.style.left = Math.max(0, left) + "px";
+    tip.style.top = "8px";
+  }
+  function row(k, v) {
+    var d = mk("div", "row");
+    d.appendChild(mk("span", "muted", k));
+    d.appendChild(mk("span", "num", v));
+    return d;
+  }
+  hit.addEventListener("mousemove", move);
+  hit.addEventListener("mouseleave", function () {
+    tip.style.display = "none";
+    cross.setAttribute("opacity", 0); mark.setAttribute("opacity", 0);
+  });
+  host.appendChild(s);
+
+  clear(el("legend-spend"));
+  legendItem(el("legend-spend"), "var(--seq-line)", "spend floor (cache fields only)",
+             fmtUsd(sum(series, "floor_usd")));
+  legendItem(el("legend-spend"), "var(--s2)", "est. output band (never summed into the floor)",
+             fmtUsdRange([sum(series, "est_lo"), sum(series, "est_hi")]));
+}
+
+function sum(rows, key) {
+  var t = 0;
+  rows.forEach(function (r) { t += (r[key] || 0); });
+  return t;
+}
+
+function drawMix(t) {
+  var host = el("chart-mix");
+  var tip = el("tip-mix");
+  var old = host.querySelector("svg");
+  if (old) host.removeChild(old);
+  var W = Math.max(320, host.clientWidth || 640), H = 58;
+  var segs = [
+    { key: "cache read", val: t.cread, cls: "f1", swatch: "var(--s1)" },
+    { key: "cache write 5m", val: t.cw5m, cls: "f2", swatch: "var(--s2)" },
+    { key: "cache write 1h", val: t.cw1h, cls: "f3", swatch: "var(--s3)" },
+    { key: "output (est.)", val: (t.out_tokens_est ? (t.out_tokens_est[0] + t.out_tokens_est[1]) / 2 : 0),
+      cls: "f4", swatch: "var(--s4)" }
+  ];
+  var total = 0;
+  segs.forEach(function (g) { total += g.val || 0; });
+  if (total <= 0) total = 1;
+  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
+                       "aria-label": "token mix by cache class" });
+  var xoff = 0, barH = 30, barY = 8;
+  segs.forEach(function (g) {
+    var w = Math.max(0, (W * (g.val || 0)) / total);
+    var r = svg("rect", { class: g.cls, x: xoff, y: barY, width: w, height: barH });
+    r.addEventListener("mousemove", function (ev) {
+      var hostRect = host.getBoundingClientRect();
+      clear(tip);
+      tip.appendChild(mk("div", "t-date", g.key));
+      var d = mk("div", "row");
+      d.appendChild(mk("span", "muted", "tokens"));
+      d.appendChild(mk("span", "num", fmtTok(g.val)));
+      tip.appendChild(d);
+      var p = mk("div", "row");
+      p.appendChild(mk("span", "muted", "share"));
+      p.appendChild(mk("span", "num", ((100 * (g.val || 0)) / total).toFixed(1) + "%"));
+      tip.appendChild(p);
+      tip.style.display = "block";
+      var left = ev.clientX - hostRect.left + 10;
+      if (left + 165 > hostRect.width) left -= 185;
+      tip.style.left = Math.max(0, left) + "px";
+      tip.style.top = "2px";
+    });
+    r.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+    s.appendChild(r);
+    xoff += w;
+  });
+  s.appendChild(svg("line", { class: "axis-line", x1: 0, x2: W, y1: barY + barH + 0.5,
+                              y2: barY + barH + 0.5 }));
+  host.appendChild(s);
+
+  var lg = el("legend-mix");
+  clear(lg);
+  segs.forEach(function (g) {
+    legendItem(lg, g.swatch, g.key, fmtTok(g.val) + " · " +
+               ((100 * (g.val || 0)) / total).toFixed(0) + "%");
+  });
+}
+
+function legendItem(host, color, label, value) {
+  var i = mk("div", "item");
+  var sw = mk("span", "swatch");
+  sw.style.background = color;
+  i.appendChild(sw);
+  i.appendChild(mk("span", null, label));
+  i.appendChild(mk("span", "val", value));
+  host.appendChild(i);
+}
+
+// ---------- leaks ----------
+function renderLeaks() {
+  var body = el("leaks-body");
+  clear(body);
+  var rows = state.allLeaks ? state.findings : state.findings.slice(0, 3);
+  el("all-leaks").textContent = state.allLeaks
+    ? "show top 3" : "show all (" + state.findings.length + ")";
+  if (!rows.length) {
+    var tr = mk("tr"), td = mk("td", "empty", "nothing over threshold in this window.");
+    td.setAttribute("colspan", "6"); tr.appendChild(td); body.appendChild(tr);
+    return;
+  }
+  rows.forEach(function (f, i) {
+    var tr = mk("tr");
+    tr.appendChild(mk("td", "rank num", String(i + 1)));
+
+    var nameCell = mk("td");
+    nameCell.appendChild(mk("div", "leak-name", f.name));
+    var meta = f.project && !state.scope ? f.project : (f.period || "");
+    if (meta) nameCell.appendChild(mk("div", "fixline", meta));
+    if (f.fix_text) {
+      var pre = mk("div", "fixline", f.fix_text.split("\n").slice(0, 2).join("\n"));
+      nameCell.appendChild(pre);
+    }
+    tr.appendChild(nameCell);
+
+    tr.appendChild(mk("td", "r num", "~" + fmtTok(f.tokens_saved) + " tok"));
+    tr.appendChild(mk("td", "r num", f.usd_saved === null ? "unknown" : fmtUsd(f.usd_saved)));
+
+    var eff = mk("td");
+    eff.appendChild(mk("span", "effort " + f.effort_label, f.effort_label));
+    tr.appendChild(eff);
+
+    var act = mk("td", "r");
+    var btn = mk("button", "copy", "copy");
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      copyText(f.fix_text || "", btn);
+    });
+    act.appendChild(btn);
+    tr.appendChild(act);
+    body.appendChild(tr);
+  });
+}
+
+function copyText(text, btn) {
+  function done() {
+    var was = btn.textContent;
+    btn.textContent = "copied";
+    btn.classList.add("done");
+    setTimeout(function () { btn.textContent = was; btn.classList.remove("done"); }, 1400);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+  } else { fallback(text, done); }
+}
+function fallback(text, done) {
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { /* clipboard blocked */ }
+  document.body.removeChild(ta);
+}
+
+// ---------- projects ----------
+function renderProjects() {
+  var d = state.projects;
+  var body = el("projects-body");
+  clear(body);
+  if (!d || !d.rows.length) {
+    var tr = mk("tr"), td = mk("td", "empty", "no projects in the window.");
+    td.setAttribute("colspan", "6"); tr.appendChild(td); body.appendChild(tr);
+    return;
+  }
+  d.rows.forEach(function (r) {
+    var tr = mk("tr", "clickable");
+    tr.addEventListener("click", function () { setScope(r.project); });
+    tr.appendChild(mk("td", null, r.project));
+    tr.appendChild(mk("td", "r num", r.floor_usd === null ? "unknown" : fmtUsd(r.floor_usd)));
+    tr.appendChild(mk("td", "r num", fmtTok(r.equiv)));
+    tr.appendChild(mk("td", "r num", fmtPct(r.cache_hit)));
+    var dcell = mk("td", "r num");
+    if (r.delta_pct === null || r.delta_pct === undefined) {
+      dcell.textContent = "—";
+      dcell.className += " muted";
+    } else {
+      var up = r.delta_pct >= 0;
+      dcell.textContent = (up ? "+" : "") + r.delta_pct.toFixed(0) + "%";
+      dcell.className += up ? " delta up" : " delta down";
+    }
+    tr.appendChild(dcell);
+    var leak = mk("td");
+    if (r.top_leak) {
+      leak.appendChild(mk("div", null, r.top_leak.name));
+      leak.appendChild(mk("div", "fixline", "~" + fmtTok(r.top_leak.tokens_saved) + " tok saveable"));
+    } else {
+      leak.appendChild(mk("span", "muted", "—"));
+    }
+    tr.appendChild(leak);
+    body.appendChild(tr);
+  });
+}
+
+// ---------- live tiles (R7) ----------
+function setTile(id, value, sub, unknown) {
+  el(id + "-value").textContent = value;
+  el(id + "-sub").textContent = sub || " ";
+  el(id).classList.toggle("unknown", !!unknown);
+}
+
+function renderLive(d) {
+  state.live = d;
+  var dot = el("live-dot");
+  if (!d || d.status !== "live") {
+    dot.className = "dot off";
+    el("live-meta").textContent = (d && d.status) ? d.status : "no live session";
+    setTile("tile-burn", "—", "no session in the last 5 min", true);
+    setTile("tile-ctx", "—", "", true);
+    setTile("tile-cache", "—", "", true);
+    setTile("tile-spend", "—", "", true);
+    el("live-warning").style.display = "none";
+    return;
+  }
+  dot.className = "dot";
+  el("live-meta").textContent =
+    d.project + " · " + (d.model || "unknown model") + " · " + d.turns +
+    " turns · last turn " + d.age_seconds + "s ago";
+
+  var b = d.burn;
+  setTile("tile-burn",
+    b.floor_usd_per_hour !== null ? fmtUsd(b.floor_usd_per_hour) + "/hr" : fmtTok(b.equiv_tokens_per_hour) + " tok/hr",
+    fmtTok(b.equiv_tokens_per_hour) + " billable tok/hr · " + b.turns + " turns",
+    b.equiv_tokens_per_hour === null);
+
+  var c = d.context;
+  setTile("tile-ctx",
+    c.pct !== null && c.pct !== undefined ? c.pct.toFixed(0) + "%" : "unknown",
+    c.pct !== null && c.pct !== undefined
+      ? fmtTok(c.tokens) + " of " + fmtTok(c.window)
+      : (c.reason || ""),
+    c.pct === null || c.pct === undefined);
+
+  setTile("tile-cache", fmtPct(d.cache_hit),
+    fmtTok(d.tokens.cread) + " read · " + fmtTok(d.tokens.cw5m + d.tokens.cw1h) + " written",
+    d.cache_hit === null);
+
+  setTile("tile-spend", fmtUsd(d.floor_usd),
+    d.est_output_usd ? "+ est. output " + fmtUsdRange(d.est_output_usd) : "floor only",
+    d.floor_usd === null);
+
+  var w = el("live-warning");
+  if (d.warning) {
+    clear(w);
+    var strong = mk("b", null, "runaway warning · detector 11 — ");
+    w.appendChild(strong);
+    w.appendChild(document.createTextNode(
+      "this turn burned " + d.warning.over_by + "× the p90 of its own session (" +
+      fmtTok(d.warning.equiv_tokens) + " vs " + fmtTok(d.warning.p90_equiv_tokens) +
+      " billable-equivalent tokens over " + d.warning.preceding_turns + " preceding turns)."));
+    w.style.display = "";
+  } else {
+    w.style.display = "none";
+  }
+}
+
+function pollLive() {
+  var url = "/api/live" + (state.scope ? "?project=" + encodeURIComponent(state.scope) : "");
+  get(url).then(renderLive).catch(function () { renderLive(null); });
+}
+
+// ---------- wiring ----------
+el("back").addEventListener("click", function () { setScope(null); });
+el("all-leaks").addEventListener("click", function () {
+  state.allLeaks = !state.allLeaks;
+  renderLeaks();
+});
+el("theme").addEventListener("click", function () {
+  var cur = document.documentElement.getAttribute("data-theme");
+  var next = cur === "dark" ? "light" : (cur === "light" ? "auto" : "dark");
+  document.documentElement.setAttribute("data-theme", next);
+  el("theme").textContent = "theme: " + next;
+  if (state.summary) renderSummary();
+});
+var rt;
+window.addEventListener("resize", function () {
+  clearTimeout(rt);
+  rt = setTimeout(function () { if (state.summary) renderSummary(); }, 150);
+});
+
+document.documentElement.setAttribute("data-theme", "auto");
+load();
+pollLive();
+setInterval(pollLive, 5000);
+})();
+</script>
+</body>
+</html>

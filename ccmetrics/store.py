@@ -348,9 +348,28 @@ def load_findings(conn: sqlite3.Connection, project: str | None = None) -> list[
 # --- retention (PRD R5) -----------------------------------------------------
 
 
-def prune(conn: sqlite3.Connection, now_iso: str, turn_days: int | None = None) -> dict:
-    """Idempotent retention pass. Rollups are never deleted to reclaim space."""
+def prune(
+    conn: sqlite3.Connection,
+    now_iso: str,
+    turn_days: int | None = None,
+    path: Path | None = None,
+) -> dict:
+    """Idempotent retention pass (PRD R5).
+
+    Per-turn rows older than `turn_days` go, plus the tool_calls that hung off
+    them; session rows older than the session horizon go. Daily rollups are
+    NEVER touched — they are what the trends are drawn from, and they must
+    outlive the turns behind them.
+
+    Idempotent by construction: the cutoffs are absolute timestamps, so a second
+    run over an already-pruned store deletes zero rows. The reported byte sizes
+    bracket the pass; the file itself only shrinks on VACUUM (see
+    enforce_size_cap), so freed space normally shows up as freelist pages first.
+    """
     import datetime as _dt
+
+    p = Path(path) if path else db_path()
+    size_before = p.stat().st_size if p.exists() else None
 
     turn_days = turn_days if turn_days is not None else constants.value(
         constants.RETENTION["turn_days"]
@@ -374,11 +393,18 @@ def prune(conn: sqlite3.Connection, now_iso: str, turn_days: int | None = None) 
     )
     sessions_deleted = cur.rowcount
     conn.commit()
+    page = conn.execute("PRAGMA page_size").fetchone()[0]
+    free = conn.execute("PRAGMA freelist_count").fetchone()[0]
     return {
         "turns_deleted": turns_deleted,
         "tool_calls_deleted": tools_deleted,
         "sessions_deleted": sessions_deleted,
+        "rollup_rows": conn.execute("SELECT COUNT(*) FROM daily").fetchone()[0],
         "turn_cutoff": turn_cutoff,
+        "session_cutoff": session_cutoff,
+        "db_bytes_before": size_before,
+        "db_bytes_after": p.stat().st_size if p.exists() else None,
+        "reclaimable_bytes": page * free,
     }
 
 
@@ -388,12 +414,17 @@ def enforce_size_cap(conn: sqlite3.Connection, now_iso: str, path: Path | None =
     p = Path(path) if path else db_path()
     cap = constants.value(constants.RETENTION["db_bytes_cap"])
     steps = []
+    rollups = conn.execute("SELECT COUNT(*) FROM daily").fetchone()[0]
     for days in (30, 14, 7):
         size = p.stat().st_size if p.exists() else 0
         if size <= cap:
-            return {"size": size, "cap": cap, "steps": steps, "over": False}
-        prune(conn, now_iso, turn_days=days)
+            return {"size": size, "cap": cap, "steps": steps, "over": False,
+                    "rollup_rows": rollups}
+        prune(conn, now_iso, turn_days=days, path=p)
         conn.execute("VACUUM")
         steps.append(days)
     size = p.stat().st_size if p.exists() else 0
-    return {"size": size, "cap": cap, "steps": steps, "over": size > cap}
+    # Floor reached: per-turn retention has been shortened as far as the rule
+    # allows. Rollups stay whatever happens — reported, never sacrificed.
+    return {"size": size, "cap": cap, "steps": steps, "over": size > cap,
+            "rollup_rows": conn.execute("SELECT COUNT(*) FROM daily").fetchone()[0]}

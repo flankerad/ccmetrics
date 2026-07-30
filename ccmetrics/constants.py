@@ -11,11 +11,12 @@ A rate whose value is None means UNKNOWN: cost is withheld and displayed as
 
 from __future__ import annotations
 
-CONSTANTS_VERSION = 2
+CONSTANTS_VERSION = 3
 
 PRICING_DOC = "https://platform.claude.com/docs/en/docs/about-claude/pricing"
 CACHING_DOC = "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching"
 TOKEN_DOC = "https://docs.anthropic.com/en/docs/about-claude/glossary"
+MODELS_DOC = "https://platform.claude.com/docs/en/docs/about-claude/models/overview"
 
 
 def _e(value, source_url, as_of, note=None):
@@ -132,6 +133,78 @@ MODEL_RATES = {
         ),
         "output": _e(0.0, PRICING_DOC, "2026-07-30", "Local CLI-generated turn."),
     },
+}
+
+# --- context windows (PRD R7 tile 2: ctx % = input-side tokens / window) ---
+# value None == UNKNOWN: the tile prints "unknown" rather than dividing by a
+# guessed window. Filling one in is a one-line edit here, same rule as a rate.
+
+_WINDOW_AS_OF = "2026-07-30"
+_WINDOW_UNVERIFIED = (
+    "Window not confirmed against the published model table at build time "
+    "(the doc was not reachable offline). Left unknown on purpose: ctx % "
+    "prints 'unknown' rather than dividing by a guessed number."
+)
+
+CONTEXT_WINDOWS = {
+    "claude-haiku-4-5": _e(
+        200_000,
+        MODELS_DOC,
+        _WINDOW_AS_OF,
+        "200K standard context window. Re-verify at the source URL when online.",
+    ),
+    "claude-opus-4-8": _e(
+        200_000,
+        MODELS_DOC,
+        _WINDOW_AS_OF,
+        "200K standard context window. Re-verify at the source URL when online.",
+    ),
+    "claude-opus-5": _e(None, MODELS_DOC, _WINDOW_AS_OF, _WINDOW_UNVERIFIED),
+    "claude-sonnet-5": _e(None, MODELS_DOC, _WINDOW_AS_OF, _WINDOW_UNVERIFIED),
+    "claude-fable-5": _e(None, MODELS_DOC, _WINDOW_AS_OF, _WINDOW_UNVERIFIED),
+    "<synthetic>": _e(
+        None,
+        MODELS_DOC,
+        _WINDOW_AS_OF,
+        "Local CLI-generated turn: no model, so no window.",
+    ),
+}
+
+# --- live tiles (PRD R7) ---
+
+_R7 = "PRD-build-a-brand-new.md#R7"
+
+LIVE = {
+    "stale_seconds": _e(
+        300,
+        _R7,
+        "2026-07-30",
+        "A session file untouched for 5 minutes is not 'happening right now': "
+        "the tiles print 'no live session' instead of a stale snapshot.",
+    ),
+    "burn_window_seconds": _e(
+        900,
+        "derived",
+        "2026-07-30",
+        "Burn rate is measured over the trailing 15 minutes of turns, not the "
+        "whole session, so an idle hour does not hide a runaway right now. "
+        "15 min = 3x the 5-minute cache TTL, the shortest span that still spans "
+        "several turns.",
+    ),
+    "min_burn_span_seconds": _e(
+        60,
+        "derived",
+        "2026-07-30",
+        "Floor on the elapsed span used as the burn-rate denominator; without it "
+        "two turns one second apart extrapolate to an absurd hourly rate.",
+    ),
+    "poll_seconds": _e(
+        5,
+        _R7,
+        "2026-07-30",
+        "Dashboard poll interval for /api/live. Refresh is per turn; 5s is the "
+        "sampling floor, not a streaming channel.",
+    ),
 }
 
 # --- output-token estimate band (PRD R4 bounded estimate) ---
@@ -437,6 +510,12 @@ def model_rate_entries(model: str | None, ts: str | None = None) -> dict | None:
     return entry
 
 
+def context_window(model: str | None) -> int | None:
+    """Context window in tokens for a model, or None when unknown (R7 tile 2)."""
+    entry = CONTEXT_WINDOWS.get(normalize_model(model))
+    return entry["value"] if entry else None
+
+
 def model_rates(model: str | None, ts: str | None = None) -> tuple[float | None, float | None]:
     """(input_rate, output_rate) in USD per 1M tokens at time `ts`; None where unknown.
 
@@ -460,6 +539,8 @@ def provenance() -> list[dict]:
         ("cache_ttl_seconds", CACHE_TTL_SECONDS),
         ("retention", RETENTION),
         ("effort_tier", EFFORT_TIERS),
+        ("context_window", CONTEXT_WINDOWS),
+        ("live", LIVE),
     ):
         for name, entry in table.items():
             out.append({"group": group, "name": name, **entry})

@@ -40,8 +40,13 @@ def _build_parser() -> argparse.ArgumentParser:
     ing = sub.add_parser("ingest", help="update the store from ~/.claude/projects (read-only)")
     ing.add_argument("--stats", action="store_true", help="print ingest stats as JSON")
 
-    d = sub.add_parser("dash", help="local dashboard (wave C)")
+    d = sub.add_parser("dash", help="local dashboard on 127.0.0.1")
     d.add_argument("--port", type=int, default=7433)
+    d.add_argument("--no-open", action="store_true", help="do not open a browser")
+    d.add_argument("--no-ingest", action="store_true", help="serve the store as-is")
+
+    lv = sub.add_parser("live", help="R7 live tiles for the session running right now")
+    lv.add_argument("--json", action="store_true", help="print the tile payload as JSON")
 
     sub.add_parser("constants", help="print every constant with its source URL")
     det = sub.add_parser("detectors", help="re-run the leak detectors over the store")
@@ -59,6 +64,38 @@ def _run_ingest(conn, quiet: bool = False) -> dict:
             file=sys.stderr,
         )
     return stats
+
+
+def _render_live(t: dict) -> str:
+    """One-line R7 tile row for the console (same data the dash tiles show)."""
+    from . import costs
+
+    if t.get("status") != "live":
+        return f"LIVE  {t.get('status')}"
+    burn = t["burn"]
+    ctx = t["context"]
+    rate = (
+        f"{costs.fmt_tokens(burn['equiv_tokens_per_hour'])} tok/hr"
+        if burn["equiv_tokens_per_hour"] is not None
+        else "unknown"
+    )
+    if burn["floor_usd_per_hour"] is not None:
+        rate += f" · {costs.fmt_usd(burn['floor_usd_per_hour'])}/hr floor"
+    ctx_txt = f"{ctx['pct']:.0f}%" if ctx["pct"] is not None else "unknown"
+    hit = t["cache_hit"]
+    line = (
+        f"LIVE  burn {rate} │ ctx {ctx_txt} │ "
+        f"cache-hit {'unknown' if hit is None else f'{hit*100:.0f}%'} │ "
+        f"session {costs.fmt_usd(t['floor_usd'])} (floor)"
+    )
+    lines = [line, f"      {t['turns']} turns · {t['project']} · {t['model']}"]
+    w = t.get("warning")
+    if w:
+        lines.append(
+            f"      ⚠ detector 11: this turn burned {w['over_by']}x its session p90 "
+            f"({costs.fmt_tokens(w['equiv_tokens'])} vs {costs.fmt_tokens(w['p90_equiv_tokens'])})"
+        )
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,10 +122,23 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(stats, indent=2, default=str))
             return 0
 
+        if args.cmd == "live":
+            from . import live as live_mod
+
+            tiles = live_mod.tiles(conn, args.project)
+            if args.json:
+                print(json.dumps(tiles, indent=2, default=str))
+            else:
+                print(_render_live(tiles))
+            return 0
+
         if args.cmd == "dash":
             from . import dash
 
-            return dash.serve(port=args.port)
+            if not args.no_ingest:
+                _run_ingest(conn)
+            conn.close()  # the server opens its own connection per thread
+            return dash.serve(port=args.port, open_browser=not args.no_open)
 
         if not args.no_ingest:
             _run_ingest(conn)

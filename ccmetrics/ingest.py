@@ -49,6 +49,14 @@ _NONWORD = re.compile(r"[^a-zA-Z0-9]")
 
 
 def claude_projects_dir() -> Path:
+    """The projects root, read-only. Two overrides, both for fixtures/tests:
+
+    CCMETRICS_PROJECTS_DIR points straight at a projects dir; CCMETRICS_CLAUDE_DIR
+    points at a ~/.claude replacement and the 'projects' subdir is appended.
+    """
+    direct = os.environ.get("CCMETRICS_PROJECTS_DIR")
+    if direct:
+        return Path(direct).expanduser()
     root = os.environ.get("CCMETRICS_CLAUDE_DIR")
     base = Path(root).expanduser() if root else Path.home() / ".claude"
     return base / PROJECTS_DIRNAME
