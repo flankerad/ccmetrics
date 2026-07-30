@@ -71,16 +71,18 @@ Each ships a pre-written fix template filled from your own numbers:
 | 2 | Compaction tax (compacting too late, too often) | `/compact` habit |
 | 3 | Context bloat (oversized always-on instructions) | trim list |
 | 4 | MCP tool-call overhead (measured per call, not folklore) | config change |
-| 5 | Premium model on trivially small turns | `settings.json` routing |
+| 5 | Premium model on trivially small turns | `/model` habit (`settings.json` routing as a reviewed option) |
 | 6 | Repeated identical tool calls (same input, same session) | `CLAUDE.md` line |
 | 7 | Oversized tool results flowing into context | scoping tip |
 | 8 | Sidechain/agent overspend | agent-sizing tip |
-| 9 | Retry/error loops burning turns | habit |
+| 9 | Retry/error loops burning turns (hooks, denials) | review — keep or allowlist, your call |
 | 10 | Stale-session sprawl (many half-dead sessions) | hygiene tip |
 | 11 | Runaway live session (burn ≫ your own p90) | live warning |
 | 12 | File re-read waste (same file read 3×+, unchanged) | `CLAUDE.md` read-discipline line |
 
 Every saving shown links its arithmetic: the detector hits it sums, the threshold it crossed, and the pricing constant (with source URL) it used.
+
+One honesty rule: the `CLAUDE.md` lines and habits are safe to paste as-is; the `settings.json` suggestions are starting points — read them first, because only you know which model choices and permission denials are deliberate.
 
 ## Privacy — the hard rules
 

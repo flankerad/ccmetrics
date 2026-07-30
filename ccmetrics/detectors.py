@@ -54,7 +54,7 @@ DETECTOR_EFFORT = {
     4: "habit",
     5: "paste",
     6: "habit",
-    7: "paste",
+    7: "habit",
     8: "habit",
     9: "restructure",
     10: "habit",
@@ -96,9 +96,12 @@ FIX_TEMPLATES = {
         "only {read_tokens}. Breakeven is {breakeven} read(s) per write."
     ),
     5: (
-        "settings.json fragment — route small turns to a cheap model:\n"
-        '  {{ "model": "{cheap_model}" }}\n'
-        "  (or start those turns with /model {cheap_model})\n"
+        "Habit — start the small turns on a cheap model:\n"
+        "  Run /model {cheap_model} for the quick turns, then switch back for the "
+        "heavy ones.\n"
+        "  Secondary, review before pasting: {{ \"model\": \"{cheap_model}\" }} in "
+        "settings.json routes EVERY turn to {cheap_model}, not just the small "
+        "ones.\n"
         "Why: {turns} turn(s) on {models} had prompt size, tool-call count and "
         "sidechain depth all at or below this project's p25. Same cache fields at "
         "{cheap_model} rates instead."
@@ -112,10 +115,15 @@ FIX_TEMPLATES = {
         "already held."
     ),
     7: (
-        "settings.json fragment — stop paying for blocked calls:\n"
-        '  {{ "permissions": {{ "allow": [{allow_list}] }} }}\n'
-        "Why: {denials} denial(s), {errors} failed tool result(s) and {hook_errors} "
-        "hook error(s) burned {raw_tokens} tokens that produced nothing."
+        "Review — denials and failed calls cost tokens, but denials may be "
+        "deliberate:\n"
+        "  {denials} denial(s), {errors} failed tool result(s) and {hook_errors} "
+        "hook error(s) burned {raw_tokens} tokens producing nothing.\n"
+        "  Tools involved: {denied_tools}.\n"
+        "  If one is routine AND you consider it safe, allowlist it yourself in "
+        "settings.json permissions.allow. If the denial was deliberate, keep it — "
+        "and stop the agent from attempting it (a CLAUDE.md line naming it as "
+        "off-limits)."
     ),
     8: (
         "Habit — brief your sub-agents:\n"
@@ -811,7 +819,7 @@ def d7_hook_denial(ctx: Ctx) -> list[dict]:
     for project, acc in per_project.items():
         if not (acc["denials"] or acc["errors"] or acc["hook_errors"] or acc["prevented"]):
             continue
-        allow = ", ".join(f'"{t}"' for t in sorted(acc["tools"])[:5]) or '"Bash(git status)"'
+        denied_tools = ", ".join(sorted(acc["tools"])[:5]) or "(none recorded)"
         evidence = {
             "denials": acc["denials"],
             "errored_tool_results": acc["errors"],
@@ -833,7 +841,7 @@ def d7_hook_denial(ctx: Ctx) -> list[dict]:
             _finding(
                 7, project, ctx, acc["equiv"], None if acc["unknown"] else acc["usd"], evidence,
                 {"denials": acc["denials"], "errors": acc["errors"],
-                 "hook_errors": acc["hook_errors"], "allow_list": allow,
+                 "hook_errors": acc["hook_errors"], "denied_tools": denied_tools,
                  "raw_tokens": _fmt_tok(acc["equiv"])},
             )
         )
