@@ -11,12 +11,13 @@ A rate whose value is None means UNKNOWN: cost is withheld and displayed as
 
 from __future__ import annotations
 
-CONSTANTS_VERSION = 3
+CONSTANTS_VERSION = 4
 
 PRICING_DOC = "https://platform.claude.com/docs/en/docs/about-claude/pricing"
 CACHING_DOC = "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching"
 TOKEN_DOC = "https://docs.anthropic.com/en/docs/about-claude/glossary"
 MODELS_DOC = "https://platform.claude.com/docs/en/docs/about-claude/models/overview"
+MONITORING_DOC = "https://docs.claude.com/en/docs/claude-code/monitoring-usage"
 
 
 def _e(value, source_url, as_of, note=None):
@@ -275,6 +276,62 @@ RETENTION = {
         "PRD-build-a-brand-new.md#R5",
         "2026-07-30",
         "State file stays under 100 MB; per-turn retention shortens before rollups are touched.",
+    ),
+}
+
+# --- optional OTEL receiver (wave D) ---
+
+OTEL = {
+    "port": _e(
+        4318,
+        MONITORING_DOC,
+        "2026-07-30",
+        "Default OTLP/HTTP port. The monitoring doc's own examples use "
+        "http://localhost:4318 for the http/json and http/protobuf endpoints "
+        "(4317 is the grpc port, which this receiver does not speak).",
+    ),
+    "host": _e(
+        "127.0.0.1",
+        "PRD-build-a-brand-new.md#privacy",
+        "2026-07-30",
+        "Loopback only. There is no flag that binds the receiver to a network "
+        "interface; usage data never leaves the machine.",
+    ),
+    "protocol": _e(
+        "http/json",
+        MONITORING_DOC,
+        "2026-07-30",
+        "OTEL_EXPORTER_OTLP_PROTOCOL value the setup block pins. The doc lists "
+        "grpc, http/json and http/protobuf; this stdlib receiver parses only "
+        "OTLP/JSON, so anything else is rejected with a 415 and a hint.",
+    ),
+    "exact_coverage_min": _e(
+        0.95,
+        "PLAN-v1.md#wave-D",
+        "2026-07-30",
+        "A day counts as exact-covered when OTEL api_request events span >=95% "
+        "of that day's JSONL turns. Below that the day stays a floor figure — "
+        "partial telemetry must never masquerade as a total.",
+    ),
+    "max_body_bytes": _e(
+        8 * 1024 * 1024,
+        "derived",
+        "2026-07-30",
+        "Largest OTLP/JSON export body accepted in one POST (8 MB). Bigger "
+        "bodies get 413 rather than being buffered into memory.",
+    ),
+    "export_interval_ms": _e(
+        5000,
+        MONITORING_DOC,
+        "2026-07-30",
+        "OTEL_LOGS_EXPORT_INTERVAL default, echoed in the setup block.",
+    ),
+    "probe_timeout_seconds": _e(
+        0.15,
+        "derived",
+        "2026-07-30",
+        "Timeout for the dash's loopback TCP probe of the receiver port. Kept "
+        "tiny so /api/meta never blocks on a dead port.",
     ),
 }
 
@@ -556,6 +613,7 @@ def provenance() -> list[dict]:
         ("effort_tier", EFFORT_TIERS),
         ("context_window", CONTEXT_WINDOWS),
         ("live", LIVE),
+        ("otel", OTEL),
     ):
         for name, entry in table.items():
             out.append({"group": group, "name": name, **entry})

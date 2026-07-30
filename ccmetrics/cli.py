@@ -48,6 +48,20 @@ def _build_parser() -> argparse.ArgumentParser:
     lv = sub.add_parser("live", help="R7 live tiles for the session running right now")
     lv.add_argument("--json", action="store_true", help="print the tile payload as JSON")
 
+    ot = sub.add_parser(
+        "otel",
+        help="optional: receive Claude Code's own telemetry for exact costs "
+        "(OTLP/JSON on 127.0.0.1:4318, ctrl-c to stop)",
+    )
+    ot.add_argument("--port", type=int, default=4318)
+    ot.add_argument(
+        "--setup",
+        action="store_true",
+        help="print the env block to enable telemetry and exit (prints only, "
+        "never edits your files)",
+    )
+    ot.add_argument("--status", action="store_true", help="print what has arrived so far, then exit")
+
     sub.add_parser("constants", help="print every constant with its source URL")
     det = sub.add_parser("detectors", help="re-run the leak detectors over the store")
     det.add_argument("--json", action="store_true", help="print findings as JSON")
@@ -104,8 +118,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "constants":
         print(json.dumps(constants.provenance(), indent=2))
         return 0
+    if args.cmd == "otel" and args.setup:
+        from . import otel
+
+        print(otel.setup_text(args.port))  # print-only: no file is ever written
+        return 0
     conn = store.connect()
     try:
+        if args.cmd == "otel":
+            from . import otel
+
+            if args.status:
+                st = store.otel_stats(conn)
+                st["receiver_live"] = otel.receiver_live(args.port)
+                print(json.dumps(st, indent=2, default=str))
+                return 0
+            conn.close()  # the receiver opens its own thread-shared writer
+            return otel.serve(port=args.port)
+
         if args.cmd == "detectors":
             from . import detectors
 

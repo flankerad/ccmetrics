@@ -41,6 +41,83 @@ def _rows(conn: sqlite3.Connection, project: str | None):
     return conn.execute(sql, args).fetchall()
 
 
+EXACT_COVERAGE_MIN = constants.value(constants.OTEL["exact_coverage_min"])
+
+
+def exact_window(
+    conn: sqlite3.Connection, project: str | None, days: int = WINDOW_DAYS
+) -> dict:
+    """OTEL coverage for the reporting window (wave D).
+
+    A day is exact-covered when Anthropic's own api_request events span at least
+    95% of that day's turns. Covered days report Anthropic's dollars; every other
+    day stays a floor. The two are never added together behind the user's back —
+    a mixed window reports both numbers and says which days each covers.
+
+    mode: "none" (no telemetry at all — v0.1.0 behaviour, unchanged),
+          "exact" (every day with turns is covered), "mixed" (some of each).
+    """
+    import datetime as _dt
+
+    start = (_dt.date.today() - _dt.timedelta(days=days - 1)).isoformat()
+    sql = (
+        "SELECT date, SUM(turns) turns, SUM(exact_events) events, "
+        "SUM(exact_usd) exact_usd, SUM(floor_usd) floor_usd, "
+        "SUM(CASE WHEN floor_usd IS NULL THEN 1 ELSE 0 END) unpriced "
+        "FROM daily WHERE date >= ?"
+    )
+    args: list = [start]
+    if project:
+        sql += " AND project = ?"
+        args.append(project)
+    sql += " GROUP BY date ORDER BY date"
+
+    out = {
+        "available": False,
+        "mode": "none",
+        "coverage_min": EXACT_COVERAGE_MIN,
+        "events": 0,
+        "exact_usd": 0.0,          # covered days only
+        "floor_usd_covered": 0.0,  # the floor those same days would have shown
+        "floor_usd_uncovered": 0.0,
+        "floor_uncovered_priced": True,
+        "days_covered": 0,
+        "days_uncovered": 0,
+        "days_partial": 0,
+        "covered_dates": [],
+    }
+    for r in conn.execute(sql, args):
+        turns = r["turns"] or 0
+        events = r["events"] or 0
+        floor = None if r["unpriced"] else (r["floor_usd"] or 0.0)
+        out["events"] += events
+        if events and (turns == 0 or events / turns >= EXACT_COVERAGE_MIN):
+            out["days_covered"] += 1
+            out["covered_dates"].append(r["date"])
+            out["exact_usd"] += r["exact_usd"] or 0.0
+            if floor is not None:
+                out["floor_usd_covered"] += floor
+            continue
+        if events:
+            out["days_partial"] += 1
+        if turns <= 0:
+            continue
+        out["days_uncovered"] += 1
+        if floor is None:
+            out["floor_uncovered_priced"] = False
+        else:
+            out["floor_usd_uncovered"] += floor
+    if out["events"] and out["days_covered"]:
+        out["available"] = True
+        out["mode"] = "exact" if out["days_uncovered"] == 0 else "mixed"
+    elif out["events"]:
+        # telemetry arrived but no day cleared the bar: still a floor report,
+        # with the partial coverage named rather than quietly folded in.
+        out["available"] = True
+        out["mode"] = "mixed"
+    return out
+
+
 def summary(conn: sqlite3.Connection, project: str | None) -> dict:
     by_model: dict[str, dict] = {}
     tot = {"turns": 0, "cw5m": 0, "cw1h": 0, "cread": 0, "out_bytes": 0, "sidechain": 0}
@@ -108,6 +185,7 @@ def summary(conn: sqlite3.Connection, project: str | None) -> dict:
         "sessions": srow["n"] or 0,
         "compactions": srow["c"] or 0,
         "precompact_tokens": srow["p"] or 0,
+        "exact": exact_window(conn, project),
     }
 
 
@@ -197,6 +275,60 @@ def _mix_bar(read: int, w5: int, w1: int, width: int = 24) -> str:
     return "█" * parts[0] + "▓" * parts[1] + "▒" * parts[2]
 
 
+def confidence_label(exact: dict | None) -> str:
+    """One phrase for the whole window's cost confidence (console chip + dash)."""
+    if not exact or not exact.get("available"):
+        return "≈ floor · JSONL-only"
+    if exact["mode"] == "exact":
+        return "exact (OTEL)"
+    return f"mixed · exact (OTEL) on {exact['days_covered']}d, ≈ floor elsewhere"
+
+
+def _exact_lines(exact: dict | None) -> list[str]:
+    """The OTEL block under SPEND. Absent telemetry, this is the same single
+    confidence line v0.1.0 printed — nothing about the floor report changes."""
+    if not exact or not exact.get("available"):
+        return [
+            "        cost confidence: approximate · JSONL-only, cache fields only "
+            "(no OTEL — run `ccmetrics otel --setup` for exact costs)"
+        ]
+    covered = exact["days_covered"]
+    pct = int(round(exact["coverage_min"] * 100))
+    lines = []
+    if exact["mode"] == "exact":
+        lines.append(
+            f"        {costs.fmt_usd(exact['exact_usd'])} exact (OTEL) — "
+            f"Anthropic's own per-request cost, all {covered} covered day(s)"
+        )
+        lines.append(
+            f"        cost confidence: exact (OTEL) · the floor above "
+            f"({costs.fmt_usd(exact['floor_usd_covered'])} for the same days) is "
+            f"the lower bound it beat"
+        )
+        return lines
+    if covered:
+        lines.append(
+            f"        {costs.fmt_usd(exact['exact_usd'])} exact (OTEL) for "
+            f"{covered} day(s) · ≈ "
+            f"{costs.fmt_usd(exact['floor_usd_uncovered']) if exact['floor_uncovered_priced'] else 'unknown'}"
+            f" floor for the other {exact['days_uncovered']}"
+        )
+        lines.append(
+            "        cost confidence: mixed — the two numbers above cover "
+            "different days and are never summed silently"
+        )
+    else:
+        lines.append(
+            f"        {exact['events']:,} OTEL events received but no day reached "
+            f"{pct}% coverage — the report stays a floor"
+        )
+        lines.append(
+            "        cost confidence: approximate · JSONL-only (partial OTEL, "
+            "not enough to price a day)"
+        )
+    return lines
+
+
 def render(
     s: dict,
     projects: list[dict] | None = None,
@@ -224,7 +356,7 @@ def render(
             f"(never guessed)"
         )
     lines.append(f"        + est. output {est_txt}   (range, never added to the floor)")
-    lines.append("        cost confidence: approximate · JSONL-only, cache fields only (no OTEL)")
+    lines.extend(_exact_lines(s.get("exact")))
     lines.append("")
 
     lines.append(

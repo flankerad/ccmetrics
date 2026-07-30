@@ -73,7 +73,9 @@ def daily_series(conn: sqlite3.Connection, project: str | None, days: int = WIND
     sql += " GROUP BY day, model"
     acc = {
         d: {"date": d, "floor_usd": 0.0, "floor_priced": True, "est_lo": 0.0,
-            "est_hi": 0.0, "cw5m": 0, "cw1h": 0, "cread": 0, "out_bytes": 0, "turns": 0}
+            "est_hi": 0.0, "cw5m": 0, "cw1h": 0, "cread": 0, "out_bytes": 0, "turns": 0,
+            "exact_usd": None, "exact_events": 0, "exact_coverage": None,
+            "exact_covered": False}
         for d in axis
     }
     for r in conn.execute(sql, args):
@@ -96,6 +98,27 @@ def daily_series(conn: sqlite3.Connection, project: str | None, days: int = WIND
         row["cread"] += cread
         row["out_bytes"] += ob
         row["turns"] += r["turns"]
+    # Wave D: Anthropic's own dollars per day, where telemetry covered the day.
+    esql = (
+        "SELECT date, SUM(exact_usd) usd, SUM(exact_events) events, SUM(turns) turns "
+        "FROM daily WHERE date >= ? AND exact_events > 0"
+    )
+    eargs: list = [first]
+    if project:
+        esql += " AND project = ?"
+        eargs.append(project)
+    esql += " GROUP BY date"
+    for r in conn.execute(esql, eargs):
+        row = acc.get(r["date"])
+        if row is None:
+            continue
+        turns, events = r["turns"] or 0, r["events"] or 0
+        cov = 1.0 if turns == 0 else events / turns
+        row["exact_usd"] = r["usd"]
+        row["exact_events"] = events
+        row["exact_coverage"] = cov
+        row["exact_covered"] = cov >= report.EXACT_COVERAGE_MIN
+
     out = []
     for d in axis:
         row = acc[d]
@@ -111,6 +134,7 @@ def summary_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     t = s["totals"]
     lo, hi = costs.output_token_range(t["out_bytes"])
     est = s["est_output_usd"]
+    exact = s["exact"]
     return {
         "scope": project,
         "window_days": s["window_days"],
@@ -121,8 +145,15 @@ def summary_payload(conn: sqlite3.Connection, project: str | None) -> dict:
             "floor_unknown_equiv_tokens": s["floor_unknown_equiv_tokens"],
             "est_output_usd": [est[0], est[1]],
             "est_unknown_bytes": s["est_unknown_bytes"],
-            "confidence": "approximate",
-            "confidence_label": "≈ floor · JSONL-only",
+            # Wave D: "approximate" until Anthropic's telemetry covers a day.
+            # exact_usd covers exact.covered_dates ONLY — the two figures are
+            # reported side by side and never summed by the page.
+            "confidence": "exact" if exact["mode"] == "exact" else (
+                "mixed" if exact["available"] else "approximate"
+            ),
+            "confidence_label": report.confidence_label(exact),
+            "exact_usd": exact["exact_usd"] if exact["available"] else None,
+            "exact": exact,
         },
         "tokens": {
             "cread": t["cread"],
@@ -255,8 +286,18 @@ def findings_payload(conn: sqlite3.Connection, project: str | None) -> dict:
 
 
 def meta_payload(conn: sqlite3.Connection) -> dict:
+    from .. import otel
+
     p = store.db_path()
+    # The page cannot probe the receiver itself: a fetch from the dash origin to
+    # port 4318 is cross-origin and the page's own CSP (connect-src 'self')
+    # forbids it. So the server does the loopback TCP probe and reports it here.
     return {
+        "otel": {
+            "receiver_live": otel.receiver_live(),
+            "port": otel.DEFAULT_PORT,
+            **store.otel_stats(conn),
+        },
         "version": __version__,
         "db_path": str(p),
         "db_bytes": p.stat().st_size if p.exists() else None,

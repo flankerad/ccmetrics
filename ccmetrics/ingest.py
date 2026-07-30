@@ -560,6 +560,11 @@ def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: in
         repriced = store.reprice_daily(conn)
         store.set_meta(conn, "priced_constants_version", str(constants.CONSTANTS_VERSION))
 
+    # Wave D: new turns change the denominator of every day's OTEL coverage, and
+    # newly seen sessions attach previously unattributed cost events to a
+    # project. No-op when no telemetry was ever received.
+    exact = store.refresh_exact_daily(conn)
+
     # Detectors are a pure function of the store (no JSONL re-read), so they run
     # at the end of every ingest and replace the previous finding set.
     from . import detectors
@@ -591,5 +596,6 @@ def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: in
         "pruned": pruned,
         "size": capped,
         "repriced": repriced,
+        "exact": exact,
         "detectors": det_stats,
     }

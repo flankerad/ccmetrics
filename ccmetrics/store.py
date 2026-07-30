@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import constants
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 DEFAULT_DB_SUBPATH = Path(".local/share/ccmetrics/state.db")
 
@@ -107,8 +107,38 @@ CREATE TABLE IF NOT EXISTS daily (
     cread     INTEGER NOT NULL DEFAULT 0,
     out_bytes INTEGER NOT NULL DEFAULT 0,
     turns     INTEGER NOT NULL DEFAULT 0,
+    -- v3 (wave D, OTEL): Anthropic's own per-request cost for this day, summed
+    -- from otel_costs. NULL means no telemetry was received for the day -- the
+    -- day is a floor figure, never a total.
+    exact_usd      REAL,
+    exact_events   INTEGER NOT NULL DEFAULT 0,
+    -- otel events / JSONL turns for the day. >= OTEL.exact_coverage_min makes
+    -- the day "exact-covered"; anything less stays labelled as a floor.
+    exact_coverage REAL,
     PRIMARY KEY (project, date)
 );
+
+-- v3 (wave D): one row per OTLP `claude_code.api_request` log record. Counts,
+-- ids, a model name and a dollar figure -- never a prompt, body or tool result.
+-- event_hash is the dedupe key: telemetry exporters retry, and an identical
+-- export must never be counted twice (see otel.event_hash for the recipe).
+CREATE TABLE IF NOT EXISTS otel_costs (
+    event_hash    TEXT PRIMARY KEY,
+    session_id    TEXT,
+    project       TEXT,
+    ts            TEXT,
+    model         TEXT,
+    cost_usd      REAL,
+    input_tokens  INTEGER,
+    output_tokens INTEGER,
+    cache_read    INTEGER,
+    cache_write   INTEGER,
+    request_id    TEXT,
+    received      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS otel_costs_day ON otel_costs (project, ts);
+CREATE INDEX IF NOT EXISTS otel_costs_session ON otel_costs (session_id);
 
 CREATE TABLE IF NOT EXISTS findings (
     id           INTEGER PRIMARY KEY,
@@ -125,7 +155,10 @@ CREATE TABLE IF NOT EXISTS findings (
 CREATE INDEX IF NOT EXISTS findings_project ON findings (project);
 """
 
-# v2 additive columns, applied to stores created before SCHEMA_VERSION 2.
+# Additive columns, applied in order to stores created by an older build. Every
+# migration this project has ever needed is ADD COLUMN plus CREATE TABLE IF NOT
+# EXISTS, so an existing DB upgrades in place and keeps its watermarks: no
+# re-ingest, no data loss, no rebuild.
 _V2_COLUMNS = (
     ("turns", "prompt_bytes", "INTEGER"),
     ("tool_calls", "is_error", "INTEGER NOT NULL DEFAULT 0"),
@@ -133,6 +166,16 @@ _V2_COLUMNS = (
     ("sessions", "hook_errors", "INTEGER NOT NULL DEFAULT 0"),
     ("sessions", "prevented", "INTEGER NOT NULL DEFAULT 0"),
 )
+
+# v3 (wave D): OTEL exact costs. daily gains three nullable/defaulted columns;
+# otel_costs itself arrives via CREATE TABLE IF NOT EXISTS above.
+_V3_COLUMNS = (
+    ("daily", "exact_usd", "REAL"),
+    ("daily", "exact_events", "INTEGER NOT NULL DEFAULT 0"),
+    ("daily", "exact_coverage", "REAL"),
+)
+
+_ADDITIVE_COLUMNS = _V2_COLUMNS + _V3_COLUMNS
 
 
 def db_path() -> Path:
@@ -142,10 +185,16 @@ def db_path() -> Path:
     return Path.home() / DEFAULT_DB_SUBPATH
 
 
-def connect(path: Path | None = None) -> sqlite3.Connection:
+def connect(path: Path | None = None, check_same_thread: bool = True) -> sqlite3.Connection:
+    """Open (and migrate) the store.
+
+    `check_same_thread=False` is only for the OTEL receiver, whose threaded HTTP
+    handlers share one writer connection behind one lock (otel._State). Every
+    other caller keeps a connection per thread.
+    """
     p = Path(path) if path else db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(p))
+    conn = sqlite3.connect(str(p), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -156,7 +205,7 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
 
 def _add_missing_columns(conn: sqlite3.Connection) -> list[str]:
     added = []
-    for table, column, decl in _V2_COLUMNS:
+    for table, column, decl in _ADDITIVE_COLUMNS:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if not cols or column in cols:
             continue
@@ -318,6 +367,133 @@ def reprice_daily(conn: sqlite3.Connection) -> dict:
         updated += cur.rowcount
     conn.commit()
     return {"days_repriced": updated, "days_seen": len(per_day)}
+
+
+# --- OTEL exact costs (wave D) ----------------------------------------------
+
+EXACT_COVERAGE_MIN = constants.value(constants.OTEL["exact_coverage_min"])
+
+_OTEL_COLUMNS = (
+    "event_hash", "session_id", "project", "ts", "model", "cost_usd",
+    "input_tokens", "output_tokens", "cache_read", "cache_write",
+    "request_id", "received",
+)
+
+
+def insert_otel_events(conn: sqlite3.Connection, events: list[dict]) -> int:
+    """Store api_request cost events. Returns how many were NEW.
+
+    INSERT OR IGNORE on the event_hash primary key is the whole dedupe story:
+    an exporter that retries a batch, or a user who replays a capture, adds
+    zero dollars the second time.
+    """
+    if not events:
+        return 0
+    rows = []
+    for e in events:
+        sid = e.get("session_id")
+        project = e.get("project")
+        if project is None and sid:
+            project = project_of_session(conn, sid)
+        rows.append(
+            tuple(
+                [e.get("event_hash"), sid, project, e.get("ts"), e.get("model"),
+                 e.get("cost_usd"), e.get("input_tokens"), e.get("output_tokens"),
+                 e.get("cache_read"), e.get("cache_write"), e.get("request_id"),
+                 e.get("received")]
+            )
+        )
+    before = conn.total_changes
+    conn.executemany(
+        f"INSERT OR IGNORE INTO otel_costs({','.join(_OTEL_COLUMNS)}) "
+        f"VALUES({','.join('?' * len(_OTEL_COLUMNS))})",
+        rows,
+    )
+    conn.commit()
+    return conn.total_changes - before
+
+
+def project_of_session(conn: sqlite3.Connection, session_id: str) -> str | None:
+    """Telemetry carries session.id, not a project. The transcript store knows
+    which project that session ran in; until it does, the rows sit unattributed
+    (project NULL) and are re-resolved on the next refresh."""
+    row = conn.execute("SELECT project FROM sessions WHERE id=?", (session_id,)).fetchone()
+    if row:
+        return row["project"]
+    row = conn.execute(
+        "SELECT project FROM files WHERE session_id=? LIMIT 1", (session_id,)
+    ).fetchone()
+    return row["project"] if row else None
+
+
+def refresh_exact_daily(conn: sqlite3.Connection) -> dict:
+    """Recompute daily.exact_usd / exact_events / exact_coverage from otel_costs.
+
+    Cheap and idempotent (the daily table is one row per project-day), so it can
+    run after every ingest and after every accepted telemetry batch.
+    """
+    resolved = conn.execute(
+        "UPDATE otel_costs SET project = ("
+        "  SELECT s.project FROM sessions s WHERE s.id = otel_costs.session_id"
+        ") WHERE project IS NULL AND session_id IS NOT NULL "
+        "AND EXISTS (SELECT 1 FROM sessions s WHERE s.id = otel_costs.session_id)"
+    ).rowcount
+
+    conn.execute("UPDATE daily SET exact_usd=NULL, exact_events=0, exact_coverage=NULL")
+    rows = conn.execute(
+        "SELECT project, substr(ts,1,10) d, SUM(cost_usd) usd, COUNT(*) n "
+        "FROM otel_costs WHERE project IS NOT NULL AND ts IS NOT NULL "
+        "GROUP BY project, d"
+    ).fetchall()
+    days = 0
+    covered = 0
+    for r in rows:
+        conn.execute(
+            "INSERT INTO daily(project,date,exact_usd,exact_events) VALUES(?,?,?,?) "
+            "ON CONFLICT(project,date) DO UPDATE SET "
+            "exact_usd=excluded.exact_usd, exact_events=excluded.exact_events",
+            (r["project"], r["d"], r["usd"], r["n"]),
+        )
+        days += 1
+    # Coverage is events/turns. A day with telemetry but no turn rows behind it
+    # (turns pruned, or transcripts not ingested yet) is covered by definition:
+    # there is nothing left to be uncovered.
+    conn.execute(
+        "UPDATE daily SET exact_coverage = CASE "
+        "  WHEN exact_events = 0 THEN NULL "
+        "  WHEN turns > 0 THEN CAST(exact_events AS REAL) / turns "
+        "  ELSE 1.0 END"
+    )
+    covered = conn.execute(
+        "SELECT COUNT(*) FROM daily WHERE exact_coverage >= ?", (EXACT_COVERAGE_MIN,)
+    ).fetchone()[0]
+    unattributed = conn.execute(
+        "SELECT COUNT(*) FROM otel_costs WHERE project IS NULL"
+    ).fetchone()[0]
+    conn.commit()
+    return {
+        "days_with_events": days,
+        "days_exact_covered": covered,
+        "sessions_resolved": resolved,
+        "unattributed_events": unattributed,
+    }
+
+
+def otel_stats(conn: sqlite3.Connection) -> dict:
+    row = conn.execute(
+        "SELECT COUNT(*) n, SUM(cost_usd) usd, MIN(ts) first_ts, MAX(ts) last_ts, "
+        "COUNT(DISTINCT session_id) sessions FROM otel_costs"
+    ).fetchone()
+    return {
+        "events": row["n"] or 0,
+        "cost_usd": row["usd"],
+        "sessions": row["sessions"] or 0,
+        "first_ts": row["first_ts"],
+        "last_ts": row["last_ts"],
+        "days_exact_covered": conn.execute(
+            "SELECT COUNT(*) FROM daily WHERE exact_coverage >= ?", (EXACT_COVERAGE_MIN,)
+        ).fetchone()[0],
+    }
 
 
 # --- findings (PRD R3/R4b, wave B) ------------------------------------------

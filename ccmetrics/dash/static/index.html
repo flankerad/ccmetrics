@@ -63,6 +63,10 @@ header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bo
   border:1px solid var(--hair-strong); border-radius:999px;
   background:var(--chip); color:var(--muted); font-size:12px; white-space:nowrap;
 }
+/* cost-confidence chip states (wave D): exact = OTEL covered the window,
+   mixed = some days exact and some still a floor. */
+.chip.exact { color:var(--ink); border-color:var(--s3); }
+.chip.mixed { color:var(--ink); border-color:var(--s4); }
 button.link {
   background:none; border:none; color:var(--s1); cursor:pointer;
   font:inherit; padding:0; text-decoration:underline; text-underline-offset:2px;
@@ -170,6 +174,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   <span class="scope" id="scope-label">all projects · last 30 days</span>
   <button class="link" id="back" style="display:none">&larr; back to all projects</button>
   <span class="spacer"></span>
+  <span class="chip" id="otel-chip" title="Optional OTLP receiver on 127.0.0.1:4318 (ccmetrics otel). Off means costs stay a floor."><span class="dot off" id="otel-dot"></span> receiver</span>
   <span class="chip" id="confidence" title="Cost is a documented lower bound derived from cache fields only (PRD R4). No OTEL stream present.">&approx; floor &middot; JSONL-only</span>
   <button class="ghost" id="theme">theme</button>
 </header>
@@ -360,6 +365,7 @@ function load() {
       "ccmetrics " + m.version + " · state db " + ((m.db_bytes || 0) / 1e6).toFixed(1) +
       " MB · " + (m.corpus_files || "?") + " session files · last ingest " +
       (m.last_ingest || "never");
+    renderReceiver(m.otel);
   }).catch(function () {});
 }
 
@@ -380,6 +386,39 @@ function setScope(key) {
   pollLive();
 }
 
+// ---------- OTEL receiver + cost confidence (wave D) ----------
+// The server does the loopback probe of :4318 for us (a fetch from this page to
+// another port would be cross-origin, and the CSP here is connect-src 'self').
+function renderReceiver(o) {
+  var dot = el("otel-dot"), chip = el("otel-chip");
+  if (!dot || !chip) return;
+  var live = !!(o && o.receiver_live);
+  dot.className = live ? "dot" : "dot off";
+  chip.title = live
+    ? "OTLP receiver live on 127.0.0.1:" + (o.port || 4318) + " · " +
+      (o.events || 0) + " cost events stored · " + (o.days_exact_covered || 0) +
+      " day(s) exact-covered"
+    : "No receiver on 127.0.0.1:" + ((o && o.port) || 4318) +
+      " — costs stay a floor. Start one with `ccmetrics otel`.";
+}
+
+// The chip states what the numbers on this page actually are, per data:
+// exact (OTEL) when telemetry covered the window, mixed when only some days.
+function renderConfidence(s) {
+  var chip = el("confidence");
+  if (!chip) return;
+  var label = s.confidence_label || "≈ floor · JSONL-only";
+  var ex = s.exact || {};
+  chip.textContent = label;
+  chip.className = "chip" + (s.confidence === "exact" ? " exact"
+    : s.confidence === "mixed" ? " mixed" : "");
+  chip.title = s.confidence === "approximate"
+    ? "Cost is a documented lower bound derived from cache fields only (PRD R4). No OTEL stream present."
+    : "exact (OTEL) = Anthropic's own per-request cost, on days where telemetry "
+      + "covered at least " + Math.round((ex.coverage_min || 0.95) * 100) + "% of turns ("
+      + (ex.days_covered || 0) + " day(s)). Other days stay a floor; the two are never summed.";
+}
+
 // ---------- summary + charts ----------
 function renderSummary() {
   var d = state.summary;
@@ -388,6 +427,16 @@ function renderSummary() {
   var head = fmtUsd(s.floor_usd) + " floor";
   if (!s.floor_priced) head += " + unknown";
   head += "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
+  var ex = s.exact || {};
+  if (ex.available && ex.days_covered) {
+    head = fmtUsd(ex.exact_usd) + " exact (OTEL)"
+      + (ex.mode === "mixed"
+          ? " on " + ex.days_covered + "d  ·  ≈ " + fmtUsd(ex.floor_usd_uncovered)
+            + " floor on " + ex.days_uncovered + "d"
+          : "  ·  ≈ " + fmtUsd(ex.floor_usd_covered) + " floor, same days")
+      + "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
+  }
+  renderConfidence(s);
   el("spend-headline").textContent = head;
   el("mix-headline").textContent =
     fmtTok(t.billable_equiv) + " billable-equivalent input tokens · cache-hit " +
@@ -747,6 +796,9 @@ function renderLive(d) {
 function pollLive() {
   var url = "/api/live" + (state.scope ? "?project=" + encodeURIComponent(state.scope) : "");
   get(url).then(renderLive).catch(function () { renderLive(null); });
+  // same cadence for the receiver dot: a receiver can be started or stopped
+  // while the page is open.
+  get("/api/meta").then(function (m) { renderReceiver(m.otel); }).catch(function () {});
 }
 
 // ---------- wiring ----------
