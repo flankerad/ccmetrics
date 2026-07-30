@@ -65,6 +65,11 @@ Every saving shown links its arithmetic: the detector hits it sums, the threshol
 Requires Python 3.11+. Zero runtime dependencies — stdlib SQLite and stdlib HTTP server, one static HTML page.
 
 ```bash
+# today (from a clone — not on PyPI yet):
+git clone <this repo> && cd ccmetrics
+uv tool install .            # or: pipx install . / pip install -e .
+
+# after the PyPI release:
 uv tool install ccmetrics    # or: pipx install ccmetrics
 ```
 
