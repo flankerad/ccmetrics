@@ -37,7 +37,13 @@ PROJECTS_DIRNAME = "projects"
 # is skipped without paying for json.loads. Consequence: `parse_failures`
 # counts malformed lines that LOOKED relevant; a malformed line with none of
 # these markers is counted under `lines_skipped` instead. Either way, never fatal.
-_WANT = (b'"usage"', b'"tool_result"', b"compact_boundary")
+_WANT = (
+    b'"usage"',
+    b'"tool_result"',
+    b"compact_boundary",
+    b'"type":"user"',  # plain prompts: byte length only (detectors 5 and 10)
+    b"stop_hook_summary",  # hook errors / prevented continuations (detector 7)
+)
 
 _NONWORD = re.compile(r"[^a-zA-Z0-9]")
 
@@ -174,6 +180,8 @@ class _Run:
                 "compactions": 0,
                 "precompact_tokens": 0,
                 "sidechain_turns": 0,
+                "hook_errors": 0,
+                "prevented": 0,
             }
             self.sessions[sid] = agg
         return agg
@@ -209,7 +217,7 @@ def _touch_time(agg: dict, ts: str | None) -> None:
 # --- the line handlers ------------------------------------------------------
 
 
-def _handle_assistant(conn, rec, project, run, turn_cache) -> None:
+def _handle_assistant(conn, rec, project, run, turn_cache, prompt_bytes=None) -> None:
     msg = rec.get("message")
     if not isinstance(msg, dict):
         return
@@ -257,11 +265,13 @@ def _handle_assistant(conn, rec, project, run, turn_cache) -> None:
             1 if rec.get("isSidechain") else 0,
             rec.get("version"),
             msg_id,
+            prompt_bytes,
         )
         try:
             cur = conn.execute(
                 "INSERT INTO turns(session_id,project,ts,model,cw5m,cw1h,cread,raw_in,"
-                "raw_out,out_bytes,sidechain,version,msg_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "raw_out,out_bytes,sidechain,version,msg_id,prompt_bytes) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 row,
             )
             turn_id = cur.lastrowid
@@ -292,7 +302,7 @@ def _handle_assistant(conn, rec, project, run, turn_cache) -> None:
             day["cw5m"] += cw5m
             day["cw1h"] += cw1h
             day["cread"] += row[6]
-            usd = costs.floor_usd(model, cw5m, cw1h, row[6])
+            usd = costs.floor_usd(model, cw5m, cw1h, row[6], ts)
             if usd is None:
                 day["floor_unknown"] = True
                 run.unknown_model_turns += 1
@@ -333,29 +343,70 @@ def _handle_assistant(conn, rec, project, run, turn_cache) -> None:
             pass
 
 
-def _handle_user(conn, rec, run) -> None:
+def _handle_user(conn, rec, run) -> int | None:
+    """Returns the prompt's byte length when this record is a human prompt.
+
+    A tool_result record carries measurements for the call it answers (result
+    bytes, error flag, denial flag) and is not a prompt.
+    """
     msg = rec.get("message")
     if not isinstance(msg, dict):
-        return
+        return None
     content = msg.get("content")
+    denied = 1 if rec.get("toolDenialKind") else 0
+
+    if isinstance(content, str):
+        # plain human prompt: measure it, never store it
+        if rec.get("isMeta"):
+            return None
+        return len(content.encode("utf-8", "replace"))
+
     if not isinstance(content, list):
-        return
+        return None
+
+    prompt_bytes = 0
+    saw_tool_result = False
     for block in content:
-        if not isinstance(block, dict) or block.get("type") != "tool_result":
+        if not isinstance(block, dict):
             continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            prompt_bytes += len(block["text"].encode("utf-8", "replace"))
+            continue
+        if block.get("type") != "tool_result":
+            continue
+        saw_tool_result = True
         use_id = block.get("tool_use_id")
         if not use_id:
             continue
         conn.execute(
-            "UPDATE tool_calls SET result_bytes = ? WHERE tool_use_id = ?",
-            (_result_bytes(block.get("content")), use_id),
+            "UPDATE tool_calls SET result_bytes = ?, is_error = ?, denied = ? "
+            "WHERE tool_use_id = ?",
+            (
+                _result_bytes(block.get("content")),
+                1 if block.get("is_error") else 0,
+                denied,
+                use_id,
+            ),
         )
+    if saw_tool_result or rec.get("isMeta"):
+        return None
+    return prompt_bytes or None
 
 
 def _handle_system(rec, project, run) -> None:
-    if rec.get("subtype") != "compact_boundary":
-        return
+    subtype = rec.get("subtype")
     session_id = rec.get("sessionId") or rec.get("session_id")
+    if subtype == "stop_hook_summary":
+        if not session_id:
+            return
+        errors = rec.get("hookErrors")
+        sess = run.session(session_id, project)
+        sess["hook_errors"] += len(errors) if isinstance(errors, list) else 0
+        sess["prevented"] += 1 if rec.get("preventedContinuation") else 0
+        _touch_time(sess, rec.get("timestamp"))
+        return
+    if subtype != "compact_boundary":
+        return
     if not session_id:
         return
     meta = rec.get("compactMetadata")
@@ -379,6 +430,7 @@ def _handle_system(rec, project, run) -> None:
 def _ingest_file(conn, path: Path, project: str, start_offset: int, run: _Run) -> tuple[int, str | None]:
     offset = start_offset
     session_id = None
+    prompt_bytes: int | None = None
     turn_cache: dict[tuple[str, str], int] = {}
     with open(path, "rb") as fh:
         if offset:
@@ -410,9 +462,13 @@ def _ingest_file(conn, path: Path, project: str, start_offset: int, run: _Run) -
         session_id = rec.get("sessionId") or rec.get("session_id") or session_id
         try:
             if rtype == "assistant":
-                _handle_assistant(conn, rec, project, run, turn_cache)
+                _handle_assistant(conn, rec, project, run, turn_cache, prompt_bytes)
             elif rtype == "user":
-                _handle_user(conn, rec, run)
+                measured = _handle_user(conn, rec, run)
+                if measured is not None:
+                    # sticky: every turn driven by this prompt carries its size,
+                    # and turns before any prompt keep NULL (detector 10).
+                    prompt_bytes = measured
             elif rtype == "system":
                 _handle_system(rec, project, run)
             else:
@@ -488,6 +544,22 @@ def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: in
     pruned = store.prune(conn, now_iso)
     capped = store.enforce_size_cap(conn, now_iso)
 
+    # A rate edit in constants.py must reach the rollups: reprice every day that
+    # still has turn rows behind it, once per constants version.
+    priced_version = store.get_meta(conn, "priced_constants_version")
+    repriced = None
+    if priced_version != str(constants.CONSTANTS_VERSION):
+        repriced = store.reprice_daily(conn)
+        store.set_meta(conn, "priced_constants_version", str(constants.CONSTANTS_VERSION))
+
+    # Detectors are a pure function of the store (no JSONL re-read), so they run
+    # at the end of every ingest and replace the previous finding set.
+    from . import detectors
+
+    det_started = time.time()
+    det_stats = detectors.run_and_store(conn)
+    det_stats["elapsed_s"] = round(time.time() - det_started, 3)
+
     store.set_meta(conn, "last_ingest", now_iso)
     store.set_meta(conn, "corpus_dir", str(projects_dir))
     store.set_meta(conn, "corpus_files", str(files_total))
@@ -510,4 +582,6 @@ def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: in
         "models": run.models,
         "pruned": pruned,
         "size": capped,
+        "repriced": repriced,
+        "detectors": det_stats,
     }

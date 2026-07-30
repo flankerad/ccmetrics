@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 import sqlite3
 
-from . import constants, costs, ingest
+import json
+
+from . import constants, costs, detectors, ingest, store
 
 WINDOW_DAYS = constants.value(constants.RETENTION["turn_days"])
 
@@ -24,21 +26,23 @@ def known_projects(conn: sqlite3.Connection) -> set[str]:
 
 
 def _rows(conn: sqlite3.Connection, project: str | None):
+    """Per (model, day): a model whose price changed must be priced by the day
+    the turns actually ran, so pricing never groups across a rate boundary."""
     sql = (
-        "SELECT model, COUNT(*) turns, SUM(cw5m) cw5m, SUM(cw1h) cw1h, SUM(cread) cread, "
-        "SUM(out_bytes) out_bytes, SUM(raw_in) raw_in, SUM(raw_out) raw_out, "
-        "SUM(sidechain) sidechain FROM turns"
+        "SELECT model, substr(ts,1,10) day, COUNT(*) turns, SUM(cw5m) cw5m, "
+        "SUM(cw1h) cw1h, SUM(cread) cread, SUM(out_bytes) out_bytes, "
+        "SUM(raw_in) raw_in, SUM(raw_out) raw_out, SUM(sidechain) sidechain FROM turns"
     )
     args: tuple = ()
     if project:
         sql += " WHERE project = ?"
         args = (project,)
-    sql += " GROUP BY model ORDER BY cread DESC"
+    sql += " GROUP BY model, day ORDER BY cread DESC"
     return conn.execute(sql, args).fetchall()
 
 
 def summary(conn: sqlite3.Connection, project: str | None) -> dict:
-    per_model = []
+    by_model: dict[str, dict] = {}
     tot = {"turns": 0, "cw5m": 0, "cw1h": 0, "cread": 0, "out_bytes": 0, "sidechain": 0}
     floor = 0.0
     floor_unknown_tokens = 0
@@ -46,10 +50,11 @@ def summary(conn: sqlite3.Connection, project: str | None) -> dict:
     est_unknown_bytes = 0
     for r in _rows(conn, project):
         model = r["model"]
+        day = r["day"]
         cw5m, cw1h, cread = r["cw5m"] or 0, r["cw1h"] or 0, r["cread"] or 0
         ob = r["out_bytes"] or 0
-        f = costs.floor_usd(model, cw5m, cw1h, cread)
-        e = costs.output_estimate_usd(model, ob)
+        f = costs.floor_usd(model, cw5m, cw1h, cread, day)
+        e = costs.output_estimate_usd(model, ob, day)
         if f is None:
             floor_unknown_tokens += int(costs.billable_input_equivalent(cw5m, cw1h, cread))
         else:
@@ -59,21 +64,25 @@ def summary(conn: sqlite3.Connection, project: str | None) -> dict:
         else:
             est_lo += e[0]
             est_hi += e[1]
-        per_model.append(
-            {
-                "model": model,
-                "turns": r["turns"],
-                "cw5m": cw5m,
-                "cw1h": cw1h,
-                "cread": cread,
-                "out_bytes": ob,
-                "floor_usd": f,
-                "priced": f is not None,
-            }
+        m = by_model.setdefault(
+            model,
+            {"model": model, "turns": 0, "cw5m": 0, "cw1h": 0, "cread": 0,
+             "out_bytes": 0, "floor_usd": 0.0, "priced": True},
         )
+        m["turns"] += r["turns"]
+        m["cw5m"] += cw5m
+        m["cw1h"] += cw1h
+        m["cread"] += cread
+        m["out_bytes"] += ob
+        if f is None:
+            m["priced"] = False
+            m["floor_usd"] = None
+        elif m["priced"]:
+            m["floor_usd"] += f
         tot["turns"] += r["turns"]
         for k in ("cw5m", "cw1h", "cread", "out_bytes", "sidechain"):
             tot[k] += r[k] or 0
+    per_model = list(by_model.values())
 
     where = " WHERE project = ?" if project else ""
     args = (project,) if project else ()
@@ -123,6 +132,57 @@ def top_projects(conn: sqlite3.Connection, limit: int = 5) -> list[dict]:
     return out[:limit]
 
 
+# --- findings (PRD R3/R4b/R6) ----------------------------------------------
+
+
+def leaks(conn: sqlite3.Connection, project: str | None, limit: int | None = 3) -> list[dict]:
+    """Top findings for this scope, ranked by tokens saved / effort tier.
+
+    Scope rule (R6): inside a known repo the console shows that repo's findings;
+    otherwise every project's. Line items (detector 10) never headline.
+    """
+    found = store.load_findings(conn, project)
+    ranked = detectors.rank(found)
+    return ranked if limit is None else ranked[:limit]
+
+
+def all_leaks(conn: sqlite3.Connection, project: str | None) -> list[dict]:
+    found = store.load_findings(conn, project)
+    found = [f for f in found if f["tokens_saved"]]
+    found.sort(key=detectors.score, reverse=True)
+    return found
+
+
+def _evidence(f: dict) -> dict:
+    try:
+        return json.loads(f["evidence"] or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+def render_leaks(found: list[dict], scoped: bool, indent: str = "  ") -> list[str]:
+    lines: list[str] = []
+    if not found:
+        lines.append(f"{indent}nothing over threshold in this window.")
+        return lines
+    for i, f in enumerate(found, 1):
+        ev = _evidence(f)
+        name = ev.get("detector_name", f"detector {f['detector']}")
+        effort = {1: "paste", 3: "habit", 10: "restructure"}.get(f["effort"], f["effort"])
+        usd = costs.fmt_usd(f["usd_saved"]) if f["usd_saved"] is not None else "unknown"
+        head = (
+            f"{indent}{i}. {name:<34} ~{costs.fmt_tokens(f['tokens_saved']):>7} tok  "
+            f"{usd:>8}  effort:{effort}"
+        )
+        if not scoped:
+            head += f"  [{f['project']}]"
+        lines.append(head)
+        for row in (f["fix_text"] or "").splitlines():
+            lines.append(f"{indent}   {row}")
+        lines.append("")
+    return lines
+
+
 # --- rendering --------------------------------------------------------------
 
 BAR_CHARS = "█▓░"
@@ -137,7 +197,12 @@ def _mix_bar(read: int, w5: int, w1: int, width: int = 24) -> str:
     return "█" * parts[0] + "▓" * parts[1] + "▒" * parts[2]
 
 
-def render(s: dict, projects: list[dict] | None = None, db_size: int | None = None) -> str:
+def render(
+    s: dict,
+    projects: list[dict] | None = None,
+    db_size: int | None = None,
+    found: list[dict] | None = None,
+) -> str:
     t = s["totals"]
     scope = s["project"] or "all projects"
     lines = []
@@ -199,7 +264,9 @@ def render(s: dict, projects: list[dict] | None = None, db_size: int | None = No
             )
         lines.append("")
 
-    lines.append("TOP LEAKS  —  detectors land in wave B")
+    lines.append("TOP LEAKS (ranked by billable-equivalent tokens saved / effort)")
+    lines.extend(render_leaks(found or [], scoped=s["project"] is not None))
+    lines.append("run `ccmetrics --all-leaks` for every finding, `ccmetrics constants` for sources")
     if db_size is not None:
         lines.append(f"state db {db_size/1e6:.1f} MB")
     return "\n".join(lines)

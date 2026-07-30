@@ -28,20 +28,28 @@ def billable_input_equivalent(cw5m: int, cw1h: int, cread: int) -> float:
     return cw5m * _M5 + cw1h * _M1H + cread * _MREAD
 
 
-def floor_usd(model: str | None, cw5m: int, cw1h: int, cread: int) -> float | None:
-    """Cache-only spend floor for one turn. None when the model rate is unknown."""
-    in_rate, _ = constants.model_rates(model)
+def floor_usd(
+    model: str | None, cw5m: int, cw1h: int, cread: int, ts: str | None = None
+) -> float | None:
+    """Cache-only spend floor for one turn. None when the model rate is unknown.
+
+    `ts` is the turn's own timestamp: a model whose price changed on a known date
+    is billed at the rate that was in force then (constants.MODEL_RATES schedule).
+    """
+    in_rate, _ = constants.model_rates(model, ts)
     if in_rate is None:
         return None
     return billable_input_equivalent(cw5m, cw1h, cread) * in_rate / PER_MILLION
 
 
-def output_estimate_usd(model: str | None, out_bytes: int) -> tuple[float, float] | None:
+def output_estimate_usd(
+    model: str | None, out_bytes: int, ts: str | None = None
+) -> tuple[float, float] | None:
     """Bounded output-cost estimate (low, high) from assistant byte count.
 
     Never added into the floor; always displayed as a labelled range.
     """
-    _, out_rate = constants.model_rates(model)
+    _, out_rate = constants.model_rates(model, ts)
     if out_rate is None:
         return None
     lo_bpt = constants.value(constants.OUTPUT_BYTES_PER_TOKEN["high"])  # more bytes/token -> fewer tokens
@@ -57,8 +65,17 @@ def output_token_range(out_bytes: int) -> tuple[float, float]:
     return (lo, hi)
 
 
-def is_priced(model: str | None) -> bool:
-    return constants.model_rates(model)[0] is not None
+def is_priced(model: str | None, ts: str | None = None) -> bool:
+    return constants.model_rates(model, ts)[0] is not None
+
+
+def input_rate(model: str | None, ts: str | None = None) -> float | None:
+    return constants.model_rates(model, ts)[0]
+
+
+WRITE_5M_MULT = _M5
+WRITE_1H_MULT = _M1H
+READ_MULT = _MREAD
 
 
 # --- unit ladder ------------------------------------------------------------

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import constants
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 DEFAULT_DB_SUBPATH = Path(".local/share/ccmetrics/state.db")
 
@@ -45,7 +45,11 @@ CREATE TABLE IF NOT EXISTS turns (
     out_bytes  INTEGER NOT NULL DEFAULT 0,
     sidechain  INTEGER NOT NULL DEFAULT 0,
     version    TEXT,
-    msg_id     TEXT
+    msg_id     TEXT,
+    -- v2: byte length of the user prompt that preceded this turn in the same
+    -- transcript (the LENGTH, never the text). NULL means no user prompt came
+    -- before it -- that is detector 10's phantom-idle signal, not a missing value.
+    prompt_bytes INTEGER
 );
 
 -- One API response == one turn. Claude Code writes the same message.id on
@@ -62,7 +66,11 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     input_digest TEXT,
     result_bytes INTEGER,
     file_path    TEXT,
-    is_edit      INTEGER NOT NULL DEFAULT 0
+    is_edit      INTEGER NOT NULL DEFAULT 0,
+    -- v2 (detector 7): the tool_result came back flagged is_error, or the user
+    -- rejected the call (record-level toolDenialKind). Counts only.
+    is_error     INTEGER NOT NULL DEFAULT 0,
+    denied       INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS tool_calls_turn ON tool_calls (turn_id);
@@ -82,7 +90,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     models           TEXT,
     compactions      INTEGER NOT NULL DEFAULT 0,
     precompact_tokens INTEGER NOT NULL DEFAULT 0,
-    sidechain_turns  INTEGER NOT NULL DEFAULT 0
+    sidechain_turns  INTEGER NOT NULL DEFAULT 0,
+    -- v2 (detector 7): stop-hook errors and hook-prevented continuations.
+    hook_errors      INTEGER NOT NULL DEFAULT 0,
+    prevented        INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS sessions_project ON sessions (project, ended);
@@ -110,7 +121,18 @@ CREATE TABLE IF NOT EXISTS findings (
     evidence     TEXT,
     fix_text     TEXT
 );
+
+CREATE INDEX IF NOT EXISTS findings_project ON findings (project);
 """
+
+# v2 additive columns, applied to stores created before SCHEMA_VERSION 2.
+_V2_COLUMNS = (
+    ("turns", "prompt_bytes", "INTEGER"),
+    ("tool_calls", "is_error", "INTEGER NOT NULL DEFAULT 0"),
+    ("tool_calls", "denied", "INTEGER NOT NULL DEFAULT 0"),
+    ("sessions", "hook_errors", "INTEGER NOT NULL DEFAULT 0"),
+    ("sessions", "prevented", "INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 def db_path() -> Path:
@@ -132,10 +154,24 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+def _add_missing_columns(conn: sqlite3.Connection) -> list[str]:
+    added = []
+    for table, column, decl in _V2_COLUMNS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not cols or column in cols:
+            continue
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        added.append(f"{table}.{column}")
+    return added
+
+
 def migrate(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _add_missing_columns(conn)
     current = get_meta(conn, "schema_version")
     if current is None:
+        set_meta(conn, "schema_version", str(SCHEMA_VERSION))
+    elif int(current) < SCHEMA_VERSION:
         set_meta(conn, "schema_version", str(SCHEMA_VERSION))
     elif int(current) > SCHEMA_VERSION:
         raise SystemExit(
@@ -195,9 +231,11 @@ def upsert_session(conn: sqlite3.Connection, agg: dict) -> None:
     conn.execute(
         """
         INSERT INTO sessions(id,project,started,ended,turns,cw5m,cw1h,cread,out_bytes,
-                             models,compactions,precompact_tokens,sidechain_turns)
+                             models,compactions,precompact_tokens,sidechain_turns,
+                             hook_errors,prevented)
         VALUES(:id,:project,:started,:ended,:turns,:cw5m,:cw1h,:cread,:out_bytes,
-               :models,:compactions,:precompact_tokens,:sidechain_turns)
+               :models,:compactions,:precompact_tokens,:sidechain_turns,
+               :hook_errors,:prevented)
         ON CONFLICT(id) DO UPDATE SET
             started = MIN(COALESCE(sessions.started, excluded.started), COALESCE(excluded.started, sessions.started)),
             ended   = MAX(COALESCE(sessions.ended,   excluded.ended),   COALESCE(excluded.ended,   sessions.ended)),
@@ -209,7 +247,9 @@ def upsert_session(conn: sqlite3.Connection, agg: dict) -> None:
             models  = excluded.models,
             compactions = sessions.compactions + excluded.compactions,
             precompact_tokens = sessions.precompact_tokens + excluded.precompact_tokens,
-            sidechain_turns = sessions.sidechain_turns + excluded.sidechain_turns
+            sidechain_turns = sessions.sidechain_turns + excluded.sidechain_turns,
+            hook_errors = sessions.hook_errors + excluded.hook_errors,
+            prevented = sessions.prevented + excluded.prevented
         """,
         agg,
     )
@@ -244,6 +284,65 @@ def upsert_daily(conn: sqlite3.Connection, agg: dict) -> None:
         """,
         agg,
     )
+
+
+def reprice_daily(conn: sqlite3.Connection) -> dict:
+    """Recompute daily.floor_usd from the retained per-turn rows.
+
+    Run when constants.py changed (a rate filled in or corrected): the daily
+    rollup was priced with the OLD table and would otherwise stay stale/NULL
+    forever. Only days that still have turn rows can be repriced; older days
+    keep whatever they were priced with, since the turns behind them are gone.
+    """
+    from . import costs
+
+    rows = conn.execute(
+        "SELECT project, substr(ts,1,10) d, model, SUM(cw5m) cw5m, SUM(cw1h) cw1h, "
+        "SUM(cread) cread FROM turns WHERE ts IS NOT NULL "
+        "GROUP BY project, d, model"
+    ).fetchall()
+    per_day: dict[tuple[str, str], list] = {}
+    for r in rows:
+        usd = costs.floor_usd(r["model"], r["cw5m"] or 0, r["cw1h"] or 0, r["cread"] or 0, r["d"])
+        acc = per_day.setdefault((r["project"], r["d"]), [0.0, False])
+        if usd is None:
+            acc[1] = True
+        else:
+            acc[0] += usd
+    updated = 0
+    for (project, date), (total, unknown) in per_day.items():
+        cur = conn.execute(
+            "UPDATE daily SET floor_usd=? WHERE project=? AND date=?",
+            (None if unknown else total, project, date),
+        )
+        updated += cur.rowcount
+    conn.commit()
+    return {"days_repriced": updated, "days_seen": len(per_day)}
+
+
+# --- findings (PRD R3/R4b, wave B) ------------------------------------------
+
+
+def replace_findings(conn: sqlite3.Connection, findings: list[dict]) -> int:
+    """Findings are a pure function of the store, so every run replaces them."""
+    conn.execute("DELETE FROM findings")
+    conn.executemany(
+        "INSERT INTO findings(detector,project,period,tokens_saved,usd_saved,effort,"
+        "evidence,fix_text) VALUES(:detector,:project,:period,:tokens_saved,:usd_saved,"
+        ":effort,:evidence,:fix_text)",
+        findings,
+    )
+    conn.commit()
+    return len(findings)
+
+
+def load_findings(conn: sqlite3.Connection, project: str | None = None) -> list[dict]:
+    sql = "SELECT * FROM findings"
+    args: tuple = ()
+    if project:
+        sql += " WHERE project = ?"
+        args = (project,)
+    return [dict(r) for r in conn.execute(sql, args)]
 
 
 # --- retention (PRD R5) -----------------------------------------------------

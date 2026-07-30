@@ -11,9 +11,9 @@ A rate whose value is None means UNKNOWN: cost is withheld and displayed as
 
 from __future__ import annotations
 
-CONSTANTS_VERSION = 1
+CONSTANTS_VERSION = 2
 
-PRICING_DOC = "https://docs.anthropic.com/en/docs/about-claude/pricing"
+PRICING_DOC = "https://platform.claude.com/docs/en/docs/about-claude/pricing"
 CACHING_DOC = "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching"
 TOKEN_DOC = "https://docs.anthropic.com/en/docs/about-claude/glossary"
 
@@ -62,27 +62,66 @@ _UNKNOWN_NOTE = (
     "value once confirmed at the source URL."
 )
 
+_RATES_AS_OF = "2026-07-30"
+
+# Some models change price on a known date. Such a model carries a "schedule"
+# instead of flat input/output entries: a list of periods, each with an
+# inclusive "from"/"to" ISO date (None == open ended). The rate is picked by the
+# TURN's timestamp, never by wall-clock, so old turns keep the price they were
+# actually billed at.
 MODEL_RATES = {
     # in/out USD per 1M tokens
     "claude-haiku-4-5": {
-        "input": _e(1.00, PRICING_DOC, "2025-10-15", "Claude Haiku 4.5 list price."),
-        "output": _e(5.00, PRICING_DOC, "2025-10-15", "Claude Haiku 4.5 list price."),
+        "input": _e(1.00, PRICING_DOC, _RATES_AS_OF, "Claude Haiku 4.5 list price."),
+        "output": _e(5.00, PRICING_DOC, _RATES_AS_OF, "Claude Haiku 4.5 list price."),
     },
     "claude-sonnet-5": {
-        "input": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
-        "output": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
+        "schedule": [
+            {
+                "from": None,
+                "to": "2026-08-31",
+                "input": _e(
+                    2.00,
+                    PRICING_DOC,
+                    _RATES_AS_OF,
+                    "Claude Sonnet 5 introductory input rate, in force through 2026-08-31.",
+                ),
+                "output": _e(
+                    10.00,
+                    PRICING_DOC,
+                    _RATES_AS_OF,
+                    "Claude Sonnet 5 introductory output rate, in force through 2026-08-31.",
+                ),
+            },
+            {
+                "from": "2026-09-01",
+                "to": None,
+                "input": _e(
+                    3.00,
+                    PRICING_DOC,
+                    _RATES_AS_OF,
+                    "Claude Sonnet 5 standard input rate, from 2026-09-01.",
+                ),
+                "output": _e(
+                    15.00,
+                    PRICING_DOC,
+                    _RATES_AS_OF,
+                    "Claude Sonnet 5 standard output rate, from 2026-09-01.",
+                ),
+            },
+        ]
     },
     "claude-opus-5": {
-        "input": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
-        "output": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
+        "input": _e(5.00, PRICING_DOC, _RATES_AS_OF, "Claude Opus 5 list price."),
+        "output": _e(25.00, PRICING_DOC, _RATES_AS_OF, "Claude Opus 5 list price."),
     },
     "claude-opus-4-8": {
-        "input": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
-        "output": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
+        "input": _e(5.00, PRICING_DOC, _RATES_AS_OF, "Claude Opus 4.8 list price."),
+        "output": _e(25.00, PRICING_DOC, _RATES_AS_OF, "Claude Opus 4.8 list price."),
     },
     "claude-fable-5": {
-        "input": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
-        "output": _e(None, PRICING_DOC, "2026-07-30", _UNKNOWN_NOTE),
+        "input": _e(10.00, PRICING_DOC, _RATES_AS_OF, "Claude Fable 5 list price."),
+        "output": _e(50.00, PRICING_DOC, _RATES_AS_OF, "Claude Fable 5 list price."),
     },
     "<synthetic>": {
         "input": _e(
@@ -159,9 +198,187 @@ EFFORT_TIERS = {
     "restructure": _e(10, "PRD-build-a-brand-new.md#R4b", "2026-07-30", "Workflow rework."),
 }
 
-# Detector thresholds land in wave B; the table lives here so no detector ever
-# hardcodes a number.
-DETECTOR_THRESHOLDS: dict[str, dict] = {}
+# --- token/byte conversion (detector inputs, never a display unit) ----------
+
+BYTES_PER_TOKEN_NOMINAL = _e(
+    4.0,
+    TOKEN_DOC,
+    "2026-07-30",
+    "Nominal 4 bytes per token. Used ONLY to turn a measured tool-result byte "
+    "size into a token magnitude for detectors 6 and 12; never used to price a "
+    "turn (cost comes from the cache fields alone).",
+)
+
+# --- detector thresholds (PRD R3: every detector carries a derived constant or
+# an explicit baseline-percentile rule; no hand-waved 'high') -----------------
+#
+# source_url is either a document that establishes the behaviour, or the literal
+# string "derived" plus a note giving the derivation rule in full.
+
+PRD = "PRD-build-a-brand-new.md#R3"
+
+DETECTOR_THRESHOLDS = {
+    # 1 — cache-miss on idle gap
+    "d1_idle_gap_seconds": _e(
+        3600,
+        CACHING_DOC,
+        "2026-07-30",
+        "Derived from the 1-hour ephemeral cache TTL: after a gap longer than "
+        "the longest TTL the prefix is certainly cold, so the next turn re-writes "
+        "context it could have read. Subscription default; API-key-only users "
+        "should lower this to the 5m TTL (300).",
+    ),
+    "d1_min_rewrite_tokens": _e(
+        10000,
+        "derived",
+        "2026-07-30",
+        "A post-gap turn only counts as a cache-miss when it re-writes at least "
+        "10K tokens; below that the re-write is a small prompt prefix, not a "
+        "re-sent working context (10K = the smallest context that costs more to "
+        "re-write at 1.25x than a whole extra turn's reads at 0.1x).",
+    ),
+    # 2 — compaction tax
+    "d2_min_compactions": _e(
+        2,
+        PRD,
+        "2026-07-30",
+        "Derived (PRD R3): one compaction is normal housekeeping; a session that "
+        "compacts twice or more paid the pre-compaction context tax repeatedly.",
+    ),
+    # 3 — context bloat
+    "d3_percentile": _e(
+        90,
+        PRD,
+        "2026-07-30",
+        "Baseline percentile: a session's cache-read-per-turn slope is flagged "
+        "when it exceeds this project's own trailing-30d p90 slope.",
+    ),
+    "d3_min_turns": _e(
+        10,
+        "derived",
+        "2026-07-30",
+        "A slope needs points: fewer than 10 turns in a session gives a fit "
+        "dominated by the first prompt, so short sessions are excluded.",
+    ),
+    "d3_min_sessions": _e(
+        5,
+        "derived",
+        "2026-07-30",
+        "A project needs at least 5 qualifying sessions before its own p90 is a "
+        "baseline rather than an artefact of one session.",
+    ),
+    # 4 — cache thrash
+    "d4_min_turns": _e(
+        5,
+        "derived",
+        "2026-07-30",
+        "Below 5 turns a session cannot have amortised a cache write, so a "
+        "sub-breakeven ratio is expected behaviour, not a leak.",
+    ),
+    "d4_min_write_tokens": _e(
+        100000,
+        "derived",
+        "2026-07-30",
+        "Ignore sessions writing under 100K cache tokens: the un-amortised "
+        "portion of a smaller write is under a cent at every rate in this file.",
+    ),
+    # 5 — model mis-routing
+    "d5_percentile": _e(
+        25,
+        PRD,
+        "2026-07-30",
+        "Baseline percentile: a turn is 'small' when its prompt bytes, tool-call "
+        "count AND sidechain depth are all at or below this project's trailing-30d "
+        "p25. All three, never one.",
+    ),
+    "d5_min_turns": _e(
+        20,
+        "derived",
+        "2026-07-30",
+        "A project needs 20 turns before its own p25 means anything.",
+    ),
+    "d5_cheap_model": _e(
+        "claude-haiku-4-5",
+        PRICING_DOC,
+        "2026-07-30",
+        "The routing target used for the saving arithmetic: the cheapest model "
+        "with a known rate in this file. Saving = same cache fields at this "
+        "model's input rate instead of the premium one.",
+    ),
+    # 6 — oversized / repeated tool results
+    "d6_repeat_calls": _e(
+        3,
+        PRD,
+        "2026-07-30",
+        "Derived (PRD R3): an identical tool+input digest issued 3 or more times "
+        "in one session re-pays for a result the transcript already holds.",
+    ),
+    "d6_percentile": _e(
+        90,
+        PRD,
+        "2026-07-30",
+        "Per-tool result-byte p90, recorded on every finding as the 'oversized' "
+        "reference point for that tool name.",
+    ),
+    # 7 — hook & denial overhead
+    "d7_min_events": _e(
+        1,
+        PRD,
+        "2026-07-30",
+        "Derived (PRD R3): any turn that produced a denial, a hook error or an "
+        "errored tool result spent tokens for nothing.",
+    ),
+    # 8 — unproductive sidechains
+    "d8_min_sidechain_turns": _e(
+        3,
+        "derived",
+        "2026-07-30",
+        "Derived (PRD R3: zero edit-class calls in the sidechain), with a floor of "
+        "3 sidechain turns: a one- or two-turn sidechain is a lookup and is "
+        "expected to edit nothing.",
+    ),
+    # 9 — agent-team fan-out
+    "d9_expected_fanout": _e(
+        7,
+        PRD,
+        "2026-07-30",
+        "Derived (PRD R3): agent teams in plan mode run ~7x the baseline, so "
+        "structural fan-out up to 7 concurrent sub-agents in one turn is expected "
+        "and only the excess above 7 is counted.",
+    ),
+    # 10 — phantom idle spend
+    "d10_headline": _e(
+        False,
+        PRD,
+        "2026-07-30",
+        "Derived (PRD R3): phantom idle spend is reported as a line item and is "
+        "never ranked into the headline top 3.",
+    ),
+    # 11 — burn-rate spike
+    "d11_percentile": _e(
+        90,
+        PRD,
+        "2026-07-30",
+        "Baseline percentile: a turn burns hot when it exceeds the p90 of its own "
+        "session's preceding turns.",
+    ),
+    "d11_min_preceding": _e(
+        10,
+        "derived",
+        "2026-07-30",
+        "At least 10 preceding turns in the same session before a p90 of that "
+        "session is meaningful.",
+    ),
+    # 12 — file re-read waste
+    "d12_reads": _e(
+        3,
+        PRD,
+        "2026-07-30",
+        "Derived (PRD R3): the same path read 3+ times in one session with no "
+        "edit-class call to that path between the reads is a re-read of unchanged "
+        "bytes.",
+    ),
+}
 
 
 # --- helpers ---
@@ -192,9 +409,42 @@ def normalize_model(model: str | None) -> str | None:
     return key
 
 
-def model_rates(model: str | None) -> tuple[float | None, float | None]:
-    """(input_rate, output_rate) in USD per 1M tokens; None where unknown."""
+def _period_for(schedule: list[dict], date: str | None) -> dict | None:
+    """The scheduled period covering `date` (YYYY-MM-DD). None date == today."""
+    if not date:
+        import datetime as _dt
+
+        date = _dt.date.today().isoformat()
+    date = date[:10]
+    for period in schedule:
+        lo, hi = period.get("from"), period.get("to")
+        if lo is not None and date < lo:
+            continue
+        if hi is not None and date > hi:
+            continue
+        return period
+    return None
+
+
+def model_rate_entries(model: str | None, ts: str | None = None) -> dict | None:
+    """The {"input": entry, "output": entry} pair in force at `ts` (ISO ts or date)."""
     entry = MODEL_RATES.get(normalize_model(model))
+    if not entry:
+        return None
+    schedule = entry.get("schedule")
+    if schedule:
+        return _period_for(schedule, ts)
+    return entry
+
+
+def model_rates(model: str | None, ts: str | None = None) -> tuple[float | None, float | None]:
+    """(input_rate, output_rate) in USD per 1M tokens at time `ts`; None where unknown.
+
+    `ts` is the turn's own timestamp so a model that changed price is billed at
+    the rate that was in force when the turn ran. Omitting it prices at today's
+    rate, which is only correct for forward-looking estimates.
+    """
+    entry = model_rate_entries(model, ts)
     if not entry:
         return (None, None)
     return (entry["input"]["value"], entry["output"]["value"])
@@ -213,7 +463,16 @@ def provenance() -> list[dict]:
     ):
         for name, entry in table.items():
             out.append({"group": group, "name": name, **entry})
+    for name, entry in DETECTOR_THRESHOLDS.items():
+        out.append({"group": "detector_threshold", "name": name, **entry})
     for name, entry in MODEL_RATES.items():
-        for side in ("input", "output"):
-            out.append({"group": f"model_rate_{side}", "name": name, **entry[side]})
+        periods = entry.get("schedule") or [entry]
+        for period in periods:
+            span = ""
+            if period.get("from") or period.get("to"):
+                span = f" [{period.get('from') or '...'}..{period.get('to') or '...'}]"
+            for side in ("input", "output"):
+                out.append(
+                    {"group": f"model_rate_{side}", "name": name + span, **period[side]}
+                )
     return out
