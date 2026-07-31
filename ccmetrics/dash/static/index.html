@@ -257,7 +257,7 @@ code {
   font-size:11.5px; background:var(--chip); border:1px solid var(--hair);
   border-radius:4px; padding:1px 5px; white-space:nowrap; color:var(--ink);
 }
-.surfaces { color:var(--muted); font-size:12px; line-height:2.1; margin-top:8px; }
+.surfaces { color:var(--muted); font-size:12px; line-height:2.1; margin:-8px 0 16px; }
 .hint { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 22px; }
 .delta.up { color:var(--s2); } .delta.down { color:var(--s3); }
 .bignum { font-size:26px; font-weight:620; letter-spacing:-.02em; }
@@ -276,6 +276,15 @@ code {
   <span class="chip" id="confidence" data-help="What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee."><span id="confidence-label">at least this much &middot; from session files</span></span>
   <button class="ghost" id="theme">theme</button>
 </header>
+<div class="surfaces">also:
+  <span data-help="run `ccmetrics` inside any repo and it prints these same figures as a console report, then exits — no server, no browser, nothing to leave running">
+    <code>ccmetrics</code> in a repo &rarr; console report</span> &middot;
+  <span data-help="`ccmetrics otel --setup` prints one settings block to paste. After that a small listener on this machine records Anthropic's own per-request costs, and every figure here turns from 'at least' into exact.">
+    <code>ccmetrics otel --setup</code> &rarr; exact costs</span> &middot;
+  <span data-help="`ccmetrics statusline --setup` prints one settings block to paste. Claude Code then feeds this machine your real plan percentages — the only honest source for them, because plan limits are not in any local file.">
+    <code>ccmetrics statusline --setup</code> &rarr; your real plan %</span>
+</div>
+
 
 <!-- LIVE tiles (PRD R7) -->
 <section>
@@ -443,14 +452,7 @@ code {
   <span class="spacer"></span>
   <span>read-only &middot; metadata only &middot; localhost only</span>
 </footer>
-<div class="surfaces">also:
-  <span data-help="run `ccmetrics` inside any repo and it prints these same figures as a console report, then exits — no server, no browser, nothing to leave running">
-    <code>ccmetrics</code> in a repo &rarr; console report</span> &middot;
-  <span data-help="`ccmetrics otel --setup` prints one settings block to paste. After that a small listener on this machine records Anthropic's own per-request costs, and every figure here turns from 'at least' into exact.">
-    <code>ccmetrics otel --setup</code> &rarr; exact costs</span> &middot;
-  <span data-help="`ccmetrics statusline --setup` prints one settings block to paste. Claude Code then feeds this machine your real plan percentages — the only honest source for them, because plan limits are not in any local file.">
-    <code>ccmetrics statusline --setup</code> &rarr; your real plan %</span>
-</div>
+
 
 </div>
 
