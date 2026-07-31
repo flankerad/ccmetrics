@@ -9,6 +9,7 @@ byte of message text):
     GET /api/project/<key>     the same shape, scoped to one project
     GET /api/projects          per-project table rows + delta vs prior 30 days
     GET /api/findings[?project=]  ranked findings with fix text
+    GET /api/usage[?project=]  usage per period / per model / per repo (no plan %)
     GET /api/live              R7 live tiles
     GET /api/constants         provenance table (every constant + source URL)
 
@@ -353,6 +354,189 @@ def findings_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     return {"scope": project, "count": len(out), "findings": out}
 
 
+# --- usage (per period / per model / per repo) -------------------------------
+#
+# Two different tables answer this, and which one is honest depends on the
+# question:
+#   * periods + repo_share come from `daily`, the rollup that is kept for the
+#     life of the store (store.prune never touches it). It is the only source
+#     that can honestly show a month from five months ago.
+#   * per_model comes from `turns`, because `daily` has no model column at all.
+#     Per-turn rows are pruned at RETENTION.turn_days, so the per-model split
+#     cannot look back further than that window — the payload states the window
+#     it actually covers and the page prints that label verbatim.
+# Nothing here is a share of the user's plan limit: plan limits live on
+# Anthropic's servers and appear in no local file, so we never compute one.
+
+_EPHEMERAL_GROUP_NAME = "test & scratch runs"
+
+
+def _add_months(d, n: int):
+    import datetime as _dt
+
+    m = d.month - 1 + n
+    return _dt.date(d.year + m // 12, m % 12 + 1, 1)
+
+
+def _period_defs(kind: str, count: int) -> list[dict]:
+    """(label, start, end) buckets, oldest first, the current one last.
+
+    The current bucket's end is clamped to today: a week that has not finished
+    yet must not advertise a Sunday that has not happened.
+    """
+    import datetime as _dt
+
+    today = _dt.date.today()
+    out: list[dict] = []
+    if kind == "day":
+        for i in range(count - 1, -1, -1):
+            d = today - _dt.timedelta(days=i)
+            out.append({"label": f"{d:%b} {d.day}", "start": d.isoformat(), "end": d.isoformat()})
+    elif kind == "week":
+        monday = today - _dt.timedelta(days=today.weekday())
+        for i in range(count - 1, -1, -1):
+            a = monday - _dt.timedelta(days=7 * i)
+            b = min(a + _dt.timedelta(days=6), today)
+            out.append({"label": f"W{a.isocalendar()[1]}", "start": a.isoformat(),
+                        "end": b.isoformat()})
+    elif kind == "month":
+        first = today.replace(day=1)
+        for i in range(count - 1, -1, -1):
+            a = _add_months(first, -i)
+            b = min(_add_months(a, 1) - _dt.timedelta(days=1), today)
+            out.append({"label": f"{a:%b}", "start": a.isoformat(), "end": b.isoformat()})
+    return out
+
+
+def _daily_by_date(conn: sqlite3.Connection, project: str | None, start: str) -> dict[str, dict]:
+    sql = ("SELECT date, SUM(cw5m) cw5m, SUM(cw1h) cw1h, SUM(cread) cread, SUM(turns) turns "
+           "FROM daily WHERE date >= ?")
+    args: list = [start]
+    if project:
+        sql += " AND project = ?"
+        args.append(project)
+    sql += " GROUP BY date"
+    return {
+        r["date"]: {"cw5m": r["cw5m"] or 0, "cw1h": r["cw1h"] or 0,
+                    "cread": r["cread"] or 0, "turns": r["turns"] or 0}
+        for r in conn.execute(sql, args)
+    }
+
+
+def _fill_periods(defs: list[dict], by_date: dict[str, dict]) -> list[dict]:
+    out = []
+    for d in defs:
+        cw5m = cw1h = cread = turns = 0
+        for date, v in by_date.items():
+            if d["start"] <= date <= d["end"]:
+                cw5m += v["cw5m"]
+                cw1h += v["cw1h"]
+                cread += v["cread"]
+                turns += v["turns"]
+        out.append({
+            "label": d["label"], "start": d["start"], "end": d["end"],
+            "equiv_tokens": costs.billable_input_equivalent(cw5m, cw1h, cread),
+            "turns": turns,
+        })
+    return out
+
+
+def _per_model(conn: sqlite3.Connection, project: str | None, days: int) -> list[dict]:
+    """Per-model split from `turns` — the only table carrying a model name."""
+    import datetime as _dt
+
+    start = (_dt.date.today() - _dt.timedelta(days=days - 1)).isoformat()
+    sql = ("SELECT model, SUM(cw5m) cw5m, SUM(cw1h) cw1h, SUM(cread) cread, COUNT(*) turns "
+           "FROM turns WHERE ts >= ?")
+    args: list = [start]
+    if project:
+        sql += " AND project = ?"
+        args.append(project)
+    sql += " GROUP BY model"
+    rows = []
+    for r in conn.execute(sql, args):
+        rows.append({
+            "model": r["model"] or "unknown model",
+            "equiv_tokens": costs.billable_input_equivalent(
+                r["cw5m"] or 0, r["cw1h"] or 0, r["cread"] or 0
+            ),
+            "turns": r["turns"] or 0,
+        })
+    total = sum(r["equiv_tokens"] for r in rows)
+    for r in rows:
+        r["share_pct"] = round(100.0 * r["equiv_tokens"] / total, 1) if total else None
+    rows.sort(key=lambda r: r["equiv_tokens"], reverse=True)
+    return rows
+
+
+def _repo_share(conn: sqlite3.Connection, period: dict, cwds: dict[str, str]) -> dict:
+    """Every repo's slice of ONE period, ephemeral temp dirs lumped into one row."""
+    rows = conn.execute(
+        "SELECT project, SUM(cw5m) cw5m, SUM(cw1h) cw1h, SUM(cread) cread, SUM(turns) turns "
+        "FROM daily WHERE date >= ? AND date <= ? GROUP BY project",
+        (period["start"], period["end"]),
+    ).fetchall()
+    out: list[dict] = []
+    eph = {"equiv_tokens": 0.0, "turns": 0, "count": 0}
+    for r in rows:
+        equiv = costs.billable_input_equivalent(r["cw5m"] or 0, r["cw1h"] or 0, r["cread"] or 0)
+        if _is_ephemeral_project(r["project"]):
+            eph["equiv_tokens"] += equiv
+            eph["turns"] += r["turns"] or 0
+            eph["count"] += 1
+            continue
+        out.append({
+            "project": r["project"], "cwd": cwds.get(r["project"]),
+            "equiv_tokens": equiv, "turns": r["turns"] or 0, "ephemeral": False,
+        })
+    if eph["count"]:
+        out.append({
+            "project": None, "cwd": None, "name": _EPHEMERAL_GROUP_NAME,
+            "equiv_tokens": eph["equiv_tokens"], "turns": eph["turns"],
+            "ephemeral": True, "eph_count": eph["count"],
+        })
+    total = sum(r["equiv_tokens"] for r in out)
+    for r in out:
+        r["share_pct"] = round(100.0 * r["equiv_tokens"] / total, 1) if total else None
+    out.sort(key=lambda r: r["equiv_tokens"], reverse=True)
+    return {
+        "label": period["label"], "start": period["start"], "end": period["end"],
+        "total_equiv_tokens": total, "rows": out,
+    }
+
+
+def usage_payload(conn: sqlite3.Connection, project: str | None) -> dict:
+    periods = {
+        "day": _period_defs("day", 14),
+        "week": _period_defs("week", 8),
+        "month": _period_defs("month", 6),
+    }
+    earliest = min(defs[0]["start"] for defs in periods.values())
+    by_date = _daily_by_date(conn, project, earliest)
+    filled = {k: _fill_periods(v, by_date) for k, v in periods.items()}
+
+    model_days = {"7d": min(7, WINDOW_DAYS), "30d": WINDOW_DAYS}
+    payload = {
+        "scope": project,
+        "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "periods": filled,
+        "per_model": {k: _per_model(conn, project, d) for k, d in model_days.items()},
+        "per_model_days": model_days,
+        "per_model_labels": {k: f"last {d} days" for k, d in model_days.items()},
+        # say out loud where each block comes from and how far back it can see
+        "sources": {
+            "periods": "daily rollups (kept for the life of the store)",
+            "per_model": f"per-turn rows (kept {WINDOW_DAYS} days)",
+        },
+    }
+    if project is None:
+        cwds = store.project_cwds(conn)
+        payload["repo_share"] = {
+            k: _repo_share(conn, defs[-1], cwds) for k, defs in periods.items()
+        }
+    return payload
+
+
 def live_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     """live.tiles plus the real folder path behind the session's project key.
 
@@ -447,6 +631,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(summary_payload(conn, key))
             elif path == "/api/findings":
                 self._json(findings_payload(conn, project))
+            elif path == "/api/usage":
+                self._json(usage_payload(conn, project))
             elif path == "/api/live":
                 self._json(live_payload(conn, project))
             elif path == "/api/constants":

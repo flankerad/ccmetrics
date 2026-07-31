@@ -13,7 +13,7 @@ import urllib.request
 
 import pytest
 
-from ccmetrics import detectors, ingest
+from ccmetrics import costs, detectors, ingest
 from ccmetrics.dash import server as dash_server
 
 from .util import assistant_rec, make_project, session_path, ts_at, write_lines
@@ -238,3 +238,120 @@ def test_projects_payload_groups_ephemeral_temp_projects(conn, cc_env):
 
     equivs = [c["equiv"] for c in eph["children"]]
     assert equivs == sorted(equivs, reverse=True)
+
+
+# --- usage_payload: periods / per_model / repo_share -------------------------
+
+
+def test_usage_payload_periods_and_global_sums(conn, cc_env):
+    now = _dt.datetime.now()
+    proj = make_project(cc_env["projects_dir"], "-Users-usage-global-proj")
+    write_lines(
+        session_path(proj, "s1"),
+        [
+            assistant_rec("s1", "m1", ts_at(now, 0), "claude-haiku-4-5", cw5m=1000, cread=200),
+            assistant_rec("s1", "m2", ts_at(now, 60), "claude-haiku-4-5", cw5m=500, cread=100),
+        ],
+    )
+    ingest.ingest(conn, cc_env["projects_dir"])
+    detectors.run_and_store(conn)
+    conn.commit()
+
+    body = dash_server.usage_payload(conn, None)
+    periods = body["periods"]
+    assert len(periods["day"]) == 14
+    assert len(periods["week"]) == 8
+    assert len(periods["month"]) == 6
+
+    today = _dt.date.today().isoformat()
+    for kind in ("day", "week", "month"):
+        assert periods[kind][-1]["end"] <= today
+
+    today_bucket = periods["day"][-1]
+    assert today_bucket["start"] == today_bucket["end"] == today
+    assert today_bucket["turns"] == 2
+    expected_equiv = costs.billable_input_equivalent(1500, 0, 300)
+    assert today_bucket["equiv_tokens"] == pytest.approx(expected_equiv)
+
+
+def test_usage_payload_per_model_sorted_share_and_retention(conn, cc_env):
+    now = _dt.datetime.now()
+    proj = make_project(cc_env["projects_dir"], "-Users-usage-model-proj")
+    write_lines(
+        session_path(proj, "s1"),
+        [
+            # bigger model: two turns inside the 7d window
+            assistant_rec("s1", "m1", ts_at(now, 0), "claude-opus-4", cw5m=4000, cread=1000),
+            assistant_rec("s1", "m2", ts_at(now, -2 * 86400), "claude-opus-4", cw5m=1000, cread=200),
+            # smaller model: one turn inside the 7d window
+            assistant_rec("s1", "m3", ts_at(now, -1 * 86400), "claude-haiku-4-5", cw5m=200, cread=50),
+            # beyond the 30-day turn retention: store.prune() deletes this from
+            # `turns` during ingest, so per_model (sourced from `turns`) must
+            # never see it, even though `daily` keeps it forever.
+            assistant_rec(
+                "s1", "m4", ts_at(now, -40 * 86400), "claude-sonnet-4-5", cw5m=9000, cread=9000
+            ),
+        ],
+    )
+    ingest.ingest(conn, cc_env["projects_dir"])
+    detectors.run_and_store(conn)
+    conn.commit()
+
+    body = dash_server.usage_payload(conn, None)
+
+    for window in ("7d", "30d"):
+        rows = body["per_model"][window]
+        models = {r["model"] for r in rows}
+        assert "claude-sonnet-4-5" not in models  # pruned turn, older than 30d
+
+        equivs = [r["equiv_tokens"] for r in rows]
+        assert equivs == sorted(equivs, reverse=True)
+
+        total_share = sum(r["share_pct"] for r in rows if r["share_pct"] is not None)
+        assert total_share == pytest.approx(100.0, abs=0.5)
+
+    seven_d_models = {r["model"] for r in body["per_model"]["7d"]}
+    assert seven_d_models == {"claude-opus-4", "claude-haiku-4-5"}
+
+
+def test_usage_payload_repo_share_ephemeral_and_scoping(conn, cc_env):
+    now = _dt.datetime.now()
+    real_key = "-Users-usage-repo-proj"
+    temp_key = "-tmp-usage-scratch"
+
+    real_proj = make_project(cc_env["projects_dir"], real_key)
+    write_lines(
+        session_path(real_proj, "s-real"),
+        [assistant_rec("s-real", "m1", ts_at(now, 0), "claude-real-model", cw5m=2000, cread=500)],
+    )
+
+    temp_proj = make_project(cc_env["projects_dir"], temp_key)
+    write_lines(
+        session_path(temp_proj, "s-temp"),
+        [assistant_rec("s-temp", "m1", ts_at(now, 0), "claude-temp-model", cw5m=300, cread=50)],
+    )
+
+    ingest.ingest(conn, cc_env["projects_dir"])
+    detectors.run_and_store(conn)
+    conn.commit()
+
+    body = dash_server.usage_payload(conn, None)
+    assert "repo_share" in body
+    for kind in ("day", "week", "month"):
+        rows = body["repo_share"][kind]["rows"]
+        projects = [r["project"] for r in rows if not r.get("ephemeral")]
+        assert real_key in projects
+        assert temp_key not in projects  # never a per-repo row of its own
+
+        eph_rows = [r for r in rows if r.get("ephemeral")]
+        assert len(eph_rows) == 1
+        assert eph_rows[0]["eph_count"] == 1
+
+        total_share = sum(r["share_pct"] for r in rows if r["share_pct"] is not None)
+        assert total_share == pytest.approx(100.0, abs=0.5)
+
+    scoped = dash_server.usage_payload(conn, real_key)
+    assert "repo_share" not in scoped
+    for window in ("7d", "30d"):
+        models = {r["model"] for r in scoped["per_model"][window]}
+        assert models == {"claude-real-model"}

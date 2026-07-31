@@ -158,6 +158,26 @@ section { margin-bottom:22px; }
   letter-spacing:normal; text-transform:none; white-space:normal; text-align:left;
 }
 
+/* usage card: segmented period picker, share bars, two-column body */
+.seg { display:inline-flex; }
+.seg button { border-radius:0; }
+.seg button:first-child { border-radius:6px 0 0 6px; }
+.seg button:last-child { border-radius:0 6px 6px 0; }
+.seg button + button { border-left:none; }
+.seg button.on { color:var(--ink); background:var(--chip); border-color:var(--muted); }
+.sub-title {
+  font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); margin:14px 0 8px;
+}
+.usage-cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+@media (max-width:760px) { .usage-cols { grid-template-columns:1fr; } }
+.sbar { height:7px; border-radius:999px; background:var(--hair); overflow:hidden; }
+.sbar i { display:block; height:100%; border-radius:999px; }
+.repo-row { margin-bottom:11px; }
+.repo-row:last-child { margin-bottom:0; }
+.repo-head { display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
+.repo-head .val { margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
 /* legend */
 .legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; }
 .legend .item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
@@ -276,6 +296,43 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   </div>
 </section>
 
+<!-- usage: per period, per model, per repo -->
+<section class="card">
+  <div class="card-head">
+    <span class="card-title" data-help="how much you used, by model and by repo — these are shares of YOUR OWN usage, never a share of your plan's limit; plan limits live on Anthropic's servers and are in no local file, so this page will not guess one">usage</span>
+    <span class="scope" id="usage-headline">&nbsp;</span>
+    <span class="spacer"></span>
+    <span class="seg" id="usage-seg">
+      <button class="ghost" data-period="day">day</button>
+      <button class="ghost on" data-period="week">week</button>
+      <button class="ghost" data-period="month">month</button>
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="chart" id="chart-usage"><div class="tip" id="tip-usage"></div></div>
+    <div class="usage-cols">
+      <div>
+        <div class="sub-title" data-help="which models did the work, measured in tokens' worth of input cost — the split comes from the per-turn records, which are kept for 30 days only"><span id="usage-model-title">per model</span></div>
+        <table id="usage-model-table">
+          <thead>
+            <tr>
+              <th data-help="the model that answered those turns">model</th>
+              <th class="r nowrap" style="width:80px" data-help="tokens' worth of input cost, cache writes and reads folded in at their real rates">tokens</th>
+              <th class="r nowrap" style="width:64px" data-help="how many replies this model produced">turns</th>
+              <th style="width:34%" data-help="this model's share of your own usage in this window — not a share of any plan limit">share</th>
+            </tr>
+          </thead>
+          <tbody id="usage-model-body"><tr><td colspan="4" class="empty">loading&hellip;</td></tr></tbody>
+        </table>
+      </div>
+      <div id="usage-repo-block">
+        <div class="sub-title" data-help="which repos the usage went to in the period you picked — shares of your own total, biggest first"><span id="usage-repo-title">who used it</span></div>
+        <div id="usage-repos"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- top leaks -->
 <section class="card">
   <div class="card-head">
@@ -337,7 +394,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 "use strict";
 
 var state = { scope: null, allLeaks: false, summary: null, findings: [],
-              projects: null, live: null, ephOpen: false, leakGroups: {} };
+              projects: null, live: null, ephOpen: false, leakGroups: {},
+              usage: null, usagePeriod: "week" };
 
 // ---------- formatting ----------
 function fmtUsd(v) {
@@ -480,8 +538,10 @@ function load() {
   var scope = state.scope;
   var sumUrl = scope ? "/api/project/" + encodeURIComponent(scope) : "/api/summary";
   var findUrl = "/api/findings" + (scope ? "?project=" + encodeURIComponent(scope) : "");
+  var useUrl = "/api/usage" + (scope ? "?project=" + encodeURIComponent(scope) : "");
   get(sumUrl).then(function (d) { state.summary = d; renderSummary(); }).catch(showErr);
   get(findUrl).then(function (d) { state.findings = d.findings || []; renderLeaks(); }).catch(showErr);
+  get(useUrl).then(function (d) { state.usage = d; renderUsage(); }).catch(function () {});
   if (!state.projects) {
     get("/api/projects").then(function (d) { state.projects = d; renderProjects(); }).catch(showErr);
   } else { renderProjects(); }
@@ -762,6 +822,150 @@ function legendItem(host, color, label, value, help) {
   if (help) attachHelp(lab, help);
   i.appendChild(mk("span", "val", value));
   host.appendChild(i);
+}
+
+// ---------- usage (per period, per model, per repo) ----------
+// Every share on this card is a share of the user's OWN usage. A share of the
+// plan's limit is not computable here — that number lives on Anthropic's
+// servers and is in no local file — so it is never shown or implied.
+var SHARE_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
+var PERIOD_NOW = { day: "today", week: "this week", month: "this month" };
+
+function shareColor(i) { return SHARE_COLORS[i] || "var(--muted)"; }
+
+function shareBar(pct, color) {
+  var bar = mk("div", "sbar");
+  var fill = mk("i");
+  fill.style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
+  fill.style.background = color;
+  bar.appendChild(fill);
+  return bar;
+}
+
+function renderUsage() {
+  var d = state.usage;
+  if (!d) return;
+  var per = state.usagePeriod;
+  var segs = el("usage-seg").getElementsByTagName("button");
+  for (var i = 0; i < segs.length; i++) {
+    segs[i].className = "ghost" + (segs[i].getAttribute("data-period") === per ? " on" : "");
+  }
+  var series = (d.periods && d.periods[per]) || [];
+  drawUsageSeries(series);
+  var cur = series.length ? series[series.length - 1] : null;
+  el("usage-headline").textContent = cur
+    ? PERIOD_NOW[per] + " so far: " + fmtTok(cur.equiv_tokens) + " tokens · " +
+      cur.turns.toLocaleString("en-US") + " turns"
+    : "no usage recorded";
+
+  // The per-turn rows carry the model name and are kept 30 days, so the split
+  // only comes in two windows. Map the picker onto them and say which one it is.
+  var key = per === "month" ? "30d" : "7d";
+  var label = (d.per_model_labels || {})[key] || key;
+  el("usage-model-title").textContent = "per model · " + label;
+  var body = el("usage-model-body");
+  clear(body);
+  var models = (d.per_model || {})[key] || [];
+  if (!models.length) {
+    var tr = mk("tr"), td = mk("td", "empty", "no turns recorded in " + label + ".");
+    td.setAttribute("colspan", "4"); tr.appendChild(td); body.appendChild(tr);
+  }
+  models.forEach(function (m, i) {
+    var r = mk("tr");
+    r.appendChild(mk("td", null, m.model));
+    r.appendChild(mk("td", "r num", fmtTok(m.equiv_tokens)));
+    r.appendChild(mk("td", "r num", m.turns.toLocaleString("en-US")));
+    var cell = mk("td");
+    cell.appendChild(mk("div", "num",
+      m.share_pct === null || m.share_pct === undefined ? "—" : m.share_pct.toFixed(1) + "%"));
+    cell.appendChild(shareBar(m.share_pct, shareColor(i)));
+    r.appendChild(cell);
+    body.appendChild(r);
+  });
+
+  // "who used it" only means something across repos, so it is global-view only.
+  var block = el("usage-repo-block");
+  var share = (d.repo_share || {})[per];
+  block.style.display = (state.scope || !share) ? "none" : "";
+  if (state.scope || !share) return;
+  el("usage-repo-title").textContent = "who used it · " + PERIOD_NOW[per];
+  var host = el("usage-repos");
+  clear(host);
+  if (!share.rows.length) {
+    host.appendChild(mk("div", "empty", "no usage in " + PERIOD_NOW[per] + "."));
+    return;
+  }
+  share.rows.forEach(function (r, i) {
+    var row = mk("div", "repo-row");
+    var head = mk("div", "repo-head");
+    head.appendChild(mk("span", "proj-name", r.ephemeral ? r.name : projName(r)));
+    head.appendChild(mk("span", "val num",
+      (r.share_pct === null ? "—" : r.share_pct.toFixed(1) + "%") +
+      " · " + fmtTok(r.equiv_tokens)));
+    row.appendChild(head);
+    row.appendChild(mk("div", "proj-path", r.ephemeral
+      ? r.eph_count + " throwaway temp folder(s) — grouped, not a real repo"
+      : projPath(r)));
+    row.appendChild(shareBar(r.share_pct, shareColor(i)));
+    host.appendChild(row);
+  });
+}
+
+// one bar per period, oldest left. The newest bar is the period still running,
+// so it is drawn faded — a half-finished week is not a drop in usage.
+function drawUsageSeries(series) {
+  var host = el("chart-usage"), tip = el("tip-usage");
+  var old = host.querySelector("svg");
+  if (old) host.removeChild(old);
+  var W = Math.max(320, host.clientWidth || 640), H = 92;
+  var padT = 8, padB = 18, ih = H - padT - padB;
+  var n = series.length;
+  if (!n) return;
+  var maxV = 0;
+  series.forEach(function (p) { maxV = Math.max(maxV, p.equiv_tokens || 0); });
+  if (maxV <= 0) maxV = 1;
+  var gap = n > 10 ? 3 : 6;
+  var bw = Math.max(2, (W - gap * (n - 1)) / n);
+  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
+                       "aria-label": "tokens' worth of usage per period" });
+  var step = Math.max(1, Math.round(n / 7));
+  series.forEach(function (p, i) {
+    var h = Math.max(1, ih * (p.equiv_tokens || 0) / maxV);
+    var bx = i * (bw + gap);
+    var r = svg("rect", { class: "f1", x: bx, y: padT + ih - h, width: bw, height: h, rx: 2 });
+    if (i === n - 1) r.setAttribute("opacity", ".55");
+    r.addEventListener("mousemove", function (ev) {
+      var hostRect = host.getBoundingClientRect();
+      clear(tip);
+      tip.appendChild(mk("div", "t-date",
+        p.label + (i === n - 1 ? " · so far" : "") + " · " + p.start +
+        (p.end !== p.start ? " → " + p.end : "")));
+      var a = mk("div", "row");
+      a.appendChild(mk("span", "muted", "tokens"));
+      a.appendChild(mk("span", "num", fmtTok(p.equiv_tokens)));
+      tip.appendChild(a);
+      var b = mk("div", "row");
+      b.appendChild(mk("span", "muted", "turns"));
+      b.appendChild(mk("span", "num", String(p.turns)));
+      tip.appendChild(b);
+      tip.style.display = "block";
+      var left = ev.clientX - hostRect.left + 10;
+      if (left + 180 > hostRect.width) left -= 200;
+      tip.style.left = Math.max(0, left) + "px";
+      tip.style.top = "2px";
+    });
+    r.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+    s.appendChild(r);
+    if (n <= 8 || i % step === 0 || i === n - 1) {
+      var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 5,
+                             "text-anchor": "middle" });
+      tx.textContent = p.label;
+      s.appendChild(tx);
+    }
+  });
+  s.appendChild(svg("line", { class: "axis-line", x1: 0, x2: W,
+                              y1: padT + ih + 0.5, y2: padT + ih + 0.5 }));
+  host.appendChild(s);
 }
 
 // ---------- leaks ----------
@@ -1085,6 +1289,12 @@ el("all-leaks").addEventListener("click", function () {
   state.allLeaks = !state.allLeaks;
   renderLeaks();
 });
+el("usage-seg").addEventListener("click", function (ev) {
+  var p = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-period");
+  if (!p || p === state.usagePeriod) return;
+  state.usagePeriod = p;
+  renderUsage();
+});
 el("theme").addEventListener("click", function () {
   var cur = document.documentElement.getAttribute("data-theme");
   var next = cur === "dark" ? "light" : (cur === "light" ? "auto" : "dark");
@@ -1095,7 +1305,10 @@ el("theme").addEventListener("click", function () {
 var rt;
 window.addEventListener("resize", function () {
   clearTimeout(rt);
-  rt = setTimeout(function () { if (state.summary) renderSummary(); }, 150);
+  rt = setTimeout(function () {
+    if (state.summary) renderSummary();
+    if (state.usage) renderUsage();
+  }, 150);
 });
 
 document.documentElement.setAttribute("data-theme", "auto");
