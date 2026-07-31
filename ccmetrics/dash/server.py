@@ -201,6 +201,18 @@ def _window_rows(conn: sqlite3.Connection, start: str, end: str) -> dict[str, di
     return out
 
 
+# Project keys under a system temp dir (pytest tmp_path, /tmp scratch runs) are
+# not real repos and clutter the per-project table. Sanitized-key prefixes
+# match how Claude Code encodes the OS temp dir path, e.g.
+# "/private/var/folders/xx/yyyy/T/pytest-of-you/..." -> "-private-var-folders-...".
+# Cosmetic only: these sessions still count in the global spend total.
+_EPHEMERAL_PROJECT_PREFIXES = ("-private-var-folders-", "-var-folders-", "-tmp-")
+
+
+def _is_ephemeral_project(key: str) -> bool:
+    return key.startswith(_EPHEMERAL_PROJECT_PREFIXES)
+
+
 def projects_payload(conn: sqlite3.Connection) -> dict:
     import datetime as _dt
 
@@ -230,6 +242,8 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
 
     rows = []
     for project, c in cur.items():
+        if _is_ephemeral_project(project):
+            continue
         p = prev.get(project)
         delta_pct = None
         if p and p["equiv"] > 0:
