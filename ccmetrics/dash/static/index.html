@@ -131,6 +131,26 @@ section { margin-bottom:22px; }
 .tip .t-date { color:var(--muted); font-size:11px; margin-bottom:3px; }
 .tip .row { display:flex; justify-content:space-between; gap:14px; }
 
+/* one help mechanism for the whole page: a small "?" badge next to any label,
+   hover OR click/tap (tap-friendly) shows ONE shared tooltip node. Native
+   title= is not discoverable, so nothing on this page relies on it. */
+.qmark {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:13px; height:13px; margin-left:4px; flex:0 0 auto; vertical-align:middle;
+  border:1px solid var(--hair-strong); border-radius:50%; background:var(--chip);
+  color:var(--muted); font-size:9px; font-weight:700; line-height:1;
+  letter-spacing:0; text-transform:none; text-decoration:none;
+  cursor:help; user-select:none; -webkit-user-select:none;
+}
+.qmark:hover, .qmark:focus { color:var(--ink); border-color:var(--muted); outline:none; }
+.helptip {
+  position:absolute; display:none; z-index:50; max-width:280px;
+  background:var(--surface); border:1px solid var(--hair-strong); border-radius:8px;
+  box-shadow:var(--shadow); padding:8px 10px; pointer-events:none;
+  color:var(--ink); font-size:12px; font-weight:400; line-height:1.45;
+  letter-spacing:normal; text-transform:none; white-space:normal; text-align:left;
+}
+
 /* legend */
 .legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; }
 .legend .item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
@@ -163,6 +183,9 @@ button.copy {
 button.copy:hover { border-color:var(--s1); color:var(--s1); }
 button.copy.done { border-color:var(--s3); color:var(--s3); }
 .muted { color:var(--muted); }
+/* expanded children of the grouped "test & scratch runs" row */
+tr.eph-child td { color:var(--muted); }
+tr.eph-child td:first-child { padding-left:28px; }
 .empty { color:var(--muted); padding:6px 10px; }
 footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:14px; flex-wrap:wrap; }
 .delta.up { color:var(--s2); } .delta.down { color:var(--s3); }
@@ -178,8 +201,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   <span class="scope" id="scope-label">all projects · last 30 days</span>
   <button class="link" id="back" style="display:none">&larr; back to all projects</button>
   <span class="spacer"></span>
-  <span class="chip" id="otel-chip" title="Optional: `ccmetrics otel` runs a small local listener that records Anthropic's own per-request costs, upgrading every figure from 'at least' to exact. It is off right now."><span class="dot off" id="otel-dot"></span> exact costs: off</span>
-  <span class="chip" id="confidence" title="What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee.">at least this much &middot; from session files</span>
+  <span class="chip" id="otel-chip" data-help="Optional: `ccmetrics otel` runs a small local listener that records Anthropic's own per-request costs, upgrading every figure from 'at least' to exact. It is off right now."><span class="dot off" id="otel-dot"></span><span id="otel-label"> exact costs: off</span></span>
+  <span class="chip" id="confidence" data-help="What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee."><span id="confidence-label">at least this much &middot; from session files</span></span>
   <button class="ghost" id="theme">theme</button>
 </header>
 
@@ -187,27 +210,27 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <section>
   <div class="live-bar">
     <span class="dot off" id="live-dot"></span>
-    <span class="card-title">live session</span>
+    <span class="card-title" data-help="your running session right now — burn speed, context fill, cache use; empty when nothing is running">live session</span>
     <span class="scope" id="live-meta">connecting&hellip;</span>
   </div>
   <div class="tiles" id="tiles">
     <div class="tile" id="tile-burn">
-      <div class="label">burn rate</div>
+      <div class="label" data-help="how fast this session is spending right now — dollars per hour at API prices, worked out from the turns in the last few minutes">burn rate</div>
       <div class="value num" id="tile-burn-value">&mdash;</div>
       <div class="sub num" id="tile-burn-sub">&nbsp;</div>
     </div>
     <div class="tile" id="tile-ctx">
-      <div class="label">context</div>
+      <div class="label" data-help="how full the model's memory window is; when it fills up the session is squashed and the whole context has to be rebuilt">context</div>
       <div class="value num" id="tile-ctx-value">&mdash;</div>
       <div class="sub num" id="tile-ctx-sub">&nbsp;</div>
     </div>
     <div class="tile" id="tile-cache">
-      <div class="label">cache-hit</div>
+      <div class="label" data-help="share of this session's context served from memory instead of being paid for again at full price — higher is better">cache-hit</div>
       <div class="value num" id="tile-cache-value">&mdash;</div>
       <div class="sub num" id="tile-cache-sub">&nbsp;</div>
     </div>
     <div class="tile" id="tile-spend">
-      <div class="label">session cost</div>
+      <div class="label" data-help="what this session has used so far, valued at API prices — a proven minimum, not a bill">session cost</div>
       <div class="value num" id="tile-spend-value">&mdash;</div>
       <div class="sub num" id="tile-spend-sub">&nbsp;</div>
     </div>
@@ -218,7 +241,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <!-- 30d spend -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title">spend &middot; 30 days</span>
+    <span class="card-title" data-help="day-by-day value of your usage at API prices — the 'at least' line plus a separate output estimate, never added together">spend &middot; 30 days</span>
     <span class="spacer"></span>
     <span class="scope" id="spend-headline">&nbsp;</span>
   </div>
@@ -231,7 +254,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <!-- token mix -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title">token mix &middot; 30 days</span>
+    <span class="card-title" data-help="where the token volume goes; cache reads dominate and are the cheap kind, so a big blue bar is normal">token mix &middot; 30 days</span>
     <span class="spacer"></span>
     <span class="scope" id="mix-headline">&nbsp;</span>
   </div>
@@ -244,7 +267,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <!-- top leaks -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title">top leaks</span>
+    <span class="card-title" data-help="wasteful patterns found in your own sessions, biggest win first, each with a ready-made fix you can copy">top leaks</span>
     <span class="scope">ranked by tokens saved vs how hard the fix is</span>
     <span class="spacer"></span>
     <button class="link" id="all-leaks">show all</button>
@@ -254,11 +277,11 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
       <thead>
         <tr>
           <th style="width:22px"></th>
-          <th title="a wasteful pattern found in your sessions, with the fix under it">leak</th>
-          <th class="r" style="width:110px" title="tokens you would stop wasting if you applied the fix — an upper estimate">saves</th>
-          <th class="r" style="width:100px" title="what those tokens are worth at API prices — a proven minimum">at least $</th>
-          <th style="width:110px" title="how hard the fix is: paste = copy a line, habit = change how you work, restructure = reorganize sessions">effort</th>
-          <th class="r" style="width:80px" title="copies the ready-made fix text">fix</th>
+          <th data-help="a wasteful pattern found in your sessions, with the fix under it">leak</th>
+          <th class="r" style="width:110px" data-help="tokens you would stop wasting if you applied the fix — an upper estimate">saves</th>
+          <th class="r" style="width:100px" data-help="what those tokens are worth at API prices — a proven minimum">at least $</th>
+          <th style="width:110px" data-help="how hard the fix is: paste = copy a line, habit = change how you work, restructure = reorganize sessions">effort</th>
+          <th class="r" style="width:80px" data-help="copies the ready-made fix text">fix</th>
         </tr>
       </thead>
       <tbody id="leaks-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
@@ -269,19 +292,19 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <!-- per-project -->
 <section class="card" id="projects-card">
   <div class="card-head">
-    <span class="card-title">projects</span>
+    <span class="card-title" data-help="every repo this machine used Claude Code in, most spend first">projects</span>
     <span class="scope">click a row to scope everything above to that project</span>
   </div>
   <div class="card-body">
     <table id="projects-table">
       <thead>
         <tr>
-          <th>project</th>
-          <th class="r nowrap" style="width:100px" title="what this project's usage is worth at API prices — a proven minimum, not a bill">at least $</th>
-          <th class="r nowrap" style="width:110px" title="tokens' worth of cost in the window">tokens</th>
-          <th class="r nowrap" style="width:100px" title="share of context served from cache instead of being paid for again — higher is better">cache-hit</th>
-          <th class="r nowrap" style="width:110px" title="spend change compared with the 30 days before this window">vs prior 30d</th>
-          <th style="width:230px" title="the single biggest saving found for this project">top leak</th>
+          <th data-help="the repo Claude Code was run in; click the row to scope every card above to it">project</th>
+          <th class="r nowrap" style="width:100px" data-help="what this project's usage is worth at API prices — a proven minimum, not a bill">at least $</th>
+          <th class="r nowrap" style="width:110px" data-help="tokens' worth of cost in the window">tokens</th>
+          <th class="r nowrap" style="width:100px" data-help="share of context served from cache instead of being paid for again — higher is better">cache-hit</th>
+          <th class="r nowrap" style="width:110px" data-help="spend change compared with the 30 days before this window">vs prior 30d</th>
+          <th style="width:230px" data-help="the single biggest saving found for this project">top leak</th>
         </tr>
       </thead>
       <tbody id="projects-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
@@ -301,7 +324,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 (function () {
 "use strict";
 
-var state = { scope: null, allLeaks: false, summary: null, findings: [], projects: null, live: null };
+var state = { scope: null, allLeaks: false, summary: null, findings: [],
+              projects: null, live: null, ephOpen: false };
 
 // ---------- formatting ----------
 function fmtUsd(v) {
@@ -346,6 +370,91 @@ function svg(tag, attrs) {
   for (var k in attrs) if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]);
   return n;
 }
+
+// ---------- help badges ----------
+// ONE shared tooltip node and ONE document listener for the whole page. A badge
+// shows on hover and pins on click, so it works on a touch screen too.
+var helpTip = null, helpPinned = null;
+
+function helpNode() {
+  if (!helpTip) {
+    helpTip = mk("div", "helptip");
+    document.body.appendChild(helpTip);
+  }
+  return helpTip;
+}
+
+function hideHelp() {
+  var t = helpNode();
+  t.style.display = "none";
+}
+
+function showHelp(q) {
+  var t = helpNode();
+  // a re-render can drop the badge that was pinned; forget it rather than
+  // measuring a node that is no longer on the page
+  if (!document.body.contains(q)) { helpPinned = null; hideHelp(); return; }
+  t.textContent = q.helpText || "";
+  t.style.left = "0px";
+  t.style.top = "0px";
+  t.style.display = "block";
+  var r = q.getBoundingClientRect();
+  var tw = t.offsetWidth, th = t.offsetHeight;
+  var vw = document.documentElement.clientWidth;
+  var vh = document.documentElement.clientHeight;
+  var sx = window.pageXOffset, sy = window.pageYOffset;
+  // clamp to the viewport, flip above the badge when the space below is short
+  var left = r.left + sx;
+  if (left + tw > sx + vw - 8) left = sx + vw - tw - 8;
+  if (left < sx + 8) left = sx + 8;
+  var top = r.bottom + sy + 6;
+  if (r.bottom + 6 + th > vh && r.top - 6 - th > 0) top = r.top + sy - th - 6;
+  t.style.left = left + "px";
+  t.style.top = top + "px";
+}
+
+// Appends (or updates) a "?" badge on `host`. Safe to call again with new text.
+function attachHelp(host, text) {
+  if (!host || !text) return null;
+  var q = host.qmarkNode;
+  if (!q) {
+    q = mk("span", "qmark", "?");
+    q.setAttribute("role", "button");
+    q.setAttribute("tabindex", "0");
+    q.setAttribute("aria-label", "what this means");
+    host.appendChild(q);
+    host.qmarkNode = q;
+    q.addEventListener("mouseenter", function () { if (helpPinned !== q) showHelp(q); });
+    q.addEventListener("mouseleave", function () { if (helpPinned !== q) hideHelp(); });
+    q.addEventListener("click", function (ev) {
+      // never let the badge trigger the row / card behind it
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (helpPinned === q) { helpPinned = null; hideHelp(); }
+      else { helpPinned = q; showHelp(q); }
+    });
+    q.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); q.click(); }
+    });
+  }
+  q.helpText = text;
+  if (helpPinned === q) showHelp(q);
+  return q;
+}
+
+function attachStaticHelp(root) {
+  var nodes = (root || document).querySelectorAll("[data-help]");
+  for (var i = 0; i < nodes.length; i++) {
+    attachHelp(nodes[i], nodes[i].getAttribute("data-help"));
+  }
+}
+
+document.addEventListener("click", function () {
+  if (helpPinned) { helpPinned = null; hideHelp(); }
+});
+window.addEventListener("scroll", function () {
+  if (helpPinned) showHelp(helpPinned);
+});
 
 // ---------- data ----------
 function get(url) {
@@ -394,36 +503,36 @@ function setScope(key) {
 // The server does the loopback probe of :4318 for us (a fetch from this page to
 // another port would be cross-origin, and the CSP here is connect-src 'self').
 function renderReceiver(o) {
-  var dot = el("otel-dot"), chip = el("otel-chip");
-  if (!dot || !chip) return;
+  var dot = el("otel-dot"), chip = el("otel-chip"), lab = el("otel-label");
+  if (!dot || !chip || !lab) return;
   var live = !!(o && o.receiver_live);
   dot.className = live ? "dot" : "dot off";
-  chip.lastChild.textContent = live ? " exact costs: on" : " exact costs: off";
-  chip.title = live
+  lab.textContent = live ? " exact costs: on" : " exact costs: off";
+  attachHelp(chip, live
     ? "The exact-cost listener is running on 127.0.0.1:" + (o.port || 4318) + " — " +
       (o.events || 0) + " cost record(s) received, " + (o.days_exact_covered || 0) +
       " day(s) fully priced with Anthropic's own numbers."
     : "Optional: `ccmetrics otel` runs a small local listener that records Anthropic's " +
       "own per-request costs, upgrading every figure from 'at least' to exact. " +
-      "It is off right now.";
+      "It is off right now.");
 }
 
 // The chip states what the numbers on this page actually are, per data:
 // exact (OTEL) when telemetry covered the window, mixed when only some days.
 function renderConfidence(s) {
-  var chip = el("confidence");
-  if (!chip) return;
+  var chip = el("confidence"), lab = el("confidence-label");
+  if (!chip || !lab) return;
   var label = s.confidence_label || "at least this much · from session files";
   var ex = s.exact || {};
-  chip.textContent = label;
+  lab.textContent = label;
   chip.className = "chip" + (s.confidence === "exact" ? " exact"
     : s.confidence === "mixed" ? " mixed" : "");
-  chip.title = s.confidence === "approximate"
+  attachHelp(chip, s.confidence === "approximate"
     ? "What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee."
     : "exact = Anthropic's own per-request cost, on days where the listener "
       + "covered at least " + Math.round((ex.coverage_min || 0.95) * 100) + "% of turns ("
       + (ex.days_covered || 0) + " day(s)). Other days only show the proven minimum; "
-      + "the two are never added together.";
+      + "the two are never added together.");
 }
 
 // ---------- summary + charts ----------
@@ -633,11 +742,12 @@ function drawMix(t) {
 
 function legendItem(host, color, label, value, help) {
   var i = mk("div", "item");
-  if (help) i.title = help;
   var sw = mk("span", "swatch");
   sw.style.background = color;
   i.appendChild(sw);
-  i.appendChild(mk("span", null, label));
+  var lab = mk("span", null, label);
+  i.appendChild(lab);
+  if (help) attachHelp(lab, help);
   i.appendChild(mk("span", "val", value));
   host.appendChild(i);
 }
@@ -659,7 +769,9 @@ function renderLeaks() {
     tr.appendChild(mk("td", "rank num", String(i + 1)));
 
     var nameCell = mk("td");
-    nameCell.appendChild(mk("div", "leak-name", f.name));
+    var nameDiv = mk("div", "leak-name", f.name);
+    nameCell.appendChild(nameDiv);
+    attachHelp(nameDiv, f.help);
     var meta = f.project && !state.scope ? (f.cwd || f.project) : (f.period || "");
     if (meta) nameCell.appendChild(mk("div", "fixline", meta));
     if (f.fix_text) {
@@ -739,11 +851,20 @@ function renderProjects() {
     var tr;
     var projCell = mk("td");
     if (r.ephemeral) {
-      tr = mk("tr");
-      tr.title = "Claude Code sessions that ran inside throwaway system temp folders " +
+      // grouped row: click anywhere on it to list the individual temp folders
+      tr = mk("tr", "clickable");
+      tr.addEventListener("click", function () {
+        state.ephOpen = !state.ephOpen;
+        renderProjects();
+      });
+      var ephName = mk("span", "proj-name",
+        (state.ephOpen ? "▾ " : "▸ ") + "test & scratch runs");
+      projCell.appendChild(ephName);
+      attachHelp(ephName,
+        "Claude Code sessions that ran inside throwaway system temp folders " +
         "(pytest scratch dirs, /tmp). The logs carry no pointer to the repo that " +
-        "created them, so they are grouped here instead of being guessed into a repo.";
-      projCell.appendChild(mk("span", "proj-name", "test & scratch runs"));
+        "created them, so they are grouped here instead of being guessed into a " +
+        "repo. Click the row to list them.");
       projCell.appendChild(mk("span", "proj-path",
         r.eph_count + " throwaway temp folder(s) — grouped, not a real repo"));
     } else {
@@ -768,14 +889,37 @@ function renderProjects() {
     tr.appendChild(dcell);
     var leak = mk("td");
     if (r.top_leak) {
-      leak.appendChild(mk("div", null, r.top_leak.name));
+      var leakName = mk("div", null, r.top_leak.name);
+      leak.appendChild(leakName);
+      attachHelp(leakName, r.top_leak.help);
       leak.appendChild(mk("div", "fixline", "~" + fmtTok(r.top_leak.tokens_saved) + " tok saveable"));
     } else {
       leak.appendChild(mk("span", "muted", "—"));
     }
     tr.appendChild(leak);
     body.appendChild(tr);
+    if (r.ephemeral && state.ephOpen && r.children) {
+      r.children.forEach(function (c) { body.appendChild(ephChildRow(c)); });
+    }
   });
+}
+
+// one temp folder inside the grouped row: muted, indented, not clickable.
+// Only the figures that mean anything for a throwaway folder are filled in.
+function ephChildRow(c) {
+  var tr = mk("tr", "eph-child");
+  var cell = mk("td");
+  cell.appendChild(mk("span", "proj-name", projName(c)));
+  cell.appendChild(mk("span", "proj-path",
+    projPath(c) + " · " + (c.turns || 0) + " turns"));
+  tr.appendChild(cell);
+  tr.appendChild(mk("td", "r num", c.floor_usd === null || c.floor_usd === undefined
+    ? "unknown" : fmtUsd(c.floor_usd)));
+  tr.appendChild(mk("td", "r num", fmtTok(c.equiv)));
+  tr.appendChild(mk("td", "r muted", "—"));
+  tr.appendChild(mk("td", "r muted", "—"));
+  tr.appendChild(mk("td", "muted", "—"));
+  return tr;
 }
 
 // ---------- live tiles (R7) ----------
@@ -876,6 +1020,7 @@ window.addEventListener("resize", function () {
 });
 
 document.documentElement.setAttribute("data-theme", "auto");
+attachStaticHelp();
 load();
 pollLive();
 setInterval(pollLive, 5000);

@@ -238,12 +238,15 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
                 "tokens_saved": f["tokens_saved"],
                 "usd_saved": f["usd_saved"],
                 "effort": f["effort"],
+                "help": detectors.DETECTOR_HELP.get(f["detector"], ""),
             }
 
     cwds = store.project_cwds(conn)
     rows = []
     eph = {"floor_usd": 0.0, "floor_known": True, "equiv": 0, "cread": 0,
            "cw5m": 0, "cw1h": 0, "turns": 0, "count": 0}
+    # the individual temp folders behind the grouped row, so the page can expand it
+    eph_children: list[dict] = []
     for project, c in cur.items():
         if _is_ephemeral_project(project):
             # grouped into one "test & scratch runs" row instead of 40 tmp-dir
@@ -259,6 +262,15 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
                 eph["floor_known"] = False
             else:
                 eph["floor_usd"] += c["floor_usd"]
+            eph_children.append(
+                {
+                    "project": project,
+                    "cwd": cwds.get(project),
+                    "floor_usd": c["floor_usd"],
+                    "equiv": c["equiv"],
+                    "turns": c["turns"],
+                }
+            )
             continue
         p = prev.get(project)
         delta_pct = None
@@ -283,11 +295,13 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
         )
     rows.sort(key=lambda r: r["equiv"], reverse=True)
     if eph["count"]:
+        eph_children.sort(key=lambda r: r["equiv"], reverse=True)
         rows.append(
             {
                 "project": None,
                 "ephemeral": True,
                 "eph_count": eph["count"],
+                "children": eph_children,
                 "cwd": None,
                 "floor_usd": eph["floor_usd"] if eph["floor_known"] else None,
                 "equiv": eph["equiv"],
@@ -324,6 +338,7 @@ def findings_payload(conn: sqlite3.Connection, project: str | None) -> dict:
             {
                 "detector": f["detector"],
                 "name": ev.get("detector_name", f"detector {f['detector']}"),
+                "help": detectors.DETECTOR_HELP.get(f["detector"], ""),
                 "project": f["project"],
                 "cwd": cwds.get(f["project"]),
                 "period": f["period"],

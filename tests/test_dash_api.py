@@ -153,3 +153,88 @@ def test_api_live_stale_session(conn, cc_env, running_server):
     base, _ = running_server
     body = _get_json(f"{base}/api/live")
     assert body["status"] == "no live session"
+
+
+# --- DETECTOR_HELP + findings/projects payload help + ephemeral grouping ----
+
+
+def test_detector_help_keys_complete():
+    assert set(detectors.DETECTOR_HELP) == set(range(1, 13))
+    for detector, text in detectors.DETECTOR_HELP.items():
+        assert isinstance(text, str)
+        assert text.strip(), f"detector {detector} help is empty"
+
+
+def _seed_d1_finding(conn, cc_env, project_key="-Users-dash-d1-proj"):
+    """A session with a >1h idle gap and a big rewrite: reliably trips
+    detector 1 (cold start after a break), which is a headline finding."""
+    proj = make_project(cc_env["projects_dir"], project_key)
+    write_lines(
+        session_path(proj, "s1"),
+        [
+            assistant_rec("s1", "m1", ts_at(BASE, 0), "claude-haiku-4-5", cread=100),
+            assistant_rec("s1", "m2", ts_at(BASE, 7200), "claude-haiku-4-5", cw5m=15000),
+        ],
+    )
+    ingest.ingest(conn, cc_env["projects_dir"])
+    detectors.run_and_store(conn)
+    conn.commit()
+    return project_key
+
+
+def test_findings_payload_help_matches_detector_help(conn, cc_env):
+    _seed_d1_finding(conn, cc_env)
+    body = dash_server.findings_payload(conn, None)
+    assert body["findings"], "expected the seeded idle-gap session to produce a finding"
+    for f in body["findings"]:
+        expected = detectors.DETECTOR_HELP[f["detector"]]
+        assert f["help"] == expected
+        assert f["help"]
+
+
+def test_projects_payload_groups_ephemeral_temp_projects(conn, cc_env):
+    real_key = "-Users-dash-real-proj"
+    temp_key_1 = "-private-var-folders-xx-T-pytest-of-u-pytest-1-foo"
+    temp_key_2 = "-tmp-scratch1"
+
+    real_proj = make_project(cc_env["projects_dir"], real_key)
+    write_lines(
+        session_path(real_proj, "s-real"),
+        [assistant_rec("s-real", "m1", ts_at(BASE, 0), "claude-haiku-4-5", cw5m=1000, cread=200)],
+    )
+
+    temp_proj_1 = make_project(cc_env["projects_dir"], temp_key_1)
+    write_lines(
+        session_path(temp_proj_1, "s-temp1"),
+        [assistant_rec("s-temp1", "m1", ts_at(BASE, 0), "claude-haiku-4-5", cw5m=2000)],
+    )
+
+    temp_proj_2 = make_project(cc_env["projects_dir"], temp_key_2)
+    write_lines(
+        session_path(temp_proj_2, "s-temp2"),
+        [assistant_rec("s-temp2", "m1", ts_at(BASE, 0), "claude-haiku-4-5", cw5m=500)],
+    )
+
+    ingest.ingest(conn, cc_env["projects_dir"])
+    detectors.run_and_store(conn)
+    conn.commit()
+
+    body = dash_server.projects_payload(conn)
+    rows = body["rows"]
+
+    project_keys = [r["project"] for r in rows if r.get("project")]
+    assert real_key in project_keys
+    assert temp_key_1 not in project_keys
+    assert temp_key_2 not in project_keys
+
+    eph_rows = [r for r in rows if r.get("ephemeral")]
+    assert len(eph_rows) == 1
+    eph = eph_rows[0]
+    assert eph["eph_count"] == 2
+    assert len(eph["children"]) == 2
+
+    child_projects = {c["project"] for c in eph["children"]}
+    assert child_projects == {temp_key_1, temp_key_2}
+
+    equivs = [c["equiv"] for c in eph["children"]]
+    assert equivs == sorted(equivs, reverse=True)

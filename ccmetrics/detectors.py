@@ -47,6 +47,38 @@ DETECTOR_NAMES = {
     12: "File re-read waste",
 }
 
+# One plain-words line per detector: what the leak actually means, for the "?"
+# badge next to every leak name on the dashboard. Same facts as the Why: line of
+# each fix template, without the numbers (the row already carries those).
+DETECTOR_HELP = {
+    1: "you came back after a long break and the saved context had expired, so the "
+       "whole conversation had to be re-sent at the expensive write price instead of "
+       "the cheap re-read price.",
+    2: "sessions ran long enough to be squashed automatically, and every squash "
+       "rebuilds the whole working context from scratch — compacting yourself at a "
+       "natural break carries only what you still need.",
+    3: "a few sessions piled on re-read context far faster than the rest of this "
+       "project, so every later turn in them carried more weight than it needed.",
+    4: "context was written into the cache at the expensive write price and then "
+       "barely read back, so the write never paid for itself.",
+    5: "small, simple turns were answered by an expensive model — a cheap one would "
+       "have produced the same context at a fraction of the price.",
+    6: "the same command or search ran again and again, re-adding results the "
+       "conversation was already holding.",
+    7: "blocked tool calls, failed calls and hook errors burned tokens and gave "
+       "nothing back — some denials are deliberate, so read before changing anything.",
+    8: "sub-agents ran whole turns without changing a single file — research you "
+       "paid for that never landed in the code.",
+    9: "one turn started far more sub-agents at once than you usually do, and they "
+       "all bill at the same time.",
+    10: "turns ran with no prompt from you in front of them (session resumes, status "
+        "checks) — listed so the cost is never mistaken for work you asked for.",
+    11: "single turns cost several times what the turns before them cost in the same "
+        "session — usually a sign the session had grown too heavy.",
+    12: "the same files were read over and over with no edit in between, re-adding "
+        "the same text every time.",
+}
+
 DETECTOR_EFFORT = {
     1: "paste",
     2: "habit",
