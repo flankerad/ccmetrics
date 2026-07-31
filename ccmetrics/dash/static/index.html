@@ -380,7 +380,7 @@ function showErr(e) {
 
 function setScope(key) {
   state.scope = key;
-  el("scope-label").textContent = (key ? key : "all projects") + " · last 30 days";
+  el("scope-label").textContent = (key ? pathify(key) : "all projects") + " · last 30 days";
   el("back").style.display = key ? "" : "none";
   el("projects-card").style.display = key ? "none" : "";
   window.scrollTo(0, 0);
@@ -701,6 +701,9 @@ function folderName(key) {
   var i = key.lastIndexOf("-");
   return i === -1 ? key : key.slice(i + 1);
 }
+function pathify(key) {
+  return key.replace(/-/g, "/");
+}
 function renderProjects() {
   var d = state.projects;
   var body = el("projects-body");
@@ -715,7 +718,7 @@ function renderProjects() {
     tr.addEventListener("click", function () { setScope(r.project); });
     var projCell = mk("td");
     projCell.appendChild(mk("span", "proj-name", folderName(r.project)));
-    projCell.appendChild(mk("span", "proj-path", r.project));
+    projCell.appendChild(mk("span", "proj-path", pathify(r.project)));
     tr.appendChild(projCell);
     tr.appendChild(mk("td", "r num", r.floor_usd === null ? "unknown" : fmtUsd(r.floor_usd)));
     tr.appendChild(mk("td", "r num", fmtTok(r.equiv)));
