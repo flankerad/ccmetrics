@@ -242,8 +242,23 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
 
     cwds = store.project_cwds(conn)
     rows = []
+    eph = {"floor_usd": 0.0, "floor_known": True, "equiv": 0, "cread": 0,
+           "cw5m": 0, "cw1h": 0, "turns": 0, "count": 0}
     for project, c in cur.items():
         if _is_ephemeral_project(project):
+            # grouped into one "test & scratch runs" row instead of 40 tmp-dir
+            # rows; the transcripts carry no pointer to the repo that spawned
+            # them, so honest grouping stops here (no per-repo attribution).
+            eph["count"] += 1
+            eph["equiv"] += c["equiv"]
+            eph["cread"] += c["cread"]
+            eph["cw5m"] += c["cw5m"]
+            eph["cw1h"] += c["cw1h"]
+            eph["turns"] += c["turns"]
+            if c["floor_usd"] is None:
+                eph["floor_known"] = False
+            else:
+                eph["floor_usd"] += c["floor_usd"]
             continue
         p = prev.get(project)
         delta_pct = None
@@ -267,6 +282,26 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
             }
         )
     rows.sort(key=lambda r: r["equiv"], reverse=True)
+    if eph["count"]:
+        rows.append(
+            {
+                "project": None,
+                "ephemeral": True,
+                "eph_count": eph["count"],
+                "cwd": None,
+                "floor_usd": eph["floor_usd"] if eph["floor_known"] else None,
+                "equiv": eph["equiv"],
+                "cread": eph["cread"],
+                "cw5m": eph["cw5m"],
+                "cw1h": eph["cw1h"],
+                "turns": eph["turns"],
+                "cache_hit": costs.cache_hit_ratio(eph["cread"], eph["cw5m"] + eph["cw1h"]),
+                "prior_equiv": None,
+                "prior_floor_usd": None,
+                "delta_pct": None,
+                "top_leak": None,
+            }
+        )
     return {
         "window_days": WINDOW_DAYS,
         "window": [cur_start, today.isoformat()],
@@ -278,6 +313,7 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
 def findings_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     found = detectors.rank(store.load_findings(conn, project))
     labels = {1: "paste", 3: "habit", 10: "restructure"}
+    cwds = store.project_cwds(conn)
     out = []
     for f in found:
         try:
@@ -289,6 +325,7 @@ def findings_payload(conn: sqlite3.Connection, project: str | None) -> dict:
                 "detector": f["detector"],
                 "name": ev.get("detector_name", f"detector {f['detector']}"),
                 "project": f["project"],
+                "cwd": cwds.get(f["project"]),
                 "period": f["period"],
                 "tokens_saved": f["tokens_saved"],
                 "usd_saved": f["usd_saved"],

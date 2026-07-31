@@ -142,6 +142,7 @@ table { width:100%; border-collapse:collapse; }
 th {
   text-align:left; font-size:11px; letter-spacing:.07em; text-transform:uppercase;
   color:var(--muted); font-weight:600; padding:0 10px 7px; border-bottom:1px solid var(--hair-strong);
+  white-space:nowrap;
 }
 td { padding:9px 10px; border-bottom:1px solid var(--hair); vertical-align:top; }
 tbody tr:last-child td { border-bottom:none; }
@@ -177,8 +178,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   <span class="scope" id="scope-label">all projects · last 30 days</span>
   <button class="link" id="back" style="display:none">&larr; back to all projects</button>
   <span class="spacer"></span>
-  <span class="chip" id="otel-chip" title="Optional OTLP receiver on 127.0.0.1:4318 (ccmetrics otel). Off means costs stay an 'at least' number."><span class="dot off" id="otel-dot"></span> receiver</span>
-  <span class="chip" id="confidence" title="This is the least you were charged, worked out from the cache fields in your session files. No telemetry stream connected.">at least this much &middot; from session files</span>
+  <span class="chip" id="otel-chip" title="Optional: `ccmetrics otel` runs a small local listener that records Anthropic's own per-request costs, upgrading every figure from 'at least' to exact. It is off right now."><span class="dot off" id="otel-dot"></span> exact costs: off</span>
+  <span class="chip" id="confidence" title="What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee.">at least this much &middot; from session files</span>
   <button class="ghost" id="theme">theme</button>
 </header>
 
@@ -253,11 +254,11 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
       <thead>
         <tr>
           <th style="width:22px"></th>
-          <th>leak</th>
-          <th class="r" style="width:110px">saves</th>
-          <th class="r" style="width:90px">at least $</th>
-          <th style="width:110px">effort</th>
-          <th class="r" style="width:80px">fix</th>
+          <th title="a wasteful pattern found in your sessions, with the fix under it">leak</th>
+          <th class="r" style="width:110px" title="tokens you would stop wasting if you applied the fix — an upper estimate">saves</th>
+          <th class="r" style="width:100px" title="what those tokens are worth at API prices — a proven minimum">at least $</th>
+          <th style="width:110px" title="how hard the fix is: paste = copy a line, habit = change how you work, restructure = reorganize sessions">effort</th>
+          <th class="r" style="width:80px" title="copies the ready-made fix text">fix</th>
         </tr>
       </thead>
       <tbody id="leaks-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
@@ -276,7 +277,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
       <thead>
         <tr>
           <th>project</th>
-          <th class="r nowrap" style="width:100px" title="the least this project cost in the window — a proven minimum, real bill is a bit higher">at least $</th>
+          <th class="r nowrap" style="width:100px" title="what this project's usage is worth at API prices — a proven minimum, not a bill">at least $</th>
           <th class="r nowrap" style="width:110px" title="tokens' worth of cost in the window">tokens</th>
           <th class="r nowrap" style="width:100px" title="share of context served from cache instead of being paid for again — higher is better">cache-hit</th>
           <th class="r nowrap" style="width:110px" title="spend change compared with the 30 days before this window">vs prior 30d</th>
@@ -397,12 +398,14 @@ function renderReceiver(o) {
   if (!dot || !chip) return;
   var live = !!(o && o.receiver_live);
   dot.className = live ? "dot" : "dot off";
+  chip.lastChild.textContent = live ? " exact costs: on" : " exact costs: off";
   chip.title = live
-    ? "OTLP receiver live on 127.0.0.1:" + (o.port || 4318) + " · " +
-      (o.events || 0) + " cost events stored · " + (o.days_exact_covered || 0) +
-      " day(s) exact-covered"
-    : "No receiver on 127.0.0.1:" + ((o && o.port) || 4318) +
-      " — costs stay a floor. Start one with `ccmetrics otel`.";
+    ? "The exact-cost listener is running on 127.0.0.1:" + (o.port || 4318) + " — " +
+      (o.events || 0) + " cost record(s) received, " + (o.days_exact_covered || 0) +
+      " day(s) fully priced with Anthropic's own numbers."
+    : "Optional: `ccmetrics otel` runs a small local listener that records Anthropic's " +
+      "own per-request costs, upgrading every figure from 'at least' to exact. " +
+      "It is off right now.";
 }
 
 // The chip states what the numbers on this page actually are, per data:
@@ -416,11 +419,11 @@ function renderConfidence(s) {
   chip.className = "chip" + (s.confidence === "exact" ? " exact"
     : s.confidence === "mixed" ? " mixed" : "");
   chip.title = s.confidence === "approximate"
-    ? "This is the least you were charged, worked out from the cache fields in your session files. No telemetry stream connected."
-    : "exact (OTEL) = Anthropic's own per-request cost, on days where telemetry "
+    ? "What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee."
+    : "exact = Anthropic's own per-request cost, on days where the listener "
       + "covered at least " + Math.round((ex.coverage_min || 0.95) * 100) + "% of turns ("
-      + (ex.days_covered || 0) + " day(s)). Other days only show what you paid at "
-      + "least; the two are never added together.";
+      + (ex.days_covered || 0) + " day(s)). Other days only show the proven minimum; "
+      + "the two are never added together.";
 }
 
 // ---------- summary + charts ----------
@@ -552,10 +555,14 @@ function drawSpend(series) {
   host.appendChild(s);
 
   clear(el("legend-spend"));
-  legendItem(el("legend-spend"), "var(--seq-line)", "what you paid at least (cache fields only)",
-             fmtUsd(sum(series, "floor_usd")));
+  legendItem(el("legend-spend"), "var(--seq-line)", "usage worth at least (at API prices)",
+             fmtUsd(sum(series, "floor_usd")),
+             "what this usage would cost at Anthropic's API list prices — a proven minimum. " +
+             "On a subscription plan your real bill is the flat fee; this measures how much you used, not what you were billed.");
   legendItem(el("legend-spend"), "var(--s2)", "estimated output (a range, never added in)",
-             fmtUsdRange([sum(series, "est_lo"), sum(series, "est_hi")]));
+             fmtUsdRange([sum(series, "est_lo"), sum(series, "est_hi")]),
+             "the replies the model typed — the logs undercount these tokens, so their cost can only be estimated from size, " +
+             "and it is shown as its own range instead of being mixed into the minimum.");
 }
 
 function sum(rows, key) {
@@ -571,11 +578,15 @@ function drawMix(t) {
   if (old) host.removeChild(old);
   var W = Math.max(320, host.clientWidth || 640), H = 58;
   var segs = [
-    { key: "cache read", val: t.cread, cls: "f1", swatch: "var(--s1)" },
-    { key: "cache write 5m", val: t.cw5m, cls: "f2", swatch: "var(--s2)" },
-    { key: "cache write 1h", val: t.cw1h, cls: "f3", swatch: "var(--s3)" },
+    { key: "cache read", val: t.cread, cls: "f1", swatch: "var(--s1)",
+      help: "your conversation replayed from memory each turn — charged at only 10% of normal price, so high volume here is normal and cheap" },
+    { key: "cache write 5m", val: t.cw5m, cls: "f2", swatch: "var(--s2)",
+      help: "context freshly saved to the 5-minute memory — costs 1.25× normal price the moment it is saved" },
+    { key: "cache write 1h", val: t.cw1h, cls: "f3", swatch: "var(--s3)",
+      help: "context freshly saved to the 1-hour memory — costs 2× normal price the moment it is saved" },
     { key: "output (est.)", val: (t.out_tokens_est ? (t.out_tokens_est[0] + t.out_tokens_est[1]) / 2 : 0),
-      cls: "f4", swatch: "var(--s4)" }
+      cls: "f4", swatch: "var(--s4)",
+      help: "the replies the model typed — size estimated from bytes because the logs undercount these tokens" }
   ];
   var total = 0;
   segs.forEach(function (g) { total += g.val || 0; });
@@ -616,12 +627,13 @@ function drawMix(t) {
   clear(lg);
   segs.forEach(function (g) {
     legendItem(lg, g.swatch, g.key, fmtTok(g.val) + " · " +
-               ((100 * (g.val || 0)) / total).toFixed(0) + "%");
+               ((100 * (g.val || 0)) / total).toFixed(0) + "%", g.help);
   });
 }
 
-function legendItem(host, color, label, value) {
+function legendItem(host, color, label, value, help) {
   var i = mk("div", "item");
+  if (help) i.title = help;
   var sw = mk("span", "swatch");
   sw.style.background = color;
   i.appendChild(sw);
@@ -648,7 +660,7 @@ function renderLeaks() {
 
     var nameCell = mk("td");
     nameCell.appendChild(mk("div", "leak-name", f.name));
-    var meta = f.project && !state.scope ? f.project : (f.period || "");
+    var meta = f.project && !state.scope ? (f.cwd || f.project) : (f.period || "");
     if (meta) nameCell.appendChild(mk("div", "fixline", meta));
     if (f.fix_text) {
       var pre = mk("div", "fixline", f.fix_text.split("\n").slice(0, 2).join("\n"));
@@ -724,11 +736,22 @@ function renderProjects() {
     return;
   }
   d.rows.forEach(function (r) {
-    var tr = mk("tr", "clickable");
-    tr.addEventListener("click", function () { setScope(r.project); });
+    var tr;
     var projCell = mk("td");
-    projCell.appendChild(mk("span", "proj-name", projName(r)));
-    projCell.appendChild(mk("span", "proj-path", projPath(r)));
+    if (r.ephemeral) {
+      tr = mk("tr");
+      tr.title = "Claude Code sessions that ran inside throwaway system temp folders " +
+        "(pytest scratch dirs, /tmp). The logs carry no pointer to the repo that " +
+        "created them, so they are grouped here instead of being guessed into a repo.";
+      projCell.appendChild(mk("span", "proj-name", "test & scratch runs"));
+      projCell.appendChild(mk("span", "proj-path",
+        r.eph_count + " throwaway temp folder(s) — grouped, not a real repo"));
+    } else {
+      tr = mk("tr", "clickable");
+      tr.addEventListener("click", function () { setScope(r.project); });
+      projCell.appendChild(mk("span", "proj-name", projName(r)));
+      projCell.appendChild(mk("span", "proj-path", projPath(r)));
+    }
     tr.appendChild(projCell);
     tr.appendChild(mk("td", "r num", r.floor_usd === null ? "unknown" : fmtUsd(r.floor_usd)));
     tr.appendChild(mk("td", "r num", fmtTok(r.equiv)));

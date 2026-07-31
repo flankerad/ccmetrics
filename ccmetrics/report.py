@@ -292,9 +292,9 @@ def _exact_lines(exact: dict | None) -> list[str]:
     confidence line v0.1.0 printed — nothing about the floor report changes."""
     if not exact or not exact.get("available"):
         return [
-            "        how sure: this is the least you were charged, worked out from "
-            "the cache fields in your session files "
-            "(run `ccmetrics otel --setup` for the exact figures)"
+            "        how sure: what this usage is worth at API prices, a proven "
+            "minimum from your session files — on a subscription your bill is the "
+            "flat fee (run `ccmetrics otel --setup` for the exact figures)"
         ]
     covered = exact["days_covered"]
     pct = int(round(exact["coverage_min"] * 100))
@@ -327,8 +327,8 @@ def _exact_lines(exact: dict | None) -> list[str]:
             f"{pct}% covered — so the report still says 'at least'"
         )
         lines.append(
-            "        how sure: this is the least you were charged (some telemetry "
-            "arrived, not enough to price a whole day)"
+            "        how sure: what this usage is worth at API prices, a proven "
+            "minimum (some telemetry arrived, not enough to price a whole day)"
         )
     return lines
 
