@@ -11,6 +11,7 @@ byte of message text):
     GET /api/findings[?project=]  ranked findings with fix text
     GET /api/usage[?project=]  usage per period / per model / per repo (no plan %)
     GET /api/live              R7 live tiles
+    GET /api/plan              real plan-limit %, only if `ccmetrics statusline` feeds it
     GET /api/constants         provenance table (every constant + source URL)
 
 Binding is hard-coded to 127.0.0.1: there is no flag that exposes this on a
@@ -551,6 +552,29 @@ def live_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     return payload
 
 
+def plan_payload(conn: sqlite3.Connection) -> dict:
+    """Latest plan-limit reading per window, or {"available": false}.
+
+    Fed only by the optional `ccmetrics statusline` hook. Nothing here is
+    derived from the session files — a plan percentage cannot be computed from
+    anything on this machine, so when the hook is off the card stays away
+    rather than showing a guess.
+    """
+    from .. import plan as plan_mod
+
+    windows = store.latest_plan_windows(conn)
+    if not windows:
+        return {"available": False, "windows": [], "setup_cmd": "ccmetrics statusline --setup"}
+    rows = plan_mod.snapshot_view(windows)
+    return {
+        "available": True,
+        "windows": rows,
+        "stale_after_hours": plan_mod.STALE_HOURS,
+        "source": "Claude Code's own statusline feed (rate_limits)",
+        "source_url": constants.STATUSLINE_DOC,
+    }
+
+
 def meta_payload(conn: sqlite3.Connection) -> dict:
     from .. import otel
 
@@ -635,6 +659,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(usage_payload(conn, project))
             elif path == "/api/live":
                 self._json(live_payload(conn, project))
+            elif path == "/api/plan":
+                self._json(plan_payload(conn))
             elif path == "/api/constants":
                 self._json({"constants": constants.provenance()})
             elif path == "/api/meta":

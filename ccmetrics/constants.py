@@ -18,6 +18,7 @@ CACHING_DOC = "https://docs.anthropic.com/en/docs/build-with-claude/prompt-cachi
 TOKEN_DOC = "https://docs.anthropic.com/en/docs/about-claude/glossary"
 MODELS_DOC = "https://platform.claude.com/docs/en/docs/about-claude/models/overview"
 MONITORING_DOC = "https://docs.claude.com/en/docs/claude-code/monitoring-usage"
+STATUSLINE_DOC = "https://code.claude.com/docs/en/statusline"
 
 
 def _e(value, source_url, as_of, note=None):
@@ -335,6 +336,48 @@ OTEL = {
     ),
 }
 
+# --- optional plan-limit feed (statusline hook, phase 5) ---
+#
+# The ONLY honest local source of "how much of my plan is used": Claude Code
+# hands its statusline command a JSON object on stdin, and for Claude.ai
+# subscribers that object carries `rate_limits`. Nothing here is ever computed
+# or guessed — a window we were not told about is simply absent.
+
+PLAN = {
+    "retention_days": _e(
+        90,
+        "PRD-build-a-brand-new.md#R5",
+        "2026-07-31",
+        "Plan snapshots kept 90 days. One tiny row per window per update, so "
+        "the horizon is generous without threatening the size cap.",
+    ),
+    "stale_hours": _e(
+        6,
+        STATUSLINE_DOC,
+        "2026-07-31",
+        "A snapshot older than 6 hours is not 'your plan right now': the 5-hour "
+        "window has rolled over by then. The console hides it; the dashboard "
+        "keeps showing it but labels the age.",
+    ),
+    "min_interval_seconds": _e(
+        20,
+        STATUSLINE_DOC,
+        "2026-07-31",
+        "The statusline command runs on every update. Snapshots closer together "
+        "than this are skipped, so a busy session writes ~3 rows a minute "
+        "instead of hundreds.",
+    ),
+    "windows": _e(
+        ["five_hour", "seven_day"],
+        STATUSLINE_DOC,
+        "2026-07-31",
+        "Rate-limit windows Claude Code documents on stdin (rate_limits."
+        "five_hour / .seven_day, each with used_percentage 0-100 and resets_at "
+        "unix seconds). Any further window it starts sending is stored too, "
+        "under the name Claude Code gave it — never invented here.",
+    ),
+}
+
 # --- effort tiers for finding ranking (PRD R4b) — wave B consumes these ---
 
 EFFORT_TIERS = {
@@ -614,6 +657,7 @@ def provenance() -> list[dict]:
         ("context_window", CONTEXT_WINDOWS),
         ("live", LIVE),
         ("otel", OTEL),
+        ("plan", PLAN),
     ):
         for name, entry in table.items():
             out.append({"group": group, "name": name, **entry})

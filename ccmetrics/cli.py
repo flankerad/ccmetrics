@@ -62,6 +62,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ot.add_argument("--status", action="store_true", help="print what has arrived so far, then exit")
 
+    sl = sub.add_parser(
+        "statusline",
+        help="optional: Claude Code's status line command — reads its session JSON "
+        "on stdin, records your real plan %, prints one line",
+    )
+    sl.add_argument(
+        "--setup",
+        action="store_true",
+        help="print the settings.json fragment that turns this on and exit "
+        "(prints only, never edits your files)",
+    )
+
     sub.add_parser("constants", help="print every constant with its source URL")
     det = sub.add_parser("detectors", help="re-run the leak detectors over the store")
     det.add_argument("--json", action="store_true", help="print findings as JSON")
@@ -118,6 +130,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "constants":
         print(json.dumps(constants.provenance(), indent=2))
+        return 0
+    if args.cmd == "statusline":
+        # Runs on every status-line redraw, so it never opens the store unless
+        # the payload actually carries plan data, and it never raises: a
+        # failing statusline command is visible in the user's editor.
+        from . import plan as plan_mod
+
+        if args.setup:
+            print(plan_mod.setup_text())  # print-only: no file is ever written
+            return 0
+        try:
+            raw = sys.stdin.read()
+        except Exception:
+            raw = ""
+        try:
+            print(plan_mod.run(raw))
+        except Exception:
+            print("ccmetrics")
         return 0
     if args.cmd == "otel" and args.setup:
         from . import otel
@@ -209,7 +239,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         size = store.db_path().stat().st_size if store.db_path().exists() else None
-        print(report.render(s, projects, db_size=size, found=found))
+        print(
+            report.render(
+                s, projects, db_size=size, found=found,
+                plan=store.latest_plan_windows(conn),
+            )
+        )
         return 0
     finally:
         conn.close()

@@ -270,6 +270,18 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   <div class="warn" id="live-warning" style="display:none"></div>
 </section>
 
+<!-- plan limits — only ever present when `ccmetrics statusline` feeds them -->
+<section class="card" id="plan-card" style="display:none">
+  <div class="card-head">
+    <span class="card-title" data-help="your real plan usage, read from Claude Code's own statusline feed — it shows up only if you turned it on with `ccmetrics statusline --setup`. These are shares of your plan, straight from Anthropic; ccmetrics cannot see them without that hook, and never estimates one.">plan</span>
+    <span class="spacer"></span>
+    <span class="scope" id="plan-source">&nbsp;</span>
+  </div>
+  <div class="card-body">
+    <div id="plan-rows"></div>
+  </div>
+</section>
+
 <!-- 30d spend -->
 <section class="card">
   <div class="card-head">
@@ -1198,6 +1210,65 @@ function ephChildRow(c) {
   return tr;
 }
 
+// ---------- plan limits (statusline feed) ----------
+// Every number on this card arrived from Anthropic through Claude Code's own
+// statusline JSON. There is no fallback and no estimate: without the hook the
+// whole card stays hidden, because a plan % cannot be computed from anything
+// on this machine.
+function fmtAge(sec) {
+  if (sec === null || sec === undefined) return "unknown age";
+  if (sec < 90) return "just now";
+  if (sec < 5400) return Math.round(sec / 60) + " min ago";
+  if (sec < 172800) return Math.round(sec / 3600) + " h ago";
+  return Math.round(sec / 86400) + " d ago";
+}
+var DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+function fmtReset(iso) {
+  if (!iso) return "";
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  var hh = String(d.getHours()).padStart(2, "0");
+  var mm = String(d.getMinutes()).padStart(2, "0");
+  return DAYS[d.getDay()] + " " + hh + ":" + mm;
+}
+function planColor(pct) {
+  if (pct === null || pct === undefined) return "var(--muted)";
+  if (pct >= 90) return "var(--s2)";
+  if (pct >= 75) return "var(--s4)";
+  return "var(--s1)";
+}
+
+function renderPlan(d) {
+  var card = el("plan-card");
+  if (!card) return;
+  if (!d || !d.available || !d.windows || !d.windows.length) {
+    card.style.display = "none";
+    return;
+  }
+  card.style.display = "";
+  el("plan-source").textContent = "from Claude Code's own statusline feed";
+  var host = el("plan-rows");
+  clear(host);
+  d.windows.forEach(function (w) {
+    var row = mk("div", "repo-row");
+    var head = mk("div", "repo-head");
+    var name = mk("span", "proj-name", w.label);
+    attachHelp(name, "how much of your " + w.label +
+      " plan window Anthropic says you have used" +
+      (w.resets_at ? ", and when that window starts again" : "") +
+      ". Read from Claude Code, never worked out here.");
+    head.appendChild(name);
+    head.appendChild(mk("span", "val num",
+      (w.used_pct === null || w.used_pct === undefined ? "—" : w.used_pct.toFixed(0) + "%") +
+      (w.resets_at ? " · resets " + fmtReset(w.resets_at) : "")));
+    row.appendChild(head);
+    row.appendChild(mk("div", "proj-path",
+      "read " + fmtAge(w.age_seconds) + (w.stale ? " · stale, your live figure has moved on" : "")));
+    row.appendChild(shareBar(w.used_pct, w.stale ? "var(--muted)" : planColor(w.used_pct)));
+    host.appendChild(row);
+  });
+}
+
 // ---------- live tiles (R7) ----------
 function setTile(id, value, sub, unknown) {
   el(id + "-value").textContent = value;
@@ -1281,6 +1352,9 @@ function pollLive() {
   // same cadence for the receiver dot: a receiver can be started or stopped
   // while the page is open.
   get("/api/meta").then(function (m) { renderReceiver(m.otel); }).catch(function () {});
+  // and for the plan card: the statusline hook writes a fresh snapshot every
+  // few seconds while a session is running, or never at all.
+  get("/api/plan").then(renderPlan).catch(function () {});
 }
 
 // ---------- wiring ----------

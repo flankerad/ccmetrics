@@ -333,11 +333,36 @@ def _exact_lines(exact: dict | None) -> list[str]:
     return lines
 
 
+def plan_line(windows: dict | None) -> str | None:
+    """One PLAN line from the statusline feed, or None.
+
+    Only fresh readings are printed: a snapshot older than PLAN.stale_hours has
+    outlived the 5-hour window it describes, and a stale percentage shown
+    without ceremony is worse than no percentage at all.
+    """
+    from . import plan as plan_mod
+
+    if not windows:
+        return None
+    fresh = [w for w in plan_mod.snapshot_view(windows) if not w["stale"] and w["used_pct"] is not None]
+    if not fresh:
+        return None
+    bits = []
+    for w in fresh:
+        txt = f"{w['short_label']} {w['used_pct']:.0f}%"
+        reset = plan_mod.fmt_reset(w["resets_at"])
+        if reset:
+            txt += f" (resets {reset})"
+        bits.append(txt)
+    return "PLAN    " + " · ".join(bits)
+
+
 def render(
     s: dict,
     projects: list[dict] | None = None,
     db_size: int | None = None,
     found: list[dict] | None = None,
+    plan: dict | None = None,
 ) -> str:
     t = s["totals"]
     scope = s["project"] or "all projects"
@@ -364,6 +389,14 @@ def render(
     )
     lines.extend(_exact_lines(s.get("exact")))
     lines.append("")
+
+    # the only real plan-limit figure available locally, and only when the
+    # optional statusline hook has fed it recently (see `ccmetrics statusline`)
+    pl = plan_line(plan)
+    if pl:
+        lines.append(pl)
+        lines.append("        your plan, straight from Anthropic via Claude Code's status line")
+        lines.append("")
 
     lines.append(
         f"TOKENS  {_mix_bar(t['cread'], t['cw5m'], t['cw1h'])}  "

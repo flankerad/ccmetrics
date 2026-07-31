@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import constants
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 DEFAULT_DB_SUBPATH = Path(".local/share/ccmetrics/state.db")
 
@@ -148,6 +148,22 @@ CREATE TABLE IF NOT EXISTS otel_costs (
 
 CREATE INDEX IF NOT EXISTS otel_costs_day ON otel_costs (project, ts);
 CREATE INDEX IF NOT EXISTS otel_costs_session ON otel_costs (session_id);
+
+-- v4 (phase 5): plan-limit snapshots fed by `ccmetrics statusline`, the optional
+-- hook Claude Code calls with its own session JSON. One row per window per
+-- snapshot -- a percentage, a reset time and the session it came from. The
+-- fields are whitelisted at the edge (plan.extract); the incoming JSON is never
+-- stored wholesale, and it carries no prompt text to begin with.
+CREATE TABLE IF NOT EXISTS plan_snapshots (
+    ts         TEXT NOT NULL,
+    window_key TEXT NOT NULL,
+    used_pct   REAL,
+    resets_at  TEXT,
+    session_id TEXT,
+    PRIMARY KEY (ts, window_key)
+);
+
+CREATE INDEX IF NOT EXISTS plan_snapshots_window ON plan_snapshots (window_key, ts);
 
 CREATE TABLE IF NOT EXISTS findings (
     id           INTEGER PRIMARY KEY,
@@ -515,6 +531,76 @@ def otel_stats(conn: sqlite3.Connection) -> dict:
             "SELECT COUNT(*) FROM daily WHERE exact_coverage >= ?", (EXACT_COVERAGE_MIN,)
         ).fetchone()[0],
     }
+
+
+# --- plan snapshots (phase 5, statusline hook) ------------------------------
+
+PLAN_RETENTION_DAYS = constants.value(constants.PLAN["retention_days"])
+PLAN_MIN_INTERVAL_S = constants.value(constants.PLAN["min_interval_seconds"])
+
+
+def last_plan_ts(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute("SELECT MAX(ts) t FROM plan_snapshots").fetchone()
+    return row["t"] if row else None
+
+
+def insert_plan_snapshot(
+    conn: sqlite3.Connection, ts: str, windows: dict, session_id: str | None = None
+) -> int:
+    """Store one snapshot: one row per rate-limit window Claude Code reported.
+
+    `windows` is already whitelisted by plan.extract — {name: {used_pct,
+    resets_at}} and nothing else. INSERT OR REPLACE keyed on (ts, window) makes
+    a re-run with the same payload a no-op rather than a duplicate.
+    """
+    if not windows:
+        return 0
+    rows = [
+        (ts, name, w.get("used_pct"), w.get("resets_at"), session_id)
+        for name, w in sorted(windows.items())
+    ]
+    conn.executemany(
+        "INSERT OR REPLACE INTO plan_snapshots(ts,window_key,used_pct,resets_at,session_id) "
+        "VALUES(?,?,?,?,?)",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def latest_plan_windows(conn: sqlite3.Connection) -> dict:
+    """The newest snapshot of each window: {window: {used_pct, resets_at, ts}}.
+
+    Each window is carried independently — Claude Code may report one and not
+    the other — so each keeps its own timestamp and its own age.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT p.window_key, p.used_pct, p.resets_at, p.ts FROM plan_snapshots p "
+            "JOIN (SELECT window_key, MAX(ts) mts FROM plan_snapshots GROUP BY window_key) m "
+            "ON m.window_key = p.window_key AND m.mts = p.ts"
+        ).fetchall()
+    except sqlite3.OperationalError:  # store predates the table
+        return {}
+    return {
+        r["window_key"]: {
+            "used_pct": r["used_pct"],
+            "resets_at": r["resets_at"],
+            "ts": r["ts"],
+        }
+        for r in rows
+    }
+
+
+def prune_plan_snapshots(conn: sqlite3.Connection, now_iso: str, days: int | None = None) -> int:
+    import datetime as _dt
+
+    days = PLAN_RETENTION_DAYS if days is None else days
+    now = _dt.datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+    cutoff = (now - _dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cur = conn.execute("DELETE FROM plan_snapshots WHERE ts < ?", (cutoff,))
+    conn.commit()
+    return cur.rowcount
 
 
 # --- findings (PRD R3/R4b, wave B) ------------------------------------------

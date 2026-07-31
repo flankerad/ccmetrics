@@ -43,6 +43,7 @@ Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/
 ccmetrics        # inside a repo → that repo's summary: top leaks + paste-ready fixes
 ccmetrics dash   # anywhere → global dashboard in your browser, per-project drill-down
 ccmetrics otel   # optional → local OTEL receiver (127.0.0.1:4318) for exact costs
+ccmetrics statusline --setup   # optional → your real plan % in the status line and the dash
 ```
 
 The dashboard glance view, zero clicks: live session tiles (burn rate, context %, cache-hit, spend — a runaway session gets flagged *while it's running*), 30-day spend trend, token mix, top leaks ranked by `tokens saved ÷ effort` each with a copy button, and a per-project table.
@@ -61,6 +62,16 @@ uv tool install ccmetrics    # or: pipx install ccmetrics
 ```
 
 One install covers every project on the machine: it reads all of `~/.claude/projects/`, keeps per-project data separate, and rolls it up globally in the dash.
+
+### Plan limits (optional)
+
+How much of your Pro/Max plan is gone is **not** in any file on your machine — it lives on Anthropic's servers. So ccmetrics never estimates it. There is exactly one honest local source: Claude Code hands its status-line command its own session JSON, and for subscribers that JSON carries `rate_limits` — the same percentages `/usage` shows.
+
+```bash
+ccmetrics statusline --setup   # prints the ~/.claude/settings.json fragment; edits nothing
+```
+
+Turn it on and your status line becomes `Opus · $0.31 · wk 62% · 5h 31% · ctx 24%`, while `ccmetrics dash` grows a **PLAN** card and `ccmetrics` prints a PLAN line. Only the percentage, the reset time and the session id are stored (90 days, metadata as always); readings older than 6 hours are labelled stale rather than shown as current. Leave it off and nothing changes — the card and the line simply never appear.
 
 ## The 12 leak detectors
 
@@ -98,11 +109,12 @@ One honesty rule: the `CLAUDE.md` lines and habits are safe to paste as-is; the 
 - Dollar figures are a **floor** computed from accurate cache fields × published Anthropic multipliers. Output cost appears as a clearly-labelled byte-derived *range*, never silently summed in.
 - Cost confidence is a visible UI state: approximate (JSONL-only) vs exact (optional OTEL upgrade).
 - Every pricing constant and detector threshold lives in one versioned lookup file, each entry with a source URL.
+- Plan-limit percentages are shown only when Claude Code itself reports them through the status-line hook, always with their age — never derived, never guessed.
 - Anything not derivable is shown as unknown — wrong-but-confident is the failure mode this tool exists to avoid.
 
 ## Status
 
-**v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, localhost dashboard, and optional OTEL exact costs work end-to-end (70-test suite green; cold ingest of a 522 MB corpus in ~5 s). Next: PyPI release.
+**v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, localhost dashboard, and optional OTEL exact costs work end-to-end (76-test suite green; cold ingest of a 522 MB corpus in ~5 s). Next: PyPI release.
 
 ## License
 
