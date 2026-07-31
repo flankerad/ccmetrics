@@ -22,7 +22,7 @@ def test_report_contains_floor_dollar_figure(conn, cc_env):
     s = report.summary(conn, "-Users-report-proj")
     out = report.render(s, None, found=[])
     assert "SPEND" in out
-    assert "floor" in out
+    assert "at least" in out
     assert s["floor_usd"] > 0
     assert s["floor_priced"] is True
 

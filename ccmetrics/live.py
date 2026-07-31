@@ -312,7 +312,7 @@ def _context(st: _State) -> dict:
             "window": None,
             "pct": None,
             "model": t["model"],
-            "reason": "context window unknown for this model (constants.py)",
+            "reason": "we do not know this model's context size (constants.py)",
         }
     return {"tokens": tokens, "window": window, "pct": 100.0 * tokens / window,
             "model": t["model"], "reason": None}
@@ -346,7 +346,7 @@ def _session_tiles(st: _State, now: float) -> dict:
         },
         "warning": st.spike,
         "poll_seconds": POLL_SECONDS,
-        "confidence": "approximate · JSONL-only",
+        "confidence": "at least this much · from session files",
     }
 
 
@@ -374,6 +374,6 @@ def tiles(conn=None, project: str | None = None, projects_dir: Path | None = Non
             "project": proj,
             "poll_seconds": POLL_SECONDS,
             "stale_after_seconds": STALE_SECONDS,
-            "reason": "active file carries no assistant turns yet",
+            "reason": "the open session has no answered turns yet",
         }
     return _session_tiles(st, now)

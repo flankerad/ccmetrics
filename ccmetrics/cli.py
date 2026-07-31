@@ -94,20 +94,21 @@ def _render_live(t: dict) -> str:
         else "unknown"
     )
     if burn["floor_usd_per_hour"] is not None:
-        rate += f" · {costs.fmt_usd(burn['floor_usd_per_hour'])}/hr floor"
+        rate += f" · at least {costs.fmt_usd(burn['floor_usd_per_hour'])}/hr"
     ctx_txt = f"{ctx['pct']:.0f}%" if ctx["pct"] is not None else "unknown"
     hit = t["cache_hit"]
     line = (
         f"LIVE  burn {rate} │ ctx {ctx_txt} │ "
         f"cache-hit {'unknown' if hit is None else f'{hit*100:.0f}%'} │ "
-        f"session {costs.fmt_usd(t['floor_usd'])} (floor)"
+        f"session at least {costs.fmt_usd(t['floor_usd'])}"
     )
     lines = [line, f"      {t['turns']} turns · {t['project']} · {t['model']}"]
     w = t.get("warning")
     if w:
         lines.append(
-            f"      ⚠ detector 11: this turn burned {w['over_by']}x its session p90 "
-            f"({costs.fmt_tokens(w['equiv_tokens'])} vs {costs.fmt_tokens(w['p90_equiv_tokens'])})"
+            f"      ⚠ this turn cost more than almost every turn before it in this "
+            f"session ({costs.fmt_tokens(w['equiv_tokens'])} vs the usual max "
+            f"{costs.fmt_tokens(w['p90_equiv_tokens'])})"
         )
     return "\n".join(lines)
 

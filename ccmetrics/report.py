@@ -1,7 +1,7 @@
 """Console renderer (R6 surface 1): `ccmetrics` inside a repo.
 
-Cost confidence is always visible. The floor is always labelled "floor"; the
-output estimate is always a separate range; anything not derivable prints
+Cost confidence is always visible. The floor is always written as "at least $X";
+the output estimate is always a separate range; anything not derivable prints
 "unknown" and is never filled in with a guess.
 """
 
@@ -241,7 +241,7 @@ def _evidence(f: dict) -> dict:
 def render_leaks(found: list[dict], scoped: bool, indent: str = "  ") -> list[str]:
     lines: list[str] = []
     if not found:
-        lines.append(f"{indent}nothing over threshold in this window.")
+        lines.append(f"{indent}nothing worth flagging in this window.")
         return lines
     for i, f in enumerate(found, 1):
         ev = _evidence(f)
@@ -278,10 +278,13 @@ def _mix_bar(read: int, w5: int, w1: int, width: int = 24) -> str:
 def confidence_label(exact: dict | None) -> str:
     """One phrase for the whole window's cost confidence (console chip + dash)."""
     if not exact or not exact.get("available"):
-        return "≈ floor · JSONL-only"
+        return "at least this much · from session files"
     if exact["mode"] == "exact":
         return "exact (OTEL)"
-    return f"mixed · exact (OTEL) on {exact['days_covered']}d, ≈ floor elsewhere"
+    return (
+        f"mixed · exact (OTEL) on {exact['days_covered']}d, "
+        f"at-least figures elsewhere"
+    )
 
 
 def _exact_lines(exact: dict | None) -> list[str]:
@@ -289,8 +292,9 @@ def _exact_lines(exact: dict | None) -> list[str]:
     confidence line v0.1.0 printed — nothing about the floor report changes."""
     if not exact or not exact.get("available"):
         return [
-            "        cost confidence: approximate · JSONL-only, cache fields only "
-            "(no OTEL — run `ccmetrics otel --setup` for exact costs)"
+            "        how sure: this is the least you were charged, worked out from "
+            "the cache fields in your session files "
+            "(run `ccmetrics otel --setup` for the exact figures)"
         ]
     covered = exact["days_covered"]
     pct = int(round(exact["coverage_min"] * 100))
@@ -301,30 +305,30 @@ def _exact_lines(exact: dict | None) -> list[str]:
             f"Anthropic's own per-request cost, all {covered} covered day(s)"
         )
         lines.append(
-            f"        cost confidence: exact (OTEL) · the floor above "
-            f"({costs.fmt_usd(exact['floor_usd_covered'])} for the same days) is "
-            f"the lower bound it beat"
+            f"        how sure: exact (OTEL) · without it we could only say you "
+            f"paid at least {costs.fmt_usd(exact['floor_usd_covered'])} on the "
+            f"same days"
         )
         return lines
     if covered:
         lines.append(
             f"        {costs.fmt_usd(exact['exact_usd'])} exact (OTEL) for "
-            f"{covered} day(s) · ≈ "
+            f"{covered} day(s) · at least "
             f"{costs.fmt_usd(exact['floor_usd_uncovered']) if exact['floor_uncovered_priced'] else 'unknown'}"
-            f" floor for the other {exact['days_uncovered']}"
+            f" for the other {exact['days_uncovered']}"
         )
         lines.append(
-            "        cost confidence: mixed — the two numbers above cover "
-            "different days and are never summed silently"
+            "        how sure: mixed — the two numbers above cover different days, "
+            "so they are never added together"
         )
     else:
         lines.append(
-            f"        {exact['events']:,} OTEL events received but no day reached "
-            f"{pct}% coverage — the report stays a floor"
+            f"        {exact['events']:,} OTEL events received, but no day is "
+            f"{pct}% covered — so the report still says 'at least'"
         )
         lines.append(
-            "        cost confidence: approximate · JSONL-only (partial OTEL, "
-            "not enough to price a day)"
+            "        how sure: this is the least you were charged (some telemetry "
+            "arrived, not enough to price a whole day)"
         )
     return lines
 
@@ -343,7 +347,7 @@ def render(
 
     priced_turns = sum(m["turns"] for m in s["per_model"] if m["priced"])
     coverage = costs.fmt_pct(priced_turns, t["turns"])
-    floor_txt = costs.fmt_usd(s["floor_usd"]) + " floor"
+    floor_txt = "at least " + costs.fmt_usd(s["floor_usd"])
     if not s["floor_priced"]:
         floor_txt += f"  ({coverage} of turns priced — see MODELS)"
     est = s["est_output_usd"]
@@ -352,10 +356,12 @@ def render(
     if not s["floor_priced"]:
         lines.append(
             f"        unknown  {costs.fmt_tokens(s['floor_unknown_equiv_tokens'])} "
-            f"billable-equiv input tokens on models with no rate in constants.py "
+            f"tokens on models with no price listed in constants.py "
             f"(never guessed)"
         )
-    lines.append(f"        + est. output {est_txt}   (range, never added to the floor)")
+    lines.append(
+        f"        + est. output {est_txt}   (a range, never added to the number above)"
+    )
     lines.extend(_exact_lines(s.get("exact")))
     lines.append("")
 
@@ -366,7 +372,7 @@ def render(
     )
     hit = s["cache_hit"]
     lines.append(
-        f"        billable-equiv {costs.fmt_tokens(s['billable_equiv'])} · "
+        f"        {costs.fmt_tokens(s['billable_equiv'])} tokens' worth of cost · "
         f"cache-hit {'unknown' if hit is None else f'{hit*100:.0f}%'} · "
         f"est. output {costs.fmt_tokens(costs.output_token_range(t['out_bytes'])[0])}–"
         f"{costs.fmt_tokens(costs.output_token_range(t['out_bytes'])[1])} tok"
@@ -379,7 +385,7 @@ def render(
     lines.append("")
 
     if s["per_model"]:
-        lines.append("MODELS  turns    cache-read   write-5m    write-1h    floor")
+        lines.append("MODELS  turns    cache-read   write-5m    write-1h   at least $")
         for m in sorted(s["per_model"], key=lambda d: d["cread"], reverse=True):
             lines.append(
                 f"        {m['turns']:>6}  {costs.fmt_tokens(m['cread']):>10}  "
@@ -389,14 +395,14 @@ def render(
         lines.append("")
 
     if projects:
-        lines.append("TOP PROJECTS (by billable-equivalent input tokens)")
+        lines.append("TOP PROJECTS (by tokens' worth of input cost)")
         for i, p in enumerate(projects, 1):
             lines.append(
                 f"  {i}. {costs.fmt_tokens(p['equiv']):>8}  {p['turns']:>6} turns  {p['project']}"
             )
         lines.append("")
 
-    lines.append("TOP LEAKS (ranked by billable-equivalent tokens saved / effort)")
+    lines.append("TOP LEAKS (ranked by tokens saved vs how hard the fix is)")
     lines.extend(render_leaks(found or [], scoped=s["project"] is not None))
     lines.append("run `ccmetrics --all-leaks` for every finding, `ccmetrics constants` for sources")
     if db_size is not None:

@@ -174,8 +174,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   <span class="scope" id="scope-label">all projects · last 30 days</span>
   <button class="link" id="back" style="display:none">&larr; back to all projects</button>
   <span class="spacer"></span>
-  <span class="chip" id="otel-chip" title="Optional OTLP receiver on 127.0.0.1:4318 (ccmetrics otel). Off means costs stay a floor."><span class="dot off" id="otel-dot"></span> receiver</span>
-  <span class="chip" id="confidence" title="Cost is a documented lower bound derived from cache fields only (PRD R4). No OTEL stream present.">&approx; floor &middot; JSONL-only</span>
+  <span class="chip" id="otel-chip" title="Optional OTLP receiver on 127.0.0.1:4318 (ccmetrics otel). Off means costs stay an 'at least' number."><span class="dot off" id="otel-dot"></span> receiver</span>
+  <span class="chip" id="confidence" title="This is the least you were charged, worked out from the cache fields in your session files. No telemetry stream connected.">at least this much &middot; from session files</span>
   <button class="ghost" id="theme">theme</button>
 </header>
 
@@ -203,7 +203,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
       <div class="sub num" id="tile-cache-sub">&nbsp;</div>
     </div>
     <div class="tile" id="tile-spend">
-      <div class="label">session floor</div>
+      <div class="label">session cost</div>
       <div class="value num" id="tile-spend-value">&mdash;</div>
       <div class="sub num" id="tile-spend-sub">&nbsp;</div>
     </div>
@@ -241,7 +241,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <section class="card">
   <div class="card-head">
     <span class="card-title">top leaks</span>
-    <span class="scope">ranked by billable-equivalent tokens saved &divide; effort</span>
+    <span class="scope">ranked by tokens saved vs how hard the fix is</span>
     <span class="spacer"></span>
     <button class="link" id="all-leaks">show all</button>
   </div>
@@ -252,7 +252,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
           <th style="width:22px"></th>
           <th>leak</th>
           <th class="r" style="width:110px">saves</th>
-          <th class="r" style="width:90px">floor $</th>
+          <th class="r" style="width:90px">at least $</th>
           <th style="width:110px">effort</th>
           <th class="r" style="width:80px">fix</th>
         </tr>
@@ -273,8 +273,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
       <thead>
         <tr>
           <th>project</th>
-          <th class="r" style="width:90px">floor $</th>
-          <th class="r" style="width:110px">billable tok</th>
+          <th class="r" style="width:90px">at least $</th>
+          <th class="r" style="width:110px">tokens</th>
           <th class="r" style="width:90px">cache-hit</th>
           <th class="r" style="width:100px">vs prior 30d</th>
           <th style="width:230px">top leak</th>
@@ -407,16 +407,17 @@ function renderReceiver(o) {
 function renderConfidence(s) {
   var chip = el("confidence");
   if (!chip) return;
-  var label = s.confidence_label || "≈ floor · JSONL-only";
+  var label = s.confidence_label || "at least this much · from session files";
   var ex = s.exact || {};
   chip.textContent = label;
   chip.className = "chip" + (s.confidence === "exact" ? " exact"
     : s.confidence === "mixed" ? " mixed" : "");
   chip.title = s.confidence === "approximate"
-    ? "Cost is a documented lower bound derived from cache fields only (PRD R4). No OTEL stream present."
+    ? "This is the least you were charged, worked out from the cache fields in your session files. No telemetry stream connected."
     : "exact (OTEL) = Anthropic's own per-request cost, on days where telemetry "
       + "covered at least " + Math.round((ex.coverage_min || 0.95) * 100) + "% of turns ("
-      + (ex.days_covered || 0) + " day(s)). Other days stay a floor; the two are never summed.";
+      + (ex.days_covered || 0) + " day(s)). Other days only show what you paid at "
+      + "least; the two are never added together.";
 }
 
 // ---------- summary + charts ----------
@@ -424,22 +425,23 @@ function renderSummary() {
   var d = state.summary;
   if (!d) return;
   var s = d.spend, t = d.tokens;
-  var head = fmtUsd(s.floor_usd) + " floor";
+  var head = "at least " + fmtUsd(s.floor_usd);
   if (!s.floor_priced) head += " + unknown";
   head += "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
   var ex = s.exact || {};
   if (ex.available && ex.days_covered) {
     head = fmtUsd(ex.exact_usd) + " exact (OTEL)"
       + (ex.mode === "mixed"
-          ? " on " + ex.days_covered + "d  ·  ≈ " + fmtUsd(ex.floor_usd_uncovered)
-            + " floor on " + ex.days_uncovered + "d"
-          : "  ·  ≈ " + fmtUsd(ex.floor_usd_covered) + " floor, same days")
+          ? " on " + ex.days_covered + "d  ·  at least " + fmtUsd(ex.floor_usd_uncovered)
+            + " on the other " + ex.days_uncovered + "d"
+          : "  ·  without it we could only say at least " + fmtUsd(ex.floor_usd_covered)
+            + ", same days")
       + "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
   }
   renderConfidence(s);
   el("spend-headline").textContent = head;
   el("mix-headline").textContent =
-    fmtTok(t.billable_equiv) + " billable-equivalent input tokens · cache-hit " +
+    fmtTok(t.billable_equiv) + " tokens' worth of input cost · cache-hit " +
     fmtPct(t.cache_hit) + " · " + d.totals.turns.toLocaleString("en-US") + " turns · " +
     d.totals.sessions.toLocaleString("en-US") + " sessions";
   drawSpend(d.series);
@@ -455,7 +457,7 @@ function drawSpend(series) {
   var padL = 46, padR = 12, padT = 12, padB = 22;
   var iw = W - padL - padR, ih = H - padT - padB;
   var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
-                       "aria-label": "daily spend floor with estimated output band, last 30 days" });
+                       "aria-label": "daily spend, at least this much, with the estimated output range, last 30 days" });
 
   var n = series.length;
   var maxV = 0;
@@ -522,9 +524,9 @@ function drawSpend(series) {
     mark.setAttribute("opacity", 1);
     clear(tip);
     tip.appendChild(mk("div", "t-date", fmtDate(p.date) + " · " + p.turns + " turns"));
-    tip.appendChild(row("floor", p.floor_usd === null ? "unknown" : fmtUsd(p.floor_usd)));
+    tip.appendChild(row("at least", p.floor_usd === null ? "unknown" : fmtUsd(p.floor_usd)));
     tip.appendChild(row("est. output", fmtUsdRange([p.est_lo, p.est_hi])));
-    tip.appendChild(row("billable tok", fmtTok(p.equiv)));
+    tip.appendChild(row("tokens", fmtTok(p.equiv)));
     tip.appendChild(row("cache read", fmtTok(p.cread)));
     tip.style.display = "block";
     var hostRect = host.getBoundingClientRect();
@@ -547,9 +549,9 @@ function drawSpend(series) {
   host.appendChild(s);
 
   clear(el("legend-spend"));
-  legendItem(el("legend-spend"), "var(--seq-line)", "spend floor (cache fields only)",
+  legendItem(el("legend-spend"), "var(--seq-line)", "what you paid at least (cache fields only)",
              fmtUsd(sum(series, "floor_usd")));
-  legendItem(el("legend-spend"), "var(--s2)", "est. output band (never summed into the floor)",
+  legendItem(el("legend-spend"), "var(--s2)", "estimated output (a range, never added in)",
              fmtUsdRange([sum(series, "est_lo"), sum(series, "est_hi")]));
 }
 
@@ -633,7 +635,7 @@ function renderLeaks() {
   el("all-leaks").textContent = state.allLeaks
     ? "show top 3" : "show all (" + state.findings.length + ")";
   if (!rows.length) {
-    var tr = mk("tr"), td = mk("td", "empty", "nothing over threshold in this window.");
+    var tr = mk("tr"), td = mk("td", "empty", "nothing worth flagging in this window.");
     td.setAttribute("colspan", "6"); tr.appendChild(td); body.appendChild(tr);
     return;
   }
@@ -759,7 +761,7 @@ function renderLive(d) {
   var b = d.burn;
   setTile("tile-burn",
     b.floor_usd_per_hour !== null ? fmtUsd(b.floor_usd_per_hour) + "/hr" : fmtTok(b.equiv_tokens_per_hour) + " tok/hr",
-    fmtTok(b.equiv_tokens_per_hour) + " billable tok/hr · " + b.turns + " turns",
+    fmtTok(b.equiv_tokens_per_hour) + " tok/hr · " + b.turns + " turns",
     b.equiv_tokens_per_hour === null);
 
   var c = d.context;
@@ -775,18 +777,26 @@ function renderLive(d) {
     d.cache_hit === null);
 
   setTile("tile-spend", fmtUsd(d.floor_usd),
-    d.est_output_usd ? "+ est. output " + fmtUsdRange(d.est_output_usd) : "floor only",
+    d.est_output_usd
+      ? "at least · + est. output " + fmtUsdRange(d.est_output_usd)
+      : "at least this much",
     d.floor_usd === null);
 
   var w = el("live-warning");
   if (d.warning) {
     clear(w);
-    var strong = mk("b", null, "runaway warning · detector 11 — ");
+    var strong = mk("b", null, "runaway warning — ");
     w.appendChild(strong);
     w.appendChild(document.createTextNode(
-      "this turn burned " + d.warning.over_by + "× the p90 of its own session (" +
-      fmtTok(d.warning.equiv_tokens) + " vs " + fmtTok(d.warning.p90_equiv_tokens) +
-      " billable-equivalent tokens over " + d.warning.preceding_turns + " preceding turns)."));
+      "this turn cost more than almost every turn before it in this session (" +
+      fmtTok(d.warning.equiv_tokens) + " vs the usual max " +
+      fmtTok(d.warning.p90_equiv_tokens) + ", over " +
+      d.warning.preceding_turns + " earlier turns)."));
+    // the audit detail stays available, out of the headline sentence
+    w.title = "detector 11 · " + d.warning.equiv_tokens + " vs p90 " +
+      d.warning.p90_equiv_tokens + " billable-equivalent tokens (" +
+      d.warning.over_by + "×) over the " + d.warning.preceding_turns +
+      " preceding turns of this session";
     w.style.display = "";
   } else {
     w.style.display = "none";

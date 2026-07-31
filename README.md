@@ -19,10 +19,10 @@
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
 ```
-┌ LIVE ── burn 12%/hr │ ctx 61% │ cache-hit 94% │ session $0.83 (floor) ┐
-SPEND 30d  ▂▃▅▇▅▆█   $41.20 floor + $6–9 est. output     TOKEN MIX ██████░░
+┌ LIVE ── burn 12%/hr │ ctx 61% │ cache-hit 94% │ session at least $0.83 ┐
+SPEND 30d  ▂▃▅▇▅▆█  at least $41.20 + $6–9 est. output    TOKEN MIX ██████░░
 TOP LEAKS                              SAVES        FIX
-1 Cache-miss on idle gaps              ~1.2M tok    [copy] CLAUDE.md line
+1 Cold start after a break             ~1.2M tok    [copy] CLAUDE.md line
 2 Compaction tax (9 sessions)          ~640K tok    [copy] /compact habit
 3 Premium model on small turns         ~410K tok    [copy] settings.json
 ▸ per-project ▸ per-session ▸ per-turn timeline

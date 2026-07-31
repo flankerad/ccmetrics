@@ -349,7 +349,7 @@ def test_half_covered_day_stays_floor(otel_server, conn, cc_env):
     assert s["exact"]["mode"] != "exact"
     assert report.confidence_label(s["exact"]) != "exact (OTEL)"
     out = report.render(s, None, found=[])
-    assert "stays a floor" in out or "≈" in out
+    assert "still says 'at least'" in out or "at least" in out
 
 
 def test_mixed_period_shows_both_exact_and_floor_numbers(otel_server, conn, cc_env):
@@ -376,7 +376,7 @@ def test_mixed_period_shows_both_exact_and_floor_numbers(otel_server, conn, cc_e
     assert label.startswith("mixed")
     out = report.render(s, None, found=[])
     assert "exact (OTEL)" in out
-    assert "floor" in out
+    assert "at least" in out
 
 
 # --- 6. migration: v2 schema -> v3 in place ---------------------------------
