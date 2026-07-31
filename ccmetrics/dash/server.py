@@ -240,6 +240,7 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
                 "effort": f["effort"],
             }
 
+    cwds = store.project_cwds(conn)
     rows = []
     for project, c in cur.items():
         if _is_ephemeral_project(project):
@@ -251,6 +252,7 @@ def projects_payload(conn: sqlite3.Connection) -> dict:
         rows.append(
             {
                 "project": project,
+                "cwd": cwds.get(project),
                 "floor_usd": c["floor_usd"],
                 "equiv": c["equiv"],
                 "cread": c["cread"],

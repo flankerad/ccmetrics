@@ -59,6 +59,7 @@ header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bo
 .scope { color:var(--muted); font-size:13px; }
 .proj-name { display:block; }
 .proj-path { display:block; color:var(--muted); font-size:9px; line-height:1.6; }
+.nowrap { white-space:nowrap; }
 .spacer { flex:1 1 auto; }
 .chip {
   display:inline-flex; align-items:center; gap:6px; padding:3px 9px;
@@ -275,11 +276,11 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
       <thead>
         <tr>
           <th>project</th>
-          <th class="r" style="width:90px">at least $</th>
-          <th class="r" style="width:110px">tokens</th>
-          <th class="r" style="width:90px">cache-hit</th>
-          <th class="r" style="width:100px">vs prior 30d</th>
-          <th style="width:230px">top leak</th>
+          <th class="r nowrap" style="width:100px" title="the least this project cost in the window — a proven minimum, real bill is a bit higher">at least $</th>
+          <th class="r nowrap" style="width:110px" title="tokens' worth of cost in the window">tokens</th>
+          <th class="r nowrap" style="width:100px" title="share of context served from cache instead of being paid for again — higher is better">cache-hit</th>
+          <th class="r nowrap" style="width:110px" title="spend change compared with the 30 days before this window">vs prior 30d</th>
+          <th style="width:230px" title="the single biggest saving found for this project">top leak</th>
         </tr>
       </thead>
       <tbody id="projects-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
@@ -380,7 +381,7 @@ function showErr(e) {
 
 function setScope(key) {
   state.scope = key;
-  el("scope-label").textContent = (key ? pathify(key) : "all projects") + " · last 30 days";
+  el("scope-label").textContent = (key ? (cwdOf(key) || key) : "all projects") + " · last 30 days";
   el("back").style.display = key ? "" : "none";
   el("projects-card").style.display = key ? "none" : "";
   window.scrollTo(0, 0);
@@ -697,12 +698,21 @@ function fallback(text, done) {
 }
 
 // ---------- projects ----------
-function folderName(key) {
-  var i = key.lastIndexOf("-");
-  return i === -1 ? key : key.slice(i + 1);
+// Prefer the real path recorded from the transcripts (r.cwd); the sanitized
+// key is a lossy fallback ('/', '-', '_' all collapse to '-').
+function projName(r) {
+  if (r.cwd) { var parts = r.cwd.split("/"); return parts[parts.length - 1] || r.cwd; }
+  var i = r.project.lastIndexOf("-");
+  return i === -1 ? r.project : r.project.slice(i + 1);
 }
-function pathify(key) {
-  return key.replace(/-/g, "/");
+function projPath(r) {
+  return r.cwd || r.project;
+}
+function cwdOf(key) {
+  if (!state.projects) return null;
+  for (var i = 0; i < state.projects.rows.length; i++)
+    if (state.projects.rows[i].project === key) return state.projects.rows[i].cwd;
+  return null;
 }
 function renderProjects() {
   var d = state.projects;
@@ -717,8 +727,8 @@ function renderProjects() {
     var tr = mk("tr", "clickable");
     tr.addEventListener("click", function () { setScope(r.project); });
     var projCell = mk("td");
-    projCell.appendChild(mk("span", "proj-name", folderName(r.project)));
-    projCell.appendChild(mk("span", "proj-path", pathify(r.project)));
+    projCell.appendChild(mk("span", "proj-name", projName(r)));
+    projCell.appendChild(mk("span", "proj-path", projPath(r)));
     tr.appendChild(projCell);
     tr.appendChild(mk("td", "r num", r.floor_usd === null ? "unknown" : fmtUsd(r.floor_usd)));
     tr.appendChild(mk("td", "r num", fmtTok(r.equiv)));

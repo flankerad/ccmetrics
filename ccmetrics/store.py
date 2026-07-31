@@ -98,6 +98,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS sessions_project ON sessions (project, ended);
 
+-- The real working directory behind a sanitized project key, read from the
+-- `cwd` field Claude Code writes into every transcript record. The key's own
+-- encoding is lossy ('/', '-', '_' all become '-'); this is the only faithful
+-- way back to the true path. A path, never contents (metadata-only rule).
+CREATE TABLE IF NOT EXISTS projects (
+    project TEXT PRIMARY KEY,
+    cwd     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS daily (
     project   TEXT NOT NULL,
     date      TEXT NOT NULL,
@@ -268,6 +277,18 @@ def save_watermark(
         "ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime, size=excluded.size, "
         "offset=excluded.offset, session_id=COALESCE(excluded.session_id, files.session_id)",
         (path, project, mtime, size, offset, session_id),
+    )
+
+
+def project_cwds(conn: sqlite3.Connection) -> dict[str, str]:
+    return {r["project"]: r["cwd"] for r in conn.execute("SELECT project, cwd FROM projects")}
+
+
+def save_project_cwd(conn: sqlite3.Connection, project: str, cwd: str) -> None:
+    conn.execute(
+        "INSERT INTO projects(project, cwd) VALUES(?,?) "
+        "ON CONFLICT(project) DO UPDATE SET cwd=excluded.cwd",
+        (project, cwd),
     )
 
 

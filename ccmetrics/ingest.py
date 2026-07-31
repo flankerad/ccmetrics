@@ -21,6 +21,7 @@ Field names below were verified against the real corpus (1550 files, 551 MB) on
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -524,8 +525,35 @@ def ingest(conn: sqlite3.Connection, projects_dir: Path | None = None, verbose: 
         )
         if run.files_read % 200 == 0:
             conn.commit()
+    _map_project_cwds(conn, files, projects_dir)
     conn.commit()
     return _finish(conn, run, started, projects_dir, files_total=len(files))
+
+
+def _map_project_cwds(conn, files: list[Path], projects_dir: Path) -> None:
+    """Record each project's real working directory from the `cwd` field inside
+    its transcripts — the sanitized dir name is lossy ('/', '-', '_' all become
+    '-') and cannot be decoded back. Peeks at most a few lines of one file per
+    unmapped project; never fatal."""
+    known = store.project_cwds(conn)
+    for path in files:
+        project = project_of(path, projects_dir)
+        if project in known:
+            continue
+        try:
+            with open(path, "rb") as fh:
+                for raw in itertools.islice(fh, 5):
+                    try:
+                        rec = json.loads(raw)
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    cwd = isinstance(rec, dict) and rec.get("cwd")
+                    if cwd and isinstance(cwd, str):
+                        store.save_project_cwd(conn, project, cwd)
+                        known[project] = cwd
+                        break
+        except OSError:
+            continue
 
 
 def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: int) -> dict:
