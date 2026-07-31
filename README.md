@@ -27,6 +27,7 @@ TOP LEAKS                              SAVES        FIX
 3 Premium model on small turns         ~410K tok    [copy] settings.json
 ▸ per-project ▸ per-session ▸ per-turn timeline
 ```
+<sub>illustration, not a screenshot — the real thing is `ccmetrics` in your terminal and `ccmetrics dash` in your browser</sub>
 
 ## Why
 
