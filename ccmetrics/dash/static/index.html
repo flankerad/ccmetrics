@@ -57,6 +57,8 @@ body {
 header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
 .brand { font-weight:650; letter-spacing:-.01em; color:var(--brand); font-size:16px; }
 .scope { color:var(--muted); font-size:13px; }
+.proj-name { display:block; }
+.proj-path { display:block; color:var(--muted); font-size:9px; line-height:1.6; }
 .spacer { flex:1 1 auto; }
 .chip {
   display:inline-flex; align-items:center; gap:6px; padding:3px 9px;
@@ -695,6 +697,10 @@ function fallback(text, done) {
 }
 
 // ---------- projects ----------
+function folderName(key) {
+  var i = key.lastIndexOf("-");
+  return i === -1 ? key : key.slice(i + 1);
+}
 function renderProjects() {
   var d = state.projects;
   var body = el("projects-body");
@@ -707,7 +713,10 @@ function renderProjects() {
   d.rows.forEach(function (r) {
     var tr = mk("tr", "clickable");
     tr.addEventListener("click", function () { setScope(r.project); });
-    tr.appendChild(mk("td", null, r.project));
+    var projCell = mk("td");
+    projCell.appendChild(mk("span", "proj-name", folderName(r.project)));
+    projCell.appendChild(mk("span", "proj-path", r.project));
+    tr.appendChild(projCell);
     tr.appendChild(mk("td", "r num", r.floor_usd === null ? "unknown" : fmtUsd(r.floor_usd)));
     tr.appendChild(mk("td", "r num", fmtTok(r.equiv)));
     tr.appendChild(mk("td", "r num", fmtPct(r.cache_hit)));
