@@ -16,7 +16,7 @@
   --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#5b5b58;
   --hair:#e3e3df; --hair-strong:#cfcfc9;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
-  --seq-line:#256abf; --seq-fill:#b7d3f6; --brand:#175E3B;
+  --seq-line:#256abf; --seq-fill:#b7d3f6;
   --chip:#eef1ee; --shadow:0 1px 2px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme: dark) {
@@ -24,7 +24,7 @@
     --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --muted:#a3a39d;
     --hair:#2c2c2a; --hair-strong:#3d3d3a;
     --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
-    --seq-line:#6da7ec; --seq-fill:#184f95; --brand:#5FBF8A;
+    --seq-line:#6da7ec; --seq-fill:#184f95;
     --chip:#242422; --shadow:0 1px 2px rgba(0,0,0,.4);
   }
 }
@@ -32,14 +32,14 @@
   --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#5b5b58;
   --hair:#e3e3df; --hair-strong:#cfcfc9;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
-  --seq-line:#256abf; --seq-fill:#b7d3f6; --brand:#175E3B;
+  --seq-line:#256abf; --seq-fill:#b7d3f6;
   --chip:#eef1ee; --shadow:0 1px 2px rgba(0,0,0,.05);
 }
 :root[data-theme="dark"] {
   --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --muted:#a3a39d;
   --hair:#2c2c2a; --hair-strong:#3d3d3a;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
-  --seq-line:#6da7ec; --seq-fill:#184f95; --brand:#5FBF8A;
+  --seq-line:#6da7ec; --seq-fill:#184f95;
   --chip:#242422; --shadow:0 1px 2px rgba(0,0,0,.4);
 }
 
@@ -55,11 +55,16 @@ body {
 .num { font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
 
 header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-.brand { font-weight:650; letter-spacing:-.01em; color:var(--brand); font-size:16px; }
-/* the repo mark, inlined (no file fetch: the CSP here allows no external requests).
-   Neutral bars ride currentColor so they theme; the leaking bar keeps #d97757. */
-.brand-mark { vertical-align:-4px; margin-right:6px; color:var(--muted); }
-.brand-cc { color:#d97757; }
+.brand { font-weight:650; letter-spacing:-.01em; color:var(--ink); font-size:16px; }
+/* The repo mark, inlined (no file fetch: the CSP here allows no external
+   requests). Drawn 1:1 — a 40x28 viewBox rendered at 40x28 px on integer
+   coordinates, so every edge lands on a device pixel at 1x. The neutral bars
+   are --muted and the leaking bar + droplet are --s2, the same orange the
+   charts use, so the mark and the data share exactly one accent. */
+.brand-mark { vertical-align:-8px; margin-right:7px; }
+.brand-mark .bm-bar { fill:var(--muted); }
+.brand-mark .bm-hot { fill:var(--s2); }
+.brand-cc { color:var(--s2); }
 .scope { color:var(--muted); font-size:13px; }
 .proj-name { display:block; }
 .proj-path { display:block; color:var(--muted); font-size:9px; line-height:1.6; }
@@ -158,7 +163,11 @@ section { margin-bottom:22px; }
   letter-spacing:normal; text-transform:none; white-space:normal; text-align:left;
 }
 
-/* usage card: segmented period picker, share bars, two-column body */
+/* usage card: segmented period picker, share bars, two-column body.
+   Both sub-blocks run on ONE contract: 11px caps label, a header rule at the
+   same height, rows on the same 9px/10px padding, and a share bar whose fill
+   is always share% of a full-width track. Only the hue differs, and it differs
+   for a reason (see modelColor / the repo block in the script). */
 .seg { display:inline-flex; }
 .seg button { border-radius:0; }
 .seg button:first-child { border-radius:6px 0 0 6px; }
@@ -167,14 +176,35 @@ section { margin-bottom:22px; }
 .seg button.on { color:var(--ink); background:var(--chip); border-color:var(--muted); }
 .sub-title {
   font-size:11px; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--muted); margin:14px 0 8px;
+  color:var(--muted); margin:16px 0 9px;
 }
-.usage-cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.usage-cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
 @media (max-width:760px) { .usage-cols { grid-template-columns:1fr; } }
-.sbar { height:7px; border-radius:999px; background:var(--hair); overflow:hidden; }
-.sbar i { display:block; height:100%; border-radius:999px; }
+/* the repo block has no <thead>, so it borrows the exact th metrics — that is
+   what puts the two blocks' first row on the same baseline */
+.sub-head {
+  display:flex; justify-content:space-between; gap:10px;
+  font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; padding:0 10px 7px;
+  border-bottom:1px solid var(--hair-strong);
+}
+/* five columns in half a card is tight: pull the inner gutters in, keep the
+   outer ones at 10px so the block still lines up with .sub-head next door */
+#usage-model-table th, #usage-model-table td { padding-left:6px; padding-right:6px; }
+#usage-model-table th:first-child, #usage-model-table td:first-child { padding-left:10px; }
+#usage-model-table th:last-child, #usage-model-table td:last-child { padding-right:10px; }
+.chart-note, .foot-note { color:var(--muted); font-size:11px; }
+.chart-note { margin-top:6px; }
+.foot-note { margin-top:9px; padding:0 10px; }
+.foot-note:empty { display:none; }
+.sbar { height:8px; border-radius:999px; background:var(--hair); overflow:hidden; }
+.sbar i { display:block; height:100%; border-radius:999px; min-width:2px; }
+td .sbar { margin-top:6px; }
 .repo-row { margin-bottom:11px; }
 .repo-row:last-child { margin-bottom:0; }
+/* one repo inside "who used it" — same row rhythm as a table row above it */
+.urow { padding:9px 10px; border-bottom:1px solid var(--hair); }
+.urow:last-child { border-bottom:none; }
 .repo-head { display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
 .repo-head .val { margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
 
@@ -220,6 +250,15 @@ tr.eph-child td { color:var(--muted); }
 tr.eph-child td:first-child { padding-left:28px; }
 .empty { color:var(--muted); padding:6px 10px; }
 footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:14px; flex-wrap:wrap; }
+/* the other two surfaces (console report, the two opt-in hooks) are invisible
+   to a first-time user, so they get one quiet line instead of a README */
+code {
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.5px; background:var(--chip); border:1px solid var(--hair);
+  border-radius:4px; padding:1px 5px; white-space:nowrap; color:var(--ink);
+}
+.surfaces { color:var(--muted); font-size:12px; line-height:2.1; margin-top:8px; }
+.hint { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 22px; }
 .delta.up { color:var(--s2); } .delta.down { color:var(--s3); }
 .bignum { font-size:26px; font-weight:620; letter-spacing:-.02em; }
 .spend-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
@@ -229,7 +268,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <div class="wrap">
 
 <header>
-  <span class="brand"><svg class="brand-mark" width="27" height="20" viewBox="20 18 164 118" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="22" y="86" width="16" height="22" rx="2"/><rect x="46" y="75" width="16" height="33" rx="2"/><rect x="70" y="53" width="16" height="55" rx="2"/><rect x="118" y="53" width="16" height="55" rx="2"/><rect x="142" y="42" width="16" height="66" rx="2"/><rect x="166" y="20" width="16" height="88" rx="2"/></g><g fill="#d97757"><rect x="94" y="31" width="16" height="77" rx="2"/><path d="M102 118 c2.6 3.9 5 6.5 5 9.6 a5 5 0 1 1 -10 0 c0 -3.1 2.4 -5.7 5 -9.6 z"/></g></svg><span class="brand-cc">cc</span>metrics</span>
+  <span class="brand"><svg class="brand-mark" width="40" height="28" viewBox="0 0 40 28" aria-hidden="true" focusable="false"><g class="bm-bar"><rect x="0" y="15" width="4" height="5" rx="1"/><rect x="6" y="12" width="4" height="8" rx="1"/><rect x="12" y="7" width="4" height="13" rx="1"/><rect x="24" y="7" width="4" height="13" rx="1"/><rect x="30" y="5" width="4" height="15" rx="1"/><rect x="36" y="0" width="4" height="20" rx="1"/></g><g class="bm-hot"><rect x="18" y="2" width="4" height="18" rx="1"/><path d="M20 21.2c1.3 1.8 2.2 2.9 2.2 3.9a2.2 2.2 0 1 1-4.4 0c0-1 .9-2.1 2.2-3.9z"/></g></svg><span class="brand-cc">cc</span>metrics</span>
   <span class="scope" id="scope-label">all projects · last 30 days</span>
   <button class="link" id="back" style="display:none">&larr; back to all projects</button>
   <span class="spacer"></span>
@@ -281,6 +320,8 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
     <div id="plan-rows"></div>
   </div>
 </section>
+<!-- ...and the one-line nudge that stands in for it until then -->
+<div class="hint" id="plan-hint" style="display:none" data-help="ccmetrics cannot see your plan limits — they live on Anthropic's servers and are in no local file. Claude Code can hand them over through its status line: `ccmetrics statusline --setup` prints the one settings block to paste. Nothing leaves this machine.">plan %: <code>ccmetrics statusline --setup</code> &mdash; one line of setup and your real weekly / 5-hour plan usage appears here, straight from Claude Code</div>
 
 <!-- 30d spend -->
 <section class="card">
@@ -322,23 +363,27 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   </div>
   <div class="card-body">
     <div class="chart" id="chart-usage"><div class="tip" id="tip-usage"></div></div>
+    <div class="chart-note" id="usage-note">&nbsp;</div>
     <div class="usage-cols">
       <div>
-        <div class="sub-title" data-help="which models did the work, measured in tokens' worth of input cost — the split comes from the per-turn records, which are kept for 30 days only"><span id="usage-model-title">per model</span></div>
+        <div class="sub-title" data-help="which models did the work, measured in tokens' worth of input cost. The colour marks the model family, so a model keeps the same colour when you switch day / week / month. The split comes from the per-turn records, which are kept for 30 days only."><span id="usage-model-title">per model</span></div>
         <table id="usage-model-table">
           <thead>
             <tr>
-              <th data-help="the model that answered those turns">model</th>
-              <th class="r nowrap" style="width:80px" data-help="tokens' worth of input cost, cache writes and reads folded in at their real rates">tokens</th>
-              <th class="r nowrap" style="width:64px" data-help="how many replies this model produced">turns</th>
-              <th style="width:34%" data-help="this model's share of your own usage in this window — not a share of any plan limit">share</th>
+              <th data-help="the model that answered those turns, shortened — the badge on each name gives the full model id">model</th>
+              <th class="r nowrap" style="width:68px" data-help="tokens' worth of input cost, cache writes and reads folded in at their real rates">tokens</th>
+              <th class="r nowrap" style="width:54px" data-help="how many replies this model produced">turns</th>
+              <th class="r nowrap" style="width:52px" data-help="this model's share of your own usage in this window — not a share of any plan limit">share</th>
+              <th style="width:26%"></th>
             </tr>
           </thead>
-          <tbody id="usage-model-body"><tr><td colspan="4" class="empty">loading&hellip;</td></tr></tbody>
+          <tbody id="usage-model-body"><tr><td colspan="5" class="empty">loading&hellip;</td></tr></tbody>
         </table>
+        <div class="foot-note" id="usage-model-note"></div>
       </div>
       <div id="usage-repo-block">
-        <div class="sub-title" data-help="which repos the usage went to in the period you picked — shares of your own total, biggest first"><span id="usage-repo-title">who used it</span></div>
+        <div class="sub-title" data-help="which repos the usage went to in the period you picked — shares of your own total, biggest first. Every bar is one colour here: the length is the share, and the repo's name is already on the row."><span id="usage-repo-title">who used it</span></div>
+        <div class="sub-head"><span>repo</span><span>share &middot; tokens</span></div>
         <div id="usage-repos"></div>
       </div>
     </div>
@@ -398,6 +443,14 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
   <span class="spacer"></span>
   <span>read-only &middot; metadata only &middot; localhost only</span>
 </footer>
+<div class="surfaces">also:
+  <span data-help="run `ccmetrics` inside any repo and it prints these same figures as a console report, then exits — no server, no browser, nothing to leave running">
+    <code>ccmetrics</code> in a repo &rarr; console report</span> &middot;
+  <span data-help="`ccmetrics otel --setup` prints one settings block to paste. After that a small listener on this machine records Anthropic's own per-request costs, and every figure here turns from 'at least' into exact.">
+    <code>ccmetrics otel --setup</code> &rarr; exact costs</span> &middot;
+  <span data-help="`ccmetrics statusline --setup` prints one settings block to paste. Claude Code then feeds this machine your real plan percentages — the only honest source for them, because plan limits are not in any local file.">
+    <code>ccmetrics statusline --setup</code> &rarr; your real plan %</span>
+</div>
 
 </div>
 
@@ -840,10 +893,49 @@ function legendItem(host, color, label, value, help) {
 // Every share on this card is a share of the user's OWN usage. A share of the
 // plan's limit is not computable here — that number lives on Anthropic's
 // servers and is in no local file — so it is never shown or implied.
-var SHARE_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 var PERIOD_NOW = { day: "today", week: "this week", month: "this month" };
+var PERIOD_WORD = { day: "day", week: "week", month: "month" };
 
-function shareColor(i) { return SHARE_COLORS[i] || "var(--muted)"; }
+// Colour follows the model FAMILY, never the row's position: switching
+// day / week / month changes which models are in the table, and a colour keyed
+// on rank would repaint the rows that survived. Four families, four fixed
+// palette slots, in this order; anything else stays neutral rather than
+// inventing a fifth hue nobody validated. The model name and its share are
+// printed on every row, so the colour is never the only way to read the table.
+var MODEL_FAMILIES = ["opus", "sonnet", "haiku", "fable"];
+var MODEL_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
+
+function modelFamily(id) {
+  var s = String(id || "").toLowerCase();
+  for (var i = 0; i < MODEL_FAMILIES.length; i++) {
+    if (s.indexOf(MODEL_FAMILIES[i]) !== -1) return i;
+  }
+  return -1;
+}
+function modelColor(id) {
+  var i = modelFamily(id);
+  return i === -1 ? "var(--muted)" : MODEL_COLORS[i];
+}
+
+// "claude-haiku-4-5-20251001" -> "haiku 4.5". The full id never wraps a column
+// in half; it lives in the row's help badge instead.
+function shortModel(id) {
+  var raw = String(id || "");
+  var s = raw.toLowerCase();
+  var i = modelFamily(s);
+  if (i === -1) return raw.replace(/-\d{8}$/, "");
+  var fam = MODEL_FAMILIES[i];
+  // older ids put the version BEFORE the family ("claude-3-5-sonnet-20241022"),
+  // newer ones after it ("claude-haiku-4-5-20251001") — try the old shape first,
+  // then reject a trailing date stamp masquerading as a version number.
+  var m = s.match(new RegExp("(\\d+)(?:-(\\d+))?-" + fam));
+  if (!m) {
+    m = (s.split(fam)[1] || "").match(/^-(\d+)(?:-(\d+))?/);
+    if (m && m[1].length >= 6) m = null;
+  }
+  if (!m) return fam;
+  return fam + " " + m[1] + (m[2] ? "." + m[2] : "");
+}
 
 function shareBar(pct, color) {
   var bar = mk("div", "sbar");
@@ -869,6 +961,10 @@ function renderUsage() {
     ? PERIOD_NOW[per] + " so far: " + fmtTok(cur.equiv_tokens) + " tokens · " +
       cur.turns.toLocaleString("en-US") + " turns"
     : "no usage recorded";
+  el("usage-note").textContent = series.length
+    ? "the last bar is " + PERIOD_NOW[per] + " so far — a part-finished " +
+      PERIOD_WORD[per] + " is drawn lighter, not a drop in usage"
+    : "";
 
   // The per-turn rows carry the model name and are kept 30 days, so the split
   // only comes in two windows. Map the picker onto them and say which one it is.
@@ -877,23 +973,38 @@ function renderUsage() {
   el("usage-model-title").textContent = "per model · " + label;
   var body = el("usage-model-body");
   clear(body);
-  var models = (d.per_model || {})[key] || [];
+  // A row with no tokens at all is not a model you chose — it is Claude Code's
+  // own synthetic/internal reply. As a table row it reads "0.0% · 0" and wastes
+  // a line, so its turns are folded into one muted line under the table.
+  var models = [], foldedTurns = 0;
+  ((d.per_model || {})[key] || []).forEach(function (m) {
+    if ((m.equiv_tokens || 0) > 0) models.push(m);
+    else foldedTurns += (m.turns || 0);
+  });
   if (!models.length) {
     var tr = mk("tr"), td = mk("td", "empty", "no turns recorded in " + label + ".");
-    td.setAttribute("colspan", "4"); tr.appendChild(td); body.appendChild(tr);
+    td.setAttribute("colspan", "5"); tr.appendChild(td); body.appendChild(tr);
   }
-  models.forEach(function (m, i) {
+  models.forEach(function (m) {
     var r = mk("tr");
-    r.appendChild(mk("td", null, m.model));
+    var nameCell = mk("td", "nowrap");
+    var nameSpan = mk("span", null, shortModel(m.model));
+    nameCell.appendChild(nameSpan);
+    attachHelp(nameSpan, "full model id: " + m.model);
+    r.appendChild(nameCell);
     r.appendChild(mk("td", "r num", fmtTok(m.equiv_tokens)));
     r.appendChild(mk("td", "r num", m.turns.toLocaleString("en-US")));
-    var cell = mk("td");
-    cell.appendChild(mk("div", "num",
+    r.appendChild(mk("td", "r num",
       m.share_pct === null || m.share_pct === undefined ? "—" : m.share_pct.toFixed(1) + "%"));
-    cell.appendChild(shareBar(m.share_pct, shareColor(i)));
+    var cell = mk("td");
+    cell.appendChild(shareBar(m.share_pct, modelColor(m.model)));
     r.appendChild(cell);
     body.appendChild(r);
   });
+  el("usage-model-note").textContent = foldedTurns
+    ? "+ " + foldedTurns.toLocaleString("en-US") +
+      " turns from synthetic / internal responses (no tokens billed)"
+    : "";
 
   // "who used it" only means something across repos, so it is global-view only.
   var block = el("usage-repo-block");
@@ -903,12 +1014,14 @@ function renderUsage() {
   el("usage-repo-title").textContent = "who used it · " + PERIOD_NOW[per];
   var host = el("usage-repos");
   clear(host);
-  if (!share.rows.length) {
+  // a repo that used nothing in this period is not news — it is a 0.0% row
+  var repos = (share.rows || []).filter(function (r) { return (r.equiv_tokens || 0) > 0; });
+  if (!repos.length) {
     host.appendChild(mk("div", "empty", "no usage in " + PERIOD_NOW[per] + "."));
     return;
   }
-  share.rows.forEach(function (r, i) {
-    var row = mk("div", "repo-row");
+  repos.forEach(function (r) {
+    var row = mk("div", "urow");
     var head = mk("div", "repo-head");
     head.appendChild(mk("span", "proj-name", r.ephemeral ? r.name : projName(r)));
     head.appendChild(mk("span", "val num",
@@ -918,35 +1031,93 @@ function renderUsage() {
     row.appendChild(mk("div", "proj-path", r.ephemeral
       ? r.eph_count + " throwaway temp folder(s) — grouped, not a real repo"
       : projPath(r)));
-    row.appendChild(shareBar(r.share_pct, shareColor(i)));
+    // one hue for every repo: the bar's length is the share, and the repo's
+    // own name is already on the row, so a per-repo colour would only be
+    // re-encoding what the bar already says (and repos have no fixed count).
+    row.appendChild(shareBar(r.share_pct, "var(--s1)"));
     host.appendChild(row);
   });
 }
 
-// one bar per period, oldest left. The newest bar is the period still running,
-// so it is drawn faded — a half-finished week is not a drop in usage.
+// Round a max up to a readable tick, so the axis label is a number a person
+// would say out loud. The ladder is fine-grained on purpose: a coarse one
+// (1 / 2 / 5) can leave the tallest bar at 40% of the plot and read as a slump.
+var NICE_STEPS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  var e = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+  var n = v / e;
+  for (var i = 0; i < NICE_STEPS.length; i++) {
+    if (n <= NICE_STEPS[i]) return NICE_STEPS[i] * e;
+  }
+  return 10 * e;
+}
+
+// a column with a rounded cap and a square foot on the baseline
+function colPath(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return "M" + x + "," + (y + h) + "V" + (y + r) +
+         "a" + r + "," + r + " 0 0 1 " + r + ",-" + r +
+         "h" + (w - 2 * r) +
+         "a" + r + "," + r + " 0 0 1 " + r + "," + r +
+         "V" + (y + h) + "Z";
+}
+
+// One bar per period, oldest left, heights strictly linear against one axis.
+// A period with no usage gets no bar at all — a 1px hairline would read as
+// "a little", and none of it is true. The newest bar is the period still
+// running, so it is drawn lighter: a half-finished week is not a drop.
 function drawUsageSeries(series) {
   var host = el("chart-usage"), tip = el("tip-usage");
   var old = host.querySelector("svg");
   if (old) host.removeChild(old);
-  var W = Math.max(320, host.clientWidth || 640), H = 92;
-  var padT = 8, padB = 18, ih = H - padT - padB;
   var n = series.length;
   if (!n) return;
-  var maxV = 0;
-  series.forEach(function (p) { maxV = Math.max(maxV, p.equiv_tokens || 0); });
-  if (maxV <= 0) maxV = 1;
-  var gap = n > 10 ? 3 : 6;
-  var bw = Math.max(2, (W - gap * (n - 1)) / n);
+  // same left gutter as the spend chart above it, so both plots start at one x
+  var W = Math.max(320, host.clientWidth || 640), H = 108;
+  var padL = 46, padR = 12, padT = 10, padB = 20;
+  var iw = W - padL - padR, ih = H - padT - padB;
+  var peak = 0;
+  series.forEach(function (p) { peak = Math.max(peak, p.equiv_tokens || 0); });
+  var maxV = niceMax(peak);
+  var band = iw / n;
+  var bw = Math.min(24, Math.max(3, band - (n > 10 ? 4 : 8)));  // cap the mark, keep air
   var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
                        "aria-label": "tokens' worth of usage per period" });
+
+  // hairline grid at 0 / half / full, labelled — the values no bar is labelled with
+  for (var g = 0; g <= 2; g++) {
+    var v = maxV * g / 2, yy = Math.round(padT + ih - ih * g / 2) + 0.5;
+    s.appendChild(svg("line", { class: g === 0 ? "axis-line" : "grid-line",
+                                x1: padL, x2: W - padR, y1: yy, y2: yy }));
+    var lab = svg("text", { class: "axis-text", x: padL - 6, y: yy + 3, "text-anchor": "end" });
+    lab.textContent = g === 0 ? "0" : fmtTok(v);
+    s.appendChild(lab);
+  }
+
   var step = Math.max(1, Math.round(n / 7));
   series.forEach(function (p, i) {
-    var h = Math.max(1, ih * (p.equiv_tokens || 0) / maxV);
-    var bx = i * (bw + gap);
-    var r = svg("rect", { class: "f1", x: bx, y: padT + ih - h, width: bw, height: h, rx: 2 });
-    if (i === n - 1) r.setAttribute("opacity", ".55");
-    r.addEventListener("mousemove", function (ev) {
+    var bx = padL + band * i + (band - bw) / 2;
+    var val = p.equiv_tokens || 0;
+    if (val > 0) {
+      var h = Math.max(2, ih * val / maxV);
+      var r = svg("path", { class: "f1", d: colPath(bx, padT + ih - h, bw, h, 4) });
+      if (i === n - 1) r.setAttribute("opacity", ".55");
+      s.appendChild(r);
+    }
+    if (n <= 8 || i % step === 0 || i === n - 1) {
+      var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 5,
+                             "text-anchor": "middle" });
+      tx.textContent = p.label;
+      s.appendChild(tx);
+    }
+  });
+
+  // hover targets are the whole band, full height — a 3px bar is not a target
+  series.forEach(function (p, i) {
+    var hit = svg("rect", { x: padL + band * i, y: padT, width: band, height: ih,
+                            fill: "transparent" });
+    hit.addEventListener("mousemove", function (ev) {
       var hostRect = host.getBoundingClientRect();
       clear(tip);
       tip.appendChild(mk("div", "t-date",
@@ -966,17 +1137,9 @@ function drawUsageSeries(series) {
       tip.style.left = Math.max(0, left) + "px";
       tip.style.top = "2px";
     });
-    r.addEventListener("mouseleave", function () { tip.style.display = "none"; });
-    s.appendChild(r);
-    if (n <= 8 || i % step === 0 || i === n - 1) {
-      var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 5,
-                             "text-anchor": "middle" });
-      tx.textContent = p.label;
-      s.appendChild(tx);
-    }
+    hit.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+    s.appendChild(hit);
   });
-  s.appendChild(svg("line", { class: "axis-line", x1: 0, x2: W,
-                              y1: padT + ih + 0.5, y2: padT + ih + 0.5 }));
   host.appendChild(s);
 }
 
@@ -1239,13 +1402,14 @@ function planColor(pct) {
 }
 
 function renderPlan(d) {
-  var card = el("plan-card");
+  var card = el("plan-card"), hint = el("plan-hint");
   if (!card) return;
-  if (!d || !d.available || !d.windows || !d.windows.length) {
-    card.style.display = "none";
-    return;
-  }
-  card.style.display = "";
+  // no snapshots yet: the card cannot honestly show anything, so it is replaced
+  // by the one line that says how to turn the feed on. It goes away by itself.
+  var ok = !!(d && d.available && d.windows && d.windows.length);
+  card.style.display = ok ? "" : "none";
+  if (hint) hint.style.display = ok ? "none" : "";
+  if (!ok) return;
   el("plan-source").textContent = "from Claude Code's own statusline feed";
   var host = el("plan-rows");
   clear(host);

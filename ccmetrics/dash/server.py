@@ -208,7 +208,18 @@ def _window_rows(conn: sqlite3.Connection, start: str, end: str) -> dict[str, di
 # match how Claude Code encodes the OS temp dir path, e.g.
 # "/private/var/folders/xx/yyyy/T/pytest-of-you/..." -> "-private-var-folders-...".
 # Cosmetic only: these sessions still count in the global spend total.
-_EPHEMERAL_PROJECT_PREFIXES = ("-private-var-folders-", "-var-folders-", "-tmp-")
+# Ordered longest/most-specific first, and each "-private-" form is listed next
+# to its bare form because macOS reports the same directory both ways (/tmp is a
+# symlink to /private/tmp, /var/folders to /private/var/folders) and the
+# sanitized key keeps whichever spelling the session recorded. "-private-tmp-"
+# is what Claude Code's own agent scratchpads land under, e.g.
+# "-private-tmp-claude-502--Users-me-Dev-repo-...-scratchpad-green".
+_EPHEMERAL_PROJECT_PREFIXES = (
+    "-private-var-folders-",
+    "-private-tmp-",
+    "-var-folders-",
+    "-tmp-",
+)
 
 
 def _is_ephemeral_project(key: str) -> bool:

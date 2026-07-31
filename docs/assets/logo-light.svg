@@ -1,19 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 170" width="640" height="170" role="img" aria-label="ccmetrics logo: a spend bar chart with tokens leaking from one bar">
   <style>
-    .bar  { fill: #d0d7de; }
-    .hot  { fill: #d97757; }
+    /* the dashboard's own light tokens: bars --muted, the leaking bar and the
+       "cc" --s2, so the mark and the charts share exactly one accent. */
+    .bar  { fill: #5b5b58; }
+    .hot  { fill: #eb6834; }
     .word { font: 700 58px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .cc   { fill: #d97757; }
-    .rest { fill: #1f2328; }
-    .tag  { font: 400 17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #59636e; }
+    .cc   { fill: #eb6834; }
+    .rest { fill: #0b0b0b; }
+    .tag  { font: 400 17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #5b5b58; }
   </style>
-  <!-- sparkline ▂▃▅▇▅▆█ · baseline y=108 · the ▇ bar leaks -->
+  <!-- sparkline ▂▃▅▇▅▆█ · baseline y=108 · the ▇ bar leaks.
+       Same proportions as the inline header mark (bar 16 : gap 8 = 4 : 2;
+       heights 22/35/57/79/57/66/88 = the header's 5/8/13/18/13/15/20 × 4.4). -->
   <g>
     <rect class="bar" x="22"  y="86"  width="16" height="22" rx="2"/>
-    <rect class="bar" x="46"  y="75"  width="16" height="33" rx="2"/>
-    <rect class="bar" x="70"  y="53"  width="16" height="55" rx="2"/>
-    <rect class="hot" x="94"  y="31"  width="16" height="77" rx="2"/>
-    <rect class="bar" x="118" y="53"  width="16" height="55" rx="2"/>
+    <rect class="bar" x="46"  y="73"  width="16" height="35" rx="2"/>
+    <rect class="bar" x="70"  y="51"  width="16" height="57" rx="2"/>
+    <rect class="hot" x="94"  y="29"  width="16" height="79" rx="2"/>
+    <rect class="bar" x="118" y="51"  width="16" height="57" rx="2"/>
     <rect class="bar" x="142" y="42"  width="16" height="66" rx="2"/>
     <rect class="bar" x="166" y="20"  width="16" height="88" rx="2"/>
     <!-- tokens dripping from the hot bar -->

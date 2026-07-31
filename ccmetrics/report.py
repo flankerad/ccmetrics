@@ -388,6 +388,13 @@ def render(
         f"        + est. output {est_txt}   (a range, never added to the number above)"
     )
     lines.extend(_exact_lines(s.get("exact")))
+    # the other opt-in feed, named right where the "how sure" line leaves off.
+    # It disappears the moment a single snapshot exists.
+    if not plan:
+        lines.append(
+            "        plan %: `ccmetrics statusline --setup` shows your real "
+            "weekly/5-hour usage here and in the dash"
+        )
     lines.append("")
 
     # the only real plan-limit figure available locally, and only when the
