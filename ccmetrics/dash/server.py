@@ -353,6 +353,20 @@ def findings_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     return {"scope": project, "count": len(out), "findings": out}
 
 
+def live_payload(conn: sqlite3.Connection, project: str | None) -> dict:
+    """live.tiles plus the real folder path behind the session's project key.
+
+    The key is Claude Code's sanitized path ('/', '-', '_' all collapse to '-'),
+    which is unreadable in a headline; the cwd recorded from the transcripts is
+    the real one. None when we have never seen a cwd for that key.
+    """
+    payload = live.tiles(conn, project)
+    key = payload.get("project")
+    if key:
+        payload["cwd"] = store.project_cwds(conn).get(key)
+    return payload
+
+
 def meta_payload(conn: sqlite3.Connection) -> dict:
     from .. import otel
 
@@ -434,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/findings":
                 self._json(findings_payload(conn, project))
             elif path == "/api/live":
-                self._json(live.tiles(conn, project))
+                self._json(live_payload(conn, project))
             elif path == "/api/constants":
                 self._json({"constants": constants.provenance()})
             elif path == "/api/meta":

@@ -56,9 +56,16 @@ body {
 
 header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
 .brand { font-weight:650; letter-spacing:-.01em; color:var(--brand); font-size:16px; }
+/* the repo mark, inlined (no file fetch: the CSP here allows no external requests).
+   Neutral bars ride currentColor so they theme; the leaking bar keeps #d97757. */
+.brand-mark { vertical-align:-4px; margin-right:6px; color:var(--muted); }
+.brand-cc { color:#d97757; }
 .scope { color:var(--muted); font-size:13px; }
 .proj-name { display:block; }
 .proj-path { display:block; color:var(--muted); font-size:9px; line-height:1.6; }
+/* same name/path pair as the projects table, but inline for the one-line live bar */
+.live-proj { color:var(--ink); font-weight:550; }
+.live-path { color:var(--muted); font-size:10px; margin-left:5px; }
 .nowrap { white-space:nowrap; }
 .spacer { flex:1 1 auto; }
 .chip {
@@ -183,6 +190,11 @@ button.copy {
 button.copy:hover { border-color:var(--s1); color:var(--s1); }
 button.copy.done { border-color:var(--s3); color:var(--s3); }
 .muted { color:var(--muted); }
+/* leaks grouped by project (global view only): a header row per project */
+tr.leak-group { cursor:pointer; }
+tr.leak-group td { background:var(--chip); }
+tr.leak-group:hover td { border-color:var(--hair-strong); }
+.grp-sum { color:var(--muted); font-weight:400; font-size:12px; margin-left:8px; }
 /* expanded children of the grouped "test & scratch runs" row */
 tr.eph-child td { color:var(--muted); }
 tr.eph-child td:first-child { padding-left:28px; }
@@ -197,7 +209,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 <div class="wrap">
 
 <header>
-  <span class="brand">ccmetrics</span>
+  <span class="brand"><svg class="brand-mark" width="27" height="20" viewBox="20 18 164 118" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="22" y="86" width="16" height="22" rx="2"/><rect x="46" y="75" width="16" height="33" rx="2"/><rect x="70" y="53" width="16" height="55" rx="2"/><rect x="118" y="53" width="16" height="55" rx="2"/><rect x="142" y="42" width="16" height="66" rx="2"/><rect x="166" y="20" width="16" height="88" rx="2"/></g><g fill="#d97757"><rect x="94" y="31" width="16" height="77" rx="2"/><path d="M102 118 c2.6 3.9 5 6.5 5 9.6 a5 5 0 1 1 -10 0 c0 -3.1 2.4 -5.7 5 -9.6 z"/></g></svg><span class="brand-cc">cc</span>metrics</span>
   <span class="scope" id="scope-label">all projects · last 30 days</span>
   <button class="link" id="back" style="display:none">&larr; back to all projects</button>
   <span class="spacer"></span>
@@ -325,7 +337,7 @@ footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:
 "use strict";
 
 var state = { scope: null, allLeaks: false, summary: null, findings: [],
-              projects: null, live: null, ephOpen: false };
+              projects: null, live: null, ephOpen: false, leakGroups: {} };
 
 // ---------- formatting ----------
 function fmtUsd(v) {
@@ -753,6 +765,8 @@ function legendItem(host, color, label, value, help) {
 }
 
 // ---------- leaks ----------
+// Global view: findings are grouped under the project they came from, biggest
+// saveable first. Scoped view: one flat list, the project is already the scope.
 function renderLeaks() {
   var body = el("leaks-body");
   clear(body);
@@ -764,39 +778,97 @@ function renderLeaks() {
     td.setAttribute("colspan", "6"); tr.appendChild(td); body.appendChild(tr);
     return;
   }
-  rows.forEach(function (f, i) {
-    var tr = mk("tr");
-    tr.appendChild(mk("td", "rank num", String(i + 1)));
-
-    var nameCell = mk("td");
-    var nameDiv = mk("div", "leak-name", f.name);
-    nameCell.appendChild(nameDiv);
-    attachHelp(nameDiv, f.help);
-    var meta = f.project && !state.scope ? (f.cwd || f.project) : (f.period || "");
-    if (meta) nameCell.appendChild(mk("div", "fixline", meta));
-    if (f.fix_text) {
-      var pre = mk("div", "fixline", f.fix_text.split("\n").slice(0, 2).join("\n"));
-      nameCell.appendChild(pre);
+  if (state.scope) {
+    rows.forEach(function (f, i) { body.appendChild(leakRow(f, i + 1)); });
+    return;
+  }
+  groupFindings(rows).forEach(function (g, gi) {
+    var open = state.leakGroups.hasOwnProperty(g.key) ? state.leakGroups[g.key] : gi === 0;
+    body.appendChild(leakGroupRow(g, open));
+    if (open) {
+      g.rows.forEach(function (r) { body.appendChild(leakRow(r.f, r.rank)); });
     }
-    tr.appendChild(nameCell);
-
-    tr.appendChild(mk("td", "r num", "~" + fmtTok(f.tokens_saved) + " tok"));
-    tr.appendChild(mk("td", "r num", f.usd_saved === null ? "unknown" : fmtUsd(f.usd_saved)));
-
-    var eff = mk("td");
-    eff.appendChild(mk("span", "effort " + f.effort_label, f.effort_label));
-    tr.appendChild(eff);
-
-    var act = mk("td", "r");
-    var btn = mk("button", "copy", "copy");
-    btn.addEventListener("click", function (ev) {
-      ev.stopPropagation();
-      copyText(f.fix_text || "", btn);
-    });
-    act.appendChild(btn);
-    tr.appendChild(act);
-    body.appendChild(tr);
   });
+}
+
+// rank stays the global ranking position, so a leak keeps its number wherever
+// its project ends up in the list.
+function groupFindings(rows) {
+  var order = [], byKey = {};
+  rows.forEach(function (f, i) {
+    var key = f.project || "";
+    var g = byKey[key];
+    if (!g) {
+      g = byKey[key] = { key: key, project: key, cwd: f.cwd,
+                         rows: [], usd: 0, priced: 0, unpriced: 0 };
+      order.push(g);
+    }
+    g.rows.push({ f: f, rank: i + 1 });
+    if (f.usd_saved === null || f.usd_saved === undefined) g.unpriced++;
+    else { g.usd += f.usd_saved; g.priced++; }
+  });
+  // most money on the table first; a group we could not price at all sinks last
+  order.sort(function (a, b) {
+    if (!!a.priced !== !!b.priced) return a.priced ? -1 : 1;
+    return b.usd - a.usd;
+  });
+  return order;
+}
+
+function leakGroupRow(g, open) {
+  var tr = mk("tr", "leak-group");
+  var td = mk("td");
+  td.setAttribute("colspan", "6");
+  var name = mk("span", "proj-name",
+    (open ? "▾ " : "▸ ") + (projName(g) || "unknown project"));
+  var n = g.rows.length;
+  var money = g.priced
+    ? fmtUsd(g.usd) + (g.unpriced ? "+" : "")
+    : "unknown";
+  name.appendChild(mk("span", "grp-sum",
+    n + " leak" + (n === 1 ? "" : "s") + " · at least " + money + " saveable"));
+  td.appendChild(name);
+  if (projPath(g)) td.appendChild(mk("span", "proj-path", projPath(g)));
+  tr.appendChild(td);
+  tr.addEventListener("click", function () {
+    state.leakGroups[g.key] = !open;
+    renderLeaks();
+  });
+  return tr;
+}
+
+function leakRow(f, rank) {
+  var tr = mk("tr");
+  tr.appendChild(mk("td", "rank num", String(rank)));
+
+  var nameCell = mk("td");
+  var nameDiv = mk("div", "leak-name", f.name);
+  nameCell.appendChild(nameDiv);
+  attachHelp(nameDiv, f.help);
+  // the group header (or the scope) owns the project, so never repeat it here
+  if (f.period) nameCell.appendChild(mk("div", "fixline", f.period));
+  if (f.fix_text) {
+    nameCell.appendChild(mk("div", "fixline",
+      f.fix_text.split("\n").slice(0, 2).join("\n")));
+  }
+  tr.appendChild(nameCell);
+
+  tr.appendChild(mk("td", "r num", "~" + fmtTok(f.tokens_saved) + " tok"));
+  tr.appendChild(mk("td", "r num", f.usd_saved === null ? "unknown" : fmtUsd(f.usd_saved)));
+
+  var eff = mk("td");
+  eff.appendChild(mk("span", "effort " + f.effort_label, f.effort_label));
+  tr.appendChild(eff);
+
+  var act = mk("td", "r");
+  var btn = mk("button", "copy", "copy");
+  btn.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    copyText(f.fix_text || "", btn);
+  });
+  act.appendChild(btn);
+  tr.appendChild(act);
+  return tr;
 }
 
 function copyText(text, btn) {
@@ -943,9 +1015,16 @@ function renderLive(d) {
     return;
   }
   dot.className = "dot";
-  el("live-meta").textContent =
-    d.project + " · " + (d.model || "unknown model") + " · " + d.turns +
-    " turns · last turn " + d.age_seconds + "s ago";
+  // the sanitized key ("-Users-me-Dev-thing") is unreadable; show the folder
+  // name from the recorded cwd, with the real path next to it.
+  var meta = el("live-meta");
+  clear(meta);
+  meta.appendChild(mk("span", "live-proj",
+    projName({ cwd: d.cwd, project: d.project || "" }) || "this session"));
+  if (d.cwd) meta.appendChild(mk("span", "live-path", d.cwd));
+  meta.appendChild(document.createTextNode(
+    " · " + (d.model || "unknown model") + " · " + d.turns +
+    " turns · last turn " + d.age_seconds + "s ago"));
 
   var b = d.burn;
   setTile("tile-burn",
