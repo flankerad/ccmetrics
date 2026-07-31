@@ -1,13 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 170" width="640" height="170" role="img" aria-label="ccmetrics logo: a spend bar chart with tokens leaking from one bar">
   <style>
-    /* the dashboard's own dark tokens: bars --muted, the leaking bar and the
-       "cc" --s2, so the mark and the charts share exactly one accent. */
-    .bar  { fill: #a3a39d; }
-    .hot  { fill: #d95926; }
+    /* the dashboard's own tokens. The mark wears the CHROME gold — the same
+       accent as the tabs, links and the spend line — so the mark, the UI and
+       the charts read as one system. (The data series carry a deeper gold
+       step, #cb8100 / #c27b00, which is what the palette validator cleared;
+       the bright #F0B90B is 1.8:1 on white, hence light mode's darker step.) */
+    .bar  { fill: #848e9c; }
+    .hot  { fill: #f0b90b; }
     .word { font: 700 58px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .cc   { fill: #d95926; }
-    .rest { fill: #ffffff; }
-    .tag  { font: 400 17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #a3a39d; }
+    .cc   { fill: #f0b90b; }
+    .rest { fill: #eaecef; }
+    .tag  { font: 400 17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #848e9c; }
   </style>
   <!-- sparkline ▂▃▅▇▅▆█ · baseline y=108 · the ▇ bar leaks.
        Same proportions as the inline header mark (bar 16 : gap 8 = 4 : 2;

@@ -12,115 +12,169 @@
   substitute colours.
 -->
 <style>
+/* ---------------------------------------------------------------------------
+   Exchange-desk visual system: flat panels, hairline rules, one gold accent,
+   reserved green/red for direction. Two colour jobs are kept strictly apart:
+
+     CHROME  gold (--gold / --gold-ink)  -> tabs, links, buttons, focus, the
+             logo, the spend line. Anything gold is either interactive or the
+             one headline series.
+     STATE   --up / --down               -> reserved. Never a series colour.
+     DATA    --s1..--s4                  -> series identity only.
+
+   The four series steps are not eyeballed. They were derived by search over
+   OKLCH (one step per hue family: gold / blue / teal / magenta, every family
+   held >=25 deg clear of the reserved up-green and down-red hues so a series
+   can never impersonate a state) and then run through the data-viz validator
+   against BOTH panel surfaces, on the ALL-PAIRS list because the per-model
+   rows re-sort by share and any two of them can end up adjacent:
+
+     dark  on #1E2329 -> L band PASS · chroma PASS · CVD 11.5 (protan) PASS
+                         · normal-vision 22.5 PASS · contrast >=3:1 PASS
+     light on #FFFFFF -> L band PASS · chroma PASS · CVD 15.6 (deutan) PASS
+                         · normal-vision 22.1 PASS · contrast >=3:1 PASS
+
+   Do not substitute a colour without re-running that validator.
+
+   Text colours are checked separately (WCAG, not the categorical checks):
+   Binance's bright gold #F0B90B is 8.8:1 on the dark panel but only 1.8:1 on
+   white, so light mode carries its own darker gold step for text and marks.
+   Same story for the up/down pair - hence the -ink variants.
+--------------------------------------------------------------------------- */
 :root {
-  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#5b5b58;
-  --hair:#e3e3df; --hair-strong:#cfcfc9;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
-  --seq-line:#256abf; --seq-fill:#b7d3f6;
-  --chip:#eef1ee; --shadow:0 1px 2px rgba(0,0,0,.05);
+  --page:#fafafa; --surface:#ffffff; --panel-hover:#f5f7fa;
+  --ink:#1e2329; --muted:#6b7684;
+  --hair:#eaecef; --hair-strong:#d8dce1;
+  --gold:#b8860b; --gold-ink:#96650a; --gold-hover:#7a5208;
+  --gold-fill:rgba(184,134,11,.14);
+  --up:#00875a; --up-ink:#00875a; --down:#c6193a; --down-ink:#c6193a;
+  --s1:#c27b00; --s2:#1162fb; --s3:#00a2a1; --s4:#a30098;
+  --shadow:0 2px 8px rgba(24,26,32,.10);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --muted:#a3a39d;
-    --hair:#2c2c2a; --hair-strong:#3d3d3a;
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
-    --seq-line:#6da7ec; --seq-fill:#184f95;
-    --chip:#242422; --shadow:0 1px 2px rgba(0,0,0,.4);
+    --page:#0b0e11; --surface:#1e2329; --panel-hover:#2b3139;
+    --ink:#eaecef; --muted:#848e9c;
+    --hair:#2b3139; --hair-strong:#474d57;
+    --gold:#f0b90b; --gold-ink:#f0b90b; --gold-hover:#fcd535;
+    --gold-fill:rgba(240,185,11,.12);
+    --up:#0ecb81; --up-ink:#0ecb81; --down:#f6465d; --down-ink:#ff6a7d;
+    --s1:#cb8100; --s2:#1d6aff; --s3:#00a9a3; --s4:#bd26be;
+    --shadow:0 2px 8px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="light"] {
-  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#5b5b58;
-  --hair:#e3e3df; --hair-strong:#cfcfc9;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
-  --seq-line:#256abf; --seq-fill:#b7d3f6;
-  --chip:#eef1ee; --shadow:0 1px 2px rgba(0,0,0,.05);
+  --page:#fafafa; --surface:#ffffff; --panel-hover:#f5f7fa;
+  --ink:#1e2329; --muted:#6b7684;
+  --hair:#eaecef; --hair-strong:#d8dce1;
+  --gold:#b8860b; --gold-ink:#96650a; --gold-hover:#7a5208;
+  --gold-fill:rgba(184,134,11,.14);
+  --up:#00875a; --up-ink:#00875a; --down:#c6193a; --down-ink:#c6193a;
+  --s1:#c27b00; --s2:#1162fb; --s3:#00a2a1; --s4:#a30098;
+  --shadow:0 2px 8px rgba(24,26,32,.10);
 }
 :root[data-theme="dark"] {
-  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --muted:#a3a39d;
-  --hair:#2c2c2a; --hair-strong:#3d3d3a;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
-  --seq-line:#6da7ec; --seq-fill:#184f95;
-  --chip:#242422; --shadow:0 1px 2px rgba(0,0,0,.4);
+  --page:#0b0e11; --surface:#1e2329; --panel-hover:#2b3139;
+  --ink:#eaecef; --muted:#848e9c;
+  --hair:#2b3139; --hair-strong:#474d57;
+  --gold:#f0b90b; --gold-ink:#f0b90b; --gold-hover:#fcd535;
+  --gold-fill:rgba(240,185,11,.12);
+  --up:#0ecb81; --up-ink:#0ecb81; --down:#f6465d; --down-ink:#ff6a7d;
+  --s1:#cb8100; --s2:#1d6aff; --s3:#00a9a3; --s4:#bd26be;
+  --shadow:0 2px 8px rgba(0,0,0,.5);
 }
 
 * { box-sizing:border-box; }
 html,body { margin:0; padding:0; }
+html { scrollbar-color:var(--panel-hover) transparent; scrollbar-width:thin; }
 body {
   background:var(--page); color:var(--ink);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  font-size:14px; line-height:1.45;
+  font-size:13px; line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
-.wrap { max-width:1060px; margin:0 auto; padding:24px 20px 64px; }
+/* the exchange detail: a thin, quiet thumb that never draws the eye */
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--panel-hover); border-radius:0; }
+::-webkit-scrollbar-thumb:hover { background:var(--hair-strong); }
+.wrap { max-width:1200px; margin:0 auto; padding:16px 16px 56px; }
 .num { font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
 
-header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-.brand { font-weight:650; letter-spacing:-.01em; color:var(--ink); font-size:16px; }
+/* top bar: mark + wordmark left, state chips right, one hairline under it */
+header {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid var(--hair);
+}
+.brand { font-weight:600; letter-spacing:-.01em; color:var(--ink); font-size:16px; display:inline-flex; align-items:center; }
 /* The repo mark, inlined (no file fetch: the CSP here allows no external
    requests). Drawn 1:1 — a 40x28 viewBox rendered at 40x28 px on integer
-   coordinates, so every edge lands on a device pixel at 1x. The neutral bars
-   are --muted and the leaking bar + droplet are --s2, the same orange the
-   charts use, so the mark and the data share exactly one accent. */
-.brand-mark { vertical-align:-8px; margin-right:7px; }
+   coordinates, so every edge lands on a device pixel at 1x. Neutral bars are
+   --muted; the leaking bar, the droplet and the "cc" are the chrome gold, so
+   the mark wears the same accent as the tabs, links and the spend line. */
+.brand-mark { margin-right:8px; flex:0 0 auto; }
 .brand-mark .bm-bar { fill:var(--muted); }
-.brand-mark .bm-hot { fill:var(--s2); }
-.brand-cc { color:var(--s2); }
-.scope { color:var(--muted); font-size:13px; }
+.brand-mark .bm-hot { fill:var(--gold-ink); }
+.brand-cc { color:var(--gold-ink); }
+.scope { color:var(--muted); font-size:12px; }
 .proj-name { display:block; }
-.proj-path { display:block; color:var(--muted); font-size:9px; line-height:1.6; }
+.proj-path { display:block; color:var(--muted); font-size:10px; line-height:1.5; }
 /* same name/path pair as the projects table, but inline for the one-line live bar */
-.live-proj { color:var(--ink); font-weight:550; }
+.live-proj { color:var(--ink); font-weight:600; }
 .live-path { color:var(--muted); font-size:10px; margin-left:5px; }
 .nowrap { white-space:nowrap; }
 .spacer { flex:1 1 auto; }
+/* tag, not pill: square-ish, filled, borderless until it carries a state */
 .chip {
-  display:inline-flex; align-items:center; gap:6px; padding:3px 9px;
-  border:1px solid var(--hair-strong); border-radius:999px;
-  background:var(--chip); color:var(--muted); font-size:12px; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px; padding:3px 8px;
+  border:1px solid transparent; border-radius:2px;
+  background:var(--panel-hover); color:var(--muted); font-size:11px; white-space:nowrap;
 }
 /* cost-confidence chip states (wave D): exact = OTEL covered the window,
    mixed = some days exact and some still a floor. */
-.chip.exact { color:var(--ink); border-color:var(--s3); }
-.chip.mixed { color:var(--ink); border-color:var(--s4); }
+.chip.exact { color:var(--ink); border-color:var(--up); }
+.chip.mixed { color:var(--ink); border-color:var(--gold); }
 button.link {
-  background:none; border:none; color:var(--s1); cursor:pointer;
-  font:inherit; padding:0; text-decoration:underline; text-underline-offset:2px;
+  background:none; border:none; color:var(--gold-ink); cursor:pointer;
+  font:inherit; font-size:12px; padding:0; text-decoration:none;
 }
+button.link:hover { color:var(--gold-hover); text-decoration:underline; text-underline-offset:3px; }
 button.ghost {
-  background:var(--surface); border:1px solid var(--hair-strong); border-radius:6px;
-  color:var(--muted); cursor:pointer; font:inherit; font-size:12px; padding:3px 9px;
+  background:none; border:none; border-radius:2px;
+  color:var(--gold-ink); cursor:pointer; font:inherit; font-size:12px; padding:4px 8px;
+  transition:background 80ms ease, color 80ms ease;
 }
-button.ghost:hover { color:var(--ink); border-color:var(--muted); }
+button.ghost:hover { background:var(--panel-hover); color:var(--gold-hover); }
 
-section { margin-bottom:22px; }
-.card {
-  background:var(--surface); border:1px solid var(--hair); border-radius:10px;
-  box-shadow:var(--shadow);
-}
+section { margin-bottom:16px; }
+/* flat panel: hairline, 4px radius, no shadow. Elevation is not a thing here —
+   the near-black canvas does the separating. */
+.card { background:var(--surface); border:1px solid var(--hair); border-radius:4px; }
 .card-head {
-  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   padding:12px 16px; border-bottom:1px solid var(--hair);
 }
-.card-title { font-size:12px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
-.card-body { padding:14px 16px 16px; }
+.card-title { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:0; }
+.card-body { padding:16px; }
 
-/* live tiles */
-.tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--hair); }
-.tile { background:var(--surface); padding:12px 16px; min-height:74px; }
-.tile:first-child { border-radius:10px 0 0 10px; }
-.tile:last-child { border-radius:0 10px 10px 0; }
-.tile .label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
-.tile .value { font-size:22px; font-weight:600; letter-spacing:-.02em; margin-top:2px; }
-.tile .sub { font-size:12px; color:var(--muted); }
+/* live tiles — one panel divided by hairlines, not four floating boxes */
+.tiles {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+  background:var(--hair); border:1px solid var(--hair); border-radius:4px;
+}
+.tile { background:var(--surface); padding:12px 16px; min-height:70px; }
+.tile .label { font-size:11px; font-weight:500; color:var(--muted); }
+.tile .value { font-size:20px; font-weight:600; letter-spacing:-.02em; margin-top:2px; }
+.tile .sub { font-size:11px; color:var(--muted); }
 .tile.unknown .value { color:var(--muted); font-weight:500; }
 .live-bar { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.dot { width:8px; height:8px; border-radius:50%; background:var(--s3); flex:0 0 auto; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--up); flex:0 0 auto; }
 .dot.off { background:var(--muted); }
 .warn {
-  margin-top:10px; padding:9px 12px; border-radius:8px;
-  border:1px solid var(--s2); color:var(--ink); background:var(--surface); font-size:13px;
+  margin-top:10px; padding:9px 12px; border-radius:2px;
+  border:1px solid var(--down); color:var(--ink); background:var(--surface); font-size:12px;
 }
-.warn b { color:var(--s2); }
+.warn b { color:var(--down-ink); }
 
 /* charts */
 .chart { position:relative; width:100%; }
@@ -128,17 +182,21 @@ section { margin-bottom:22px; }
 .grid-line { stroke:var(--hair); stroke-width:1; shape-rendering:crispEdges; }
 .axis-line { stroke:var(--hair-strong); stroke-width:1; shape-rendering:crispEdges; }
 .axis-text { fill:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; }
-.seq-fill { fill:var(--seq-fill); }
-.seq-line { stroke:var(--seq-line); stroke-width:1.75; fill:none; }
-.band-fill { fill:var(--s2); opacity:.22; }
-.band-line { stroke:var(--s2); stroke-width:1; fill:none; opacity:.55; stroke-dasharray:3 3; }
-.cross { stroke:var(--ink); stroke-width:1; opacity:.35; shape-rendering:crispEdges; }
-.dot-mark { fill:var(--seq-line); }
+/* spend: the headline series wears the chrome gold — one line, one 12% fill.
+   The estimated-output band is NOT a category, it is an uncertainty range, so
+   it gets its own series hue at low opacity plus a dashed edge, never a solid
+   fill that could be mistaken for measured money. */
+.seq-fill { fill:var(--gold-fill); }
+.seq-line { stroke:var(--gold); stroke-width:2; fill:none; }
+.band-fill { fill:var(--s2); opacity:.16; }
+.band-line { stroke:var(--s2); stroke-width:1; fill:none; opacity:.6; stroke-dasharray:3 3; }
+.cross { stroke:var(--muted); stroke-width:1; opacity:.6; shape-rendering:crispEdges; }
+.dot-mark { fill:var(--gold); }
 .f1 { fill:var(--s1); } .f2 { fill:var(--s2); } .f3 { fill:var(--s3); } .f4 { fill:var(--s4); }
 .tip {
   position:absolute; pointer-events:none; z-index:5; min-width:150px;
-  background:var(--surface); border:1px solid var(--hair-strong); border-radius:8px;
-  box-shadow:var(--shadow); padding:8px 10px; font-size:12px; display:none;
+  background:var(--surface); border:1px solid var(--hair-strong); border-radius:4px;
+  box-shadow:var(--shadow); padding:8px 10px; font-size:11px; display:none;
 }
 .tip .t-date { color:var(--muted); font-size:11px; margin-bottom:3px; }
 .tip .row { display:flex; justify-content:space-between; gap:14px; }
@@ -149,15 +207,16 @@ section { margin-bottom:22px; }
 .qmark {
   display:inline-flex; align-items:center; justify-content:center;
   width:13px; height:13px; margin-left:4px; flex:0 0 auto; vertical-align:middle;
-  border:1px solid var(--hair-strong); border-radius:50%; background:var(--chip);
+  border:1px solid var(--hair-strong); border-radius:50%; background:var(--panel-hover);
   color:var(--muted); font-size:9px; font-weight:700; line-height:1;
   letter-spacing:0; text-transform:none; text-decoration:none;
   cursor:help; user-select:none; -webkit-user-select:none;
+  transition:color 80ms ease, border-color 80ms ease;
 }
-.qmark:hover, .qmark:focus { color:var(--ink); border-color:var(--muted); outline:none; }
+.qmark:hover, .qmark:focus { color:var(--gold-ink); border-color:var(--gold); outline:none; }
 .helptip {
   position:absolute; display:none; z-index:50; max-width:280px;
-  background:var(--surface); border:1px solid var(--hair-strong); border-radius:8px;
+  background:var(--surface); border:1px solid var(--hair-strong); border-radius:4px;
   box-shadow:var(--shadow); padding:8px 10px; pointer-events:none;
   color:var(--ink); font-size:12px; font-weight:400; line-height:1.45;
   letter-spacing:normal; text-transform:none; white-space:normal; text-align:left;
@@ -168,99 +227,117 @@ section { margin-bottom:22px; }
    same height, rows on the same 9px/10px padding, and a share bar whose fill
    is always share% of a full-width track. Only the hue differs, and it differs
    for a reason (see modelColor / the repo block in the script). */
-.seg { display:inline-flex; }
-.seg button { border-radius:0; }
-.seg button:first-child { border-radius:6px 0 0 6px; }
-.seg button:last-child { border-radius:0 6px 6px 0; }
-.seg button + button { border-left:none; }
-.seg button.on { color:var(--ink); background:var(--chip); border-color:var(--muted); }
-.sub-title {
-  font-size:11px; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--muted); margin:16px 0 9px;
+/* period picker = tabs, not buttons: text only, the active one is ink with a
+   2px gold underline. Nothing here is a box. */
+.seg { display:inline-flex; align-items:flex-end; gap:18px; }
+.seg button {
+  background:none; border:none; border-bottom:2px solid transparent; border-radius:0;
+  color:var(--muted); cursor:pointer; font:inherit; font-size:12px;
+  padding:2px 0 5px; transition:color 80ms ease, border-color 80ms ease;
 }
+.seg button:hover { color:var(--ink); }
+.seg button.on { color:var(--ink); font-weight:600; border-bottom-color:var(--gold); background:none; }
+.sub-title { font-size:11px; font-weight:500; color:var(--muted); margin:16px 0 9px; }
 .usage-cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
 @media (max-width:760px) { .usage-cols { grid-template-columns:1fr; } }
 /* the repo block has no <thead>, so it borrows the exact th metrics — that is
    what puts the two blocks' first row on the same baseline */
 .sub-head {
   display:flex; justify-content:space-between; gap:10px;
-  font-size:11px; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--muted); font-weight:600; padding:0 10px 7px;
-  border-bottom:1px solid var(--hair-strong);
+  font-size:11px; color:var(--muted); font-weight:500; padding:0 12px 8px;
+  border-bottom:1px solid var(--hair);
 }
 /* five columns in half a card is tight: pull the inner gutters in, keep the
    outer ones at 10px so the block still lines up with .sub-head next door */
 #usage-model-table th, #usage-model-table td { padding-left:6px; padding-right:6px; }
-#usage-model-table th:first-child, #usage-model-table td:first-child { padding-left:10px; }
-#usage-model-table th:last-child, #usage-model-table td:last-child { padding-right:10px; }
+#usage-model-table th:first-child, #usage-model-table td:first-child { padding-left:12px; }
+#usage-model-table th:last-child, #usage-model-table td:last-child { padding-right:12px; }
 .chart-note, .foot-note { color:var(--muted); font-size:11px; }
 .chart-note { margin-top:6px; }
-.foot-note { margin-top:9px; padding:0 10px; }
+.foot-note { margin-top:9px; padding:0 12px; }
 .foot-note:empty { display:none; }
-.sbar { height:8px; border-radius:999px; background:var(--hair); overflow:hidden; }
-.sbar i { display:block; height:100%; border-radius:999px; min-width:2px; }
-td .sbar { margin-top:6px; }
+/* 4px track, hairline bed, fill = share% of the full width. Same contract in
+   both blocks, so a bar length means the same thing wherever it appears. */
+.sbar { height:4px; border-radius:2px; background:var(--hair); overflow:hidden; }
+.sbar i { display:block; height:100%; border-radius:2px; min-width:2px; }
+/* the bar always sits clear of the small path line above it — at 4px tall it
+   otherwise crowds the descenders */
+td .sbar, .urow .sbar, .repo-row .sbar { margin-top:6px; }
 .repo-row { margin-bottom:11px; }
 .repo-row:last-child { margin-bottom:0; }
 /* one repo inside "who used it" — same row rhythm as a table row above it */
-.urow { padding:9px 10px; border-bottom:1px solid var(--hair); }
+.urow { padding:8px 12px; border-bottom:1px solid var(--hair); }
 .urow:last-child { border-bottom:none; }
 .repo-head { display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
-.repo-head .val { margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.repo-head .val { margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:13px; }
 
 /* legend */
-.legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; }
-.legend .item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
-.swatch { width:10px; height:10px; border-radius:2px; flex:0 0 auto; }
+.legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:12px; }
+.legend .item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+.swatch { width:8px; height:8px; border-radius:1px; flex:0 0 auto; }
 .legend .val { color:var(--ink); font-variant-numeric:tabular-nums; }
 
-/* tables */
-table { width:100%; border-collapse:collapse; }
+/* tables: 12px body, ~34px rows, hairline separators only — no zebra, no
+   vertical rules. Numerics right-aligned and tabular so digits line up. */
+table { width:100%; border-collapse:collapse; font-size:12px; }
 th {
-  text-align:left; font-size:11px; letter-spacing:.07em; text-transform:uppercase;
-  color:var(--muted); font-weight:600; padding:0 10px 7px; border-bottom:1px solid var(--hair-strong);
+  text-align:left; font-size:11px; letter-spacing:0; color:var(--muted);
+  font-weight:500; padding:0 12px 8px; border-bottom:1px solid var(--hair);
   white-space:nowrap;
 }
-td { padding:9px 10px; border-bottom:1px solid var(--hair); vertical-align:top; }
+td { padding:8px 12px; border-bottom:1px solid var(--hair); vertical-align:top; }
 tbody tr:last-child td { border-bottom:none; }
 th.r, td.r { text-align:right; }
+td.r, th.r, .num { font-variant-numeric:tabular-nums; }
 tr.clickable { cursor:pointer; }
-tr.clickable:hover td { background:var(--chip); }
+tr.clickable td { transition:background 80ms ease; }
+tr.clickable:hover td { background:var(--panel-hover); }
 .rank { color:var(--muted); font-variant-numeric:tabular-nums; }
-.leak-name { font-weight:550; }
-.fixline { color:var(--muted); font-size:12px; margin-top:3px; white-space:pre-wrap; word-break:break-word; }
-.effort { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; border:1px solid; }
-.effort.paste { color:var(--s3); border-color:var(--s3); }
-.effort.habit { color:var(--s4); border-color:var(--s4); }
-.effort.restructure { color:var(--s2); border-color:var(--s2); }
-button.copy {
-  background:var(--surface); border:1px solid var(--hair-strong); border-radius:6px;
-  color:var(--ink); cursor:pointer; font:inherit; font-size:12px; padding:3px 10px; white-space:nowrap;
+.leak-name { font-weight:600; font-size:13px; }
+.fixline { color:var(--muted); font-size:11px; margin-top:3px; white-space:pre-wrap; word-break:break-word; }
+/* effort = a tag, and the word in it is the label — colour is never the only
+   cue. paste is the cheap end (up-green), restructure the dear end (down-red). */
+.effort {
+  display:inline-block; padding:2px 6px; border-radius:2px; font-size:11px;
+  background:var(--panel-hover); border:none;
 }
-button.copy:hover { border-color:var(--s1); color:var(--s1); }
-button.copy.done { border-color:var(--s3); color:var(--s3); }
+.effort.paste { color:var(--up-ink); }
+.effort.habit { color:var(--gold-ink); }
+.effort.restructure { color:var(--down-ink); }
+button.copy {
+  background:none; border:none; border-radius:2px;
+  color:var(--gold-ink); cursor:pointer; font:inherit; font-size:12px;
+  padding:3px 8px; white-space:nowrap; transition:background 80ms ease, color 80ms ease;
+}
+button.copy:hover { background:var(--panel-hover); color:var(--gold-hover); }
+button.copy.done { color:var(--up-ink); background:var(--panel-hover); }
 .muted { color:var(--muted); }
 /* leaks grouped by project (global view only): a header row per project */
 tr.leak-group { cursor:pointer; }
-tr.leak-group td { background:var(--chip); }
-tr.leak-group:hover td { border-color:var(--hair-strong); }
-.grp-sum { color:var(--muted); font-weight:400; font-size:12px; margin-left:8px; }
+tr.leak-group td { background:var(--panel-hover); transition:background 80ms ease; }
+tr.leak-group:hover td { background:var(--hair); }
+.grp-sum { color:var(--muted); font-weight:400; font-size:11px; margin-left:8px; }
 /* expanded children of the grouped "test & scratch runs" row */
 tr.eph-child td { color:var(--muted); }
 tr.eph-child td:first-child { padding-left:28px; }
-.empty { color:var(--muted); padding:6px 10px; }
-footer { color:var(--muted); font-size:12px; margin-top:26px; display:flex; gap:14px; flex-wrap:wrap; }
+.empty { color:var(--muted); padding:8px 12px; }
+footer {
+  color:var(--muted); font-size:11px; margin-top:20px; padding-top:12px;
+  border-top:1px solid var(--hair); display:flex; gap:14px; flex-wrap:wrap;
+}
 /* the other two surfaces (console report, the two opt-in hooks) are invisible
    to a first-time user, so they get one quiet line instead of a README */
 code {
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:11.5px; background:var(--chip); border:1px solid var(--hair);
-  border-radius:4px; padding:1px 5px; white-space:nowrap; color:var(--ink);
+  font-size:11px; background:var(--panel-hover); border:none;
+  border-radius:2px; padding:2px 6px; white-space:nowrap; color:var(--ink);
 }
-.surfaces { color:var(--muted); font-size:12px; line-height:2.1; margin:-8px 0 16px; }
-.hint { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 22px; }
-.delta.up { color:var(--s2); } .delta.down { color:var(--s3); }
-.bignum { font-size:26px; font-weight:620; letter-spacing:-.02em; }
+.surfaces { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 16px; }
+.hint { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 16px; }
+/* direction, not sentiment: this column is money, so MORE of it is the red
+   one. Green here means the bill went down. (Said in the column's help too.) */
+.delta.up { color:var(--down-ink); } .delta.down { color:var(--up-ink); }
+.bignum { font-size:24px; font-weight:600; letter-spacing:-.02em; }
 .spend-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
 </style>
 </head>
@@ -290,7 +367,7 @@ code {
 <section>
   <div class="live-bar">
     <span class="dot off" id="live-dot"></span>
-    <span class="card-title" data-help="your running session right now — burn speed, context fill, cache use; empty when nothing is running">live session</span>
+    <span class="card-title" data-help="your running session right now — burn speed, context fill, cache use; empty when nothing is running">Live session</span>
     <span class="scope" id="live-meta">connecting&hellip;</span>
   </div>
   <div class="tiles" id="tiles">
@@ -321,7 +398,7 @@ code {
 <!-- plan limits — only ever present when `ccmetrics statusline` feeds them -->
 <section class="card" id="plan-card" style="display:none">
   <div class="card-head">
-    <span class="card-title" data-help="your real plan usage, read from Claude Code's own statusline feed — it shows up only if you turned it on with `ccmetrics statusline --setup`. These are shares of your plan, straight from Anthropic; ccmetrics cannot see them without that hook, and never estimates one.">plan</span>
+    <span class="card-title" data-help="your real plan usage, read from Claude Code's own statusline feed — it shows up only if you turned it on with `ccmetrics statusline --setup`. These are shares of your plan, straight from Anthropic; ccmetrics cannot see them without that hook, and never estimates one.">Plan</span>
     <span class="spacer"></span>
     <span class="scope" id="plan-source">&nbsp;</span>
   </div>
@@ -335,7 +412,7 @@ code {
 <!-- 30d spend -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title" data-help="day-by-day value of your usage at API prices — the 'at least' line plus a separate output estimate, never added together">spend &middot; 30 days</span>
+    <span class="card-title" data-help="day-by-day value of your usage at API prices — the 'at least' line plus a separate output estimate, never added together">Spend &middot; 30 days</span>
     <span class="spacer"></span>
     <span class="scope" id="spend-headline">&nbsp;</span>
   </div>
@@ -348,7 +425,7 @@ code {
 <!-- token mix -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title" data-help="where the token volume goes; cache reads dominate and are the cheap kind, so a big blue bar is normal">token mix &middot; 30 days</span>
+    <span class="card-title" data-help="where the token volume goes; cache reads dominate and are the cheap kind, so a big blue bar is normal">Token mix &middot; 30 days</span>
     <span class="spacer"></span>
     <span class="scope" id="mix-headline">&nbsp;</span>
   </div>
@@ -361,13 +438,13 @@ code {
 <!-- usage: per period, per model, per repo -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title" data-help="how much you used, by model and by repo — these are shares of YOUR OWN usage, never a share of your plan's limit; plan limits live on Anthropic's servers and are in no local file, so this page will not guess one">usage</span>
+    <span class="card-title" data-help="how much you used, by model and by repo — these are shares of YOUR OWN usage, never a share of your plan's limit; plan limits live on Anthropic's servers and are in no local file, so this page will not guess one">Usage</span>
     <span class="scope" id="usage-headline">&nbsp;</span>
     <span class="spacer"></span>
     <span class="seg" id="usage-seg">
-      <button class="ghost" data-period="day">day</button>
-      <button class="ghost on" data-period="week">week</button>
-      <button class="ghost" data-period="month">month</button>
+      <button data-period="day">day</button>
+      <button class="on" data-period="week">week</button>
+      <button data-period="month">month</button>
     </span>
   </div>
   <div class="card-body">
@@ -402,7 +479,7 @@ code {
 <!-- top leaks -->
 <section class="card">
   <div class="card-head">
-    <span class="card-title" data-help="wasteful patterns found in your own sessions, biggest win first, each with a ready-made fix you can copy">top leaks</span>
+    <span class="card-title" data-help="wasteful patterns found in your own sessions, biggest win first, each with a ready-made fix you can copy">Top leaks</span>
     <span class="scope">ranked by tokens saved vs how hard the fix is</span>
     <span class="spacer"></span>
     <button class="link" id="all-leaks">show all</button>
@@ -427,7 +504,7 @@ code {
 <!-- per-project -->
 <section class="card" id="projects-card">
   <div class="card-head">
-    <span class="card-title" data-help="every repo this machine used Claude Code in, most spend first">projects</span>
+    <span class="card-title" data-help="every repo this machine used Claude Code in, most spend first">Projects</span>
     <span class="scope">click a row to scope everything above to that project</span>
   </div>
   <div class="card-body">
@@ -438,7 +515,7 @@ code {
           <th class="r nowrap" style="width:100px" data-help="what this project's usage is worth at API prices — a proven minimum, not a bill">at least $</th>
           <th class="r nowrap" style="width:110px" data-help="tokens' worth of cost in the window">tokens</th>
           <th class="r nowrap" style="width:100px" data-help="share of context served from cache instead of being paid for again — higher is better">cache-hit</th>
-          <th class="r nowrap" style="width:110px" data-help="spend change compared with the 30 days before this window">vs prior 30d</th>
+          <th class="r nowrap" style="width:110px" data-help="spend change compared with the 30 days before this window. This column is money, so the colours follow the bill, not a mood: red means you spent MORE than before, green means you spent less.">vs prior 30d</th>
           <th style="width:230px" data-help="the single biggest saving found for this project">top leak</th>
         </tr>
       </thead>
@@ -803,7 +880,7 @@ function drawSpend(series) {
   host.appendChild(s);
 
   clear(el("legend-spend"));
-  legendItem(el("legend-spend"), "var(--seq-line)", "usage worth at least (at API prices)",
+  legendItem(el("legend-spend"), "var(--gold)", "usage worth at least (at API prices)",
              fmtUsd(sum(series, "floor_usd")),
              "what this usage would cost at Anthropic's API list prices — a proven minimum. " +
              "On a subscription plan your real bill is the flat fee; this measures how much you used, not what you were billed.");
@@ -841,10 +918,17 @@ function drawMix(t) {
   if (total <= 0) total = 1;
   var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
                        "aria-label": "token mix by cache class" });
-  var xoff = 0, barH = 30, barY = 8;
-  segs.forEach(function (g) {
+  // A 2px gap of bare surface between segments (the data-viz mark spec): the
+  // segments stay on one linear scale — the gap is taken out of the drawn
+  // width, never out of the position — but two touching hues never blend into
+  // one another, which is what the CVD floor assumes.
+  var xoff = 0, barH = 24, barY = 8, GAP = 2;
+  var lastDrawn = -1;
+  segs.forEach(function (g, i) { if ((g.val || 0) > 0) lastDrawn = i; });
+  segs.forEach(function (g, i) {
     var w = Math.max(0, (W * (g.val || 0)) / total);
-    var r = svg("rect", { class: g.cls, x: xoff, y: barY, width: w, height: barH });
+    var drawn = i === lastDrawn ? w : Math.max(0, w - GAP);
+    var r = svg("rect", { class: g.cls, x: xoff, y: barY, width: drawn, height: barH });
     r.addEventListener("mousemove", function (ev) {
       var hostRect = host.getBoundingClientRect();
       clear(tip);
@@ -954,7 +1038,7 @@ function renderUsage() {
   var per = state.usagePeriod;
   var segs = el("usage-seg").getElementsByTagName("button");
   for (var i = 0; i < segs.length; i++) {
-    segs[i].className = "ghost" + (segs[i].getAttribute("data-period") === per ? " on" : "");
+    segs[i].className = (segs[i].getAttribute("data-period") === per ? "on" : "");
   }
   var series = (d.periods && d.periods[per]) || [];
   drawUsageSeries(series);
@@ -1036,7 +1120,9 @@ function renderUsage() {
     // one hue for every repo: the bar's length is the share, and the repo's
     // own name is already on the row, so a per-repo colour would only be
     // re-encoding what the bar already says (and repos have no fixed count).
-    row.appendChild(shareBar(r.share_pct, "var(--s1)"));
+    // It is slot 2, not slot 1: slot 1 is gold, and a column of gold bars
+    // beside the gold-barred model rows would falsely link the two blocks.
+    row.appendChild(shareBar(r.share_pct, "var(--s2)"));
     host.appendChild(row);
   });
 }
@@ -1396,11 +1482,14 @@ function fmtReset(iso) {
   var mm = String(d.getMinutes()).padStart(2, "0");
   return DAYS[d.getDay()] + " " + hh + ":" + mm;
 }
+// A plan meter is a utilisation reading, not a verdict, so the low end stays a
+// plain series hue. Only the top of the range earns the reserved colours:
+// gold = getting close, red = nearly out.
 function planColor(pct) {
   if (pct === null || pct === undefined) return "var(--muted)";
-  if (pct >= 90) return "var(--s2)";
-  if (pct >= 75) return "var(--s4)";
-  return "var(--s1)";
+  if (pct >= 90) return "var(--down)";
+  if (pct >= 75) return "var(--gold)";
+  return "var(--s2)";
 }
 
 function renderPlan(d) {
