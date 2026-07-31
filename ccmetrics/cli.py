@@ -65,7 +65,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sl = sub.add_parser(
         "statusline",
         help="optional: Claude Code's status line command — reads its session JSON "
-        "on stdin, records your real plan %, prints one line",
+        "on stdin, records your real plan %%, prints one line",
     )
     sl.add_argument(
         "--setup",
