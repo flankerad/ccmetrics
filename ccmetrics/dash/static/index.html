@@ -450,6 +450,8 @@ code {
   <div class="card-body">
     <div class="chart" id="chart-usage"><div class="tip" id="tip-usage"></div></div>
     <div class="chart-note" id="usage-note">&nbsp;</div>
+    <div class="sub-title" id="usage-rhythm-title" data-help="which hours of the day your turns land in, over the last 7 days, on this machine's clock — useful for pacing 5-hour plan windows around your own rhythm. Measured from per-turn timestamps; nothing here reads or guesses your plan.">when you work · last 7 days · local time</div>
+    <div class="chart" id="chart-rhythm" style="min-height:46px"><div class="tip" id="tip-rhythm"></div></div>
     <div class="usage-cols">
       <div>
         <div class="sub-title" data-help="which models did the work, measured in tokens' worth of input cost. The colour marks the model family, so a model keeps the same colour when you switch day / week / month. The split comes from the per-turn records, which are kept for 30 days only."><span id="usage-model-title">per model</span></div>
@@ -1040,17 +1042,29 @@ function renderUsage() {
   for (var i = 0; i < segs.length; i++) {
     segs[i].className = (segs[i].getAttribute("data-period") === per ? "on" : "");
   }
-  var series = (d.periods && d.periods[per]) || [];
+  // Day and week can be split by model because the per-turn rows still exist
+  // for them; month cannot (those rows are aged out), and an older payload has
+  // neither — both fall back to the plain single-hue series, unchanged.
+  var stackSrc = per === "day" ? d.per_model_daily
+               : per === "week" ? d.per_model_weekly : null;
+  var stacked = (stackSrc && stackSrc.length) ? stackBuckets(stackSrc) : null;
+  var series = stacked || (d.periods && d.periods[per]) || [];
   drawUsageSeries(series);
+  // the rhythm strip covers the same 7 days whichever period button is on, so
+  // it is drawn from the payload, not from the picker
+  drawRhythm(d.rhythm);
   var cur = series.length ? series[series.length - 1] : null;
   el("usage-headline").textContent = cur
     ? PERIOD_NOW[per] + " so far: " + fmtTok(cur.equiv_tokens) + " tokens · " +
       cur.turns.toLocaleString("en-US") + " turns"
     : "no usage recorded";
-  el("usage-note").textContent = series.length
-    ? "the last bar is " + PERIOD_NOW[per] + " so far — a part-finished " +
-      PERIOD_WORD[per] + " is drawn lighter, not a drop in usage"
-    : "";
+  el("usage-note").textContent = !series.length ? ""
+    : (stacked
+        ? "each bar is one " + PERIOD_WORD[per] + ", split by model — per-turn " +
+          "records go back 30 days, so the weekly view sees at most ~4 weeks. "
+        : "") +
+      "the last bar is " + PERIOD_NOW[per] + " so far — a part-finished " +
+      PERIOD_WORD[per] + " is drawn lighter, not a drop in usage";
 
   // The per-turn rows carry the model name and are kept 30 days, so the split
   // only comes in two windows. Map the picker onto them and say which one it is.
@@ -1151,6 +1165,54 @@ function colPath(x, y, w, h, r) {
          "V" + (y + h) + "Z";
 }
 
+// A day/week bucket arrives already split by model. Folding its own total up
+// front lets the headline, the axis and the tooltip read one single shape,
+// whichever source the bars came from.
+function stackBuckets(buckets) {
+  return buckets.map(function (b) {
+    var models = (b.models || []).slice(), tok = 0, turns = 0;
+    models.forEach(function (m) {
+      tok += m.equiv_tokens || 0;
+      turns += m.turns || 0;
+    });
+    return { label: b.label, start: b.start, end: b.end, models: models,
+             equiv_tokens: tok, turns: turns };
+  });
+}
+
+// ONE stacking order for every bar: models ranked by their total across the
+// whole window, biggest at the bottom. Ranking each bar on its own would let a
+// colour change altitude from bar to bar, and the eye reads that as movement.
+function modelStackOrder(series) {
+  var tot = {}, names = [], any = false, own = Object.prototype.hasOwnProperty;
+  series.forEach(function (p) {
+    (p.models || []).forEach(function (m) {
+      any = true;
+      if (!own.call(tot, m.model)) { tot[m.model] = 0; names.push(m.model); }
+      tot[m.model] += m.equiv_tokens || 0;
+    });
+  });
+  if (!any) return null;
+  // ties break on the name, so one window always stacks the same way twice
+  names.sort(function (a, b) {
+    return (tot[b] - tot[a]) || (a < b ? -1 : a > b ? 1 : 0);
+  });
+  return names;
+}
+
+// this bucket's models in that order, with the ones that used nothing dropped:
+// a zero segment is not a thin sliver — it is absent.
+function stackSegments(p, order) {
+  if (!order || !p || !p.models) return null;
+  var by = {}, out = [];
+  p.models.forEach(function (m) { by[m.model] = m; });
+  order.forEach(function (name) {
+    var m = by[name];
+    if (m && (m.equiv_tokens || 0) > 0) out.push(m);
+  });
+  return out;
+}
+
 // One bar per period, oldest left, heights strictly linear against one axis.
 // A period with no usage gets no bar at all — a 1px hairline would read as
 // "a little", and none of it is true. The newest bar is the period still
@@ -1183,15 +1245,36 @@ function drawUsageSeries(series) {
     s.appendChild(lab);
   }
 
+  var order = modelStackOrder(series);
   var step = Math.max(1, Math.round(n / 7));
   series.forEach(function (p, i) {
     var bx = padL + band * i + (band - bw) / 2;
     var val = p.equiv_tokens || 0;
     if (val > 0) {
-      var h = Math.max(2, ih * val / maxV);
-      var r = svg("path", { class: "f1", d: colPath(bx, padT + ih - h, bw, h, 4) });
-      if (i === n - 1) r.setAttribute("opacity", ".55");
-      s.appendChild(r);
+      var segs = stackSegments(p, order);
+      if (segs && segs.length) {
+        // one mark per model, stacked from the baseline up — only the topmost
+        // gets the rounded cap, so the stack keeps a plain bar's silhouette
+        var grp = svg("g", {});
+        if (i === n - 1) grp.setAttribute("opacity", ".55");
+        var base = padT + ih;
+        segs.forEach(function (m, k) {
+          var sh = ih * (m.equiv_tokens || 0) / maxV;
+          var y = base - sh;
+          var node = k === segs.length - 1
+            ? svg("path", { d: colPath(bx, y, bw, sh, 4) })
+            : svg("rect", { x: bx, y: y, width: bw, height: sh });
+          node.style.fill = modelColor(m.model);
+          grp.appendChild(node);
+          base = y;
+        });
+        s.appendChild(grp);
+      } else {
+        var h = Math.max(2, ih * val / maxV);
+        var r = svg("path", { class: "f1", d: colPath(bx, padT + ih - h, bw, h, 4) });
+        if (i === n - 1) r.setAttribute("opacity", ".55");
+        s.appendChild(r);
+      }
     }
     if (n <= 8 || i % step === 0 || i === n - 1) {
       var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 5,
@@ -1219,7 +1302,102 @@ function drawUsageSeries(series) {
       b.appendChild(mk("span", "muted", "turns"));
       b.appendChild(mk("span", "num", String(p.turns)));
       tip.appendChild(b);
+      // the split behind the stack, in the stack's own order. Past five models
+      // the rows stop being readable, so the tail folds into one muted line.
+      var rows = stackSegments(p, order) || [];
+      var restTok = 0, restN = 0;
+      rows.slice(5).forEach(function (m) { restTok += m.equiv_tokens || 0; restN++; });
+      rows.slice(0, 5).forEach(function (m) {
+        var mr = mk("div", "row"), lab = mk("span", "muted");
+        var chip = mk("span", "swatch");
+        chip.style.display = "inline-block";
+        chip.style.marginRight = "6px";
+        chip.style.verticalAlign = "middle";
+        chip.style.background = modelColor(m.model);
+        lab.appendChild(chip);
+        lab.appendChild(document.createTextNode(shortModel(m.model)));
+        mr.appendChild(lab);
+        mr.appendChild(mk("span", "num", fmtTok(m.equiv_tokens)));
+        tip.appendChild(mr);
+      });
+      if (restN) {
+        var other = mk("div", "row");
+        other.appendChild(mk("span", "muted", "+ " + restN + " other models"));
+        other.appendChild(mk("span", "num", fmtTok(restTok)));
+        tip.appendChild(other);
+      }
       tip.style.display = "block";
+      var left = ev.clientX - hostRect.left + 10;
+      if (left + 180 > hostRect.width) left -= 200;
+      tip.style.left = Math.max(0, left) + "px";
+      tip.style.top = "2px";
+    });
+    hit.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+    s.appendChild(hit);
+  });
+  host.appendChild(s);
+}
+
+// Twenty-four columns, one per hour of THIS machine's clock, over the last 7
+// days. It is a shape, not a table: a quiet hour gets no mark at all, and the
+// numbers live in the tooltip instead of a y-axis nobody would read.
+function drawRhythm(rhythm) {
+  var host = el("chart-rhythm"), tip = el("tip-rhythm"), title = el("usage-rhythm-title");
+  if (!host) return;
+  var old = host.querySelector("svg");
+  if (old) host.removeChild(old);
+  var hours = (rhythm && rhythm.hours) || [];
+  var on = hours.length === 24;
+  host.style.display = on ? "" : "none";
+  if (title) title.style.display = on ? "" : "none";
+  if (!on) return;
+  // same gutters as the bars above, so both plots share one left edge
+  var W = Math.max(320, host.clientWidth || 640), H = 46;
+  var padL = 46, padR = 12, padT = 6, padB = 14;
+  var iw = W - padL - padR, ih = H - padT - padB;
+  var peak = 0;
+  hours.forEach(function (p) { peak = Math.max(peak, p.equiv_tokens || 0); });
+  var band = iw / 24;
+  var bw = Math.min(24, Math.max(3, band - 4));
+  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
+                       "aria-label": "usage by hour of the day, last 7 days" });
+  var base = Math.round(padT + ih) + 0.5;
+  s.appendChild(svg("line", { class: "axis-line", x1: padL, x2: W - padR,
+                              y1: base, y2: base }));
+  hours.forEach(function (p, i) {
+    var bx = padL + band * i + (band - bw) / 2;
+    var val = p.equiv_tokens || 0;
+    // the busiest hour sets the scale; a quiet one gets no mark at all
+    if (val > 0 && peak > 0) {
+      var h = Math.max(2, ih * val / peak);
+      s.appendChild(svg("path", { class: "f1", d: colPath(bx, padT + ih - h, bw, h, 3) }));
+    }
+    if (i % 6 === 0) {
+      var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 3,
+                             "text-anchor": "middle" });
+      tx.textContent = (i < 10 ? "0" : "") + i;
+      s.appendChild(tx);
+    }
+  });
+  hours.forEach(function (p, i) {
+    var hit = svg("rect", { x: padL + band * i, y: padT, width: band, height: ih,
+                            fill: "transparent" });
+    hit.addEventListener("mousemove", function (ev) {
+      var hostRect = host.getBoundingClientRect();
+      var nxt = (i + 1) % 24;
+      clear(tip);
+      tip.appendChild(mk("div", "t-date",
+        (i < 10 ? "0" : "") + i + ":00–" + (nxt < 10 ? "0" : "") + nxt + ":00"));
+      var a = mk("div", "row");
+      a.appendChild(mk("span", "muted", "tokens"));
+      a.appendChild(mk("span", "num", fmtTok(p.equiv_tokens)));
+      tip.appendChild(a);
+      var b = mk("div", "row");
+      b.appendChild(mk("span", "muted", "turns"));
+      b.appendChild(mk("span", "num", String(p.turns || 0)));
+      tip.appendChild(b);
+      tip.style.display = "block";
+      // flip the tooltip to the left when it would run past the right edge
       var left = ev.clientX - hostRect.left + 10;
       if (left + 180 > hostRect.width) left -= 200;
       tip.style.left = Math.max(0, left) + "px";
@@ -1520,6 +1698,43 @@ function renderPlan(d) {
     row.appendChild(mk("div", "proj-path",
       "read " + fmtAge(w.age_seconds) + (w.stale ? " · stale, your live figure has moved on" : "")));
     row.appendChild(shareBar(w.used_pct, w.stale ? "var(--muted)" : planColor(w.used_pct)));
+    // Every reading the hook happened to store, replayed as-is. The scale is
+    // pinned 0–100 because a plan % has a true axis: autoscaling it would turn
+    // a three-point wobble into a cliff. One reading is not a trend, so it
+    // draws nothing at all.
+    // a reading Anthropic put no number in is not a zero, it is absent — it is
+    // left out of the line rather than drawn along the floor
+    var pts = [];
+    ((d.trend && d.trend[w.window]) || []).forEach(function (pt) {
+      if (pt.used_pct !== null && pt.used_pct !== undefined) pts.push(pt);
+    });
+    if (pts.length >= 2) {
+      // 0 bottom, 100 top, one pixel of air so a flat 0 or 100 still draws
+      var sw = 100, sh = 22, pad = 1, xs = sw / (pts.length - 1), coords = [];
+      pts.forEach(function (pt, i) {
+        var v = Math.max(0, Math.min(100, pt.used_pct));
+        coords.push((i * xs).toFixed(2) + "," +
+                    (pad + (sh - 2 * pad) * (1 - v / 100)).toFixed(2));
+      });
+      var spark = svg("svg", { viewBox: "0 0 " + sw + " " + sh, height: sh,
+                               preserveAspectRatio: "none", role: "img",
+                               "aria-label": w.label + " plan usage trend" });
+      spark.style.width = "100%";
+      spark.style.display = "block";
+      var line = svg("polyline", { points: coords.join(" "), fill: "none",
+                                   "stroke-width": "1.5", "stroke-linejoin": "round",
+                                   "stroke-linecap": "round",
+                                   "vector-effect": "non-scaling-stroke" });
+      line.style.stroke = w.stale ? "var(--muted)" : planColor(w.used_pct);
+      spark.appendChild(line);
+      row.appendChild(spark);
+      var tl = mk("div", "proj-path",
+                  "trend · last 7 days · " + pts.length + " readings");
+      attachHelp(tl, "every reading the statusline hook stored in the last 7 days, " +
+        "replayed as-is — measured by Anthropic, never computed here; points are " +
+        "snapshot-spaced, not clock-spaced");
+      row.appendChild(tl);
+    }
     host.appendChild(row);
   });
 }

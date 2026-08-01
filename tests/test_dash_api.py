@@ -355,3 +355,108 @@ def test_usage_payload_repo_share_ephemeral_and_scoping(conn, cc_env):
     for window in ("7d", "30d"):
         models = {r["model"] for r in scoped["per_model"][window]}
         assert models == {"claude-real-model"}
+
+
+# --- usage_payload: per-model series + rhythm (usage rhythm stories) ---------
+
+
+def _seed_two_models(conn, cc_env):
+    """Two models, turns at now / now-2d / now-6d, plus one 10-day-old turn
+    that belongs to the weekly view but not the daily one."""
+    now = _dt.datetime.now()
+    proj = make_project(cc_env["projects_dir"], "-Users-usage-series-proj")
+    write_lines(
+        session_path(proj, "s1"),
+        [
+            assistant_rec("s1", "m1", ts_at(now, 0), "claude-opus-4", cw5m=4000, cread=1000),
+            assistant_rec("s1", "m2", ts_at(now, -2 * 86400), "claude-opus-4", cw5m=1000, cread=200),
+            assistant_rec("s1", "m3", ts_at(now, -6 * 86400), "claude-haiku-4-5", cw5m=200, cread=50),
+            assistant_rec("s1", "m4", ts_at(now, -10 * 86400), "claude-haiku-4-5", cw5m=300, cread=60),
+        ],
+    )
+    ingest.ingest(conn, cc_env["projects_dir"])
+    detectors.run_and_store(conn)
+    conn.commit()
+
+
+def test_usage_payload_per_model_series_shape_and_sums(conn, cc_env):
+    """USER story 1: per-model daily/weekly buckets match the per_model totals
+    from the same source table over the same window."""
+    _seed_two_models(conn, cc_env)
+    body = dash_server.usage_payload(conn, None)
+
+    daily = body["per_model_daily"]
+    weekly = body["per_model_weekly"]
+    assert len(daily) == 7
+    assert 1 <= len(weekly) <= 4
+    today = _dt.date.today().isoformat()
+    assert daily[-1]["end"] == today
+    assert weekly[-1]["end"] <= today
+    assert [b["start"] for b in daily] == sorted(b["start"] for b in daily)
+
+    # models inside a bucket are sorted biggest first
+    for b in daily + weekly:
+        toks = [m["equiv_tokens"] for m in b["models"]]
+        assert toks == sorted(toks, reverse=True)
+
+    # sum over daily buckets == per_model 7d, per model and in turns
+    def _fold(buckets):
+        out: dict = {}
+        for b in buckets:
+            for m in b["models"]:
+                cur = out.setdefault(m["model"], {"equiv_tokens": 0.0, "turns": 0})
+                cur["equiv_tokens"] += m["equiv_tokens"]
+                cur["turns"] += m["turns"]
+        return out
+
+    folded = _fold(daily)
+    for row in body["per_model"]["7d"]:
+        assert row["model"] in folded
+        assert folded[row["model"]]["equiv_tokens"] == pytest.approx(row["equiv_tokens"])
+        assert folded[row["model"]]["turns"] == row["turns"]
+
+
+def test_usage_payload_weekly_sees_past_daily_window(conn, cc_env):
+    """USER story 1: a 10-day-old turn is a weekly + 30d fact, never a daily one."""
+    _seed_two_models(conn, cc_env)
+    body = dash_server.usage_payload(conn, None)
+
+    daily_total = sum(m["turns"] for b in body["per_model_daily"] for m in b["models"])
+    weekly_total = sum(m["turns"] for b in body["per_model_weekly"] for m in b["models"])
+    assert daily_total == 3  # the -10d turn is outside the 7 daily buckets
+    # the -10d turn appears in the weekly view only if its week is one of the
+    # last 4 -- which it always is at 10 days back
+    assert weekly_total == 4
+    m30 = {r["model"]: r["turns"] for r in body["per_model"]["30d"]}
+    assert m30["claude-haiku-4-5"] == 2
+
+    # a day nobody worked is an empty list, never a fabricated row
+    assert any(b["models"] == [] for b in body["per_model_daily"])
+
+
+def test_usage_payload_rhythm_local_hours_complete_and_summing(conn, cc_env):
+    """USER story 2: 24 local-time buckets, measured from turn timestamps,
+    summing to the same 7-day total the per-model split reports."""
+    _seed_two_models(conn, cc_env)
+    body = dash_server.usage_payload(conn, None)
+
+    rhythm = body["rhythm"]
+    assert rhythm["days"] == 7
+    assert rhythm["timezone"] == "local"
+    hours = rhythm["hours"]
+    assert [h["hour"] for h in hours] == list(range(24))
+
+    # the seeded 'now' turn lands in the hour sqlite's localtime conversion
+    # puts it in -- compute the expectation the same way, not with a fixed offset
+    now = _dt.datetime.now()
+    ts = ts_at(now, 0)
+    parsed = _dt.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+        tzinfo=_dt.timezone.utc
+    )
+    local_hour = parsed.astimezone().hour
+    assert hours[local_hour]["turns"] >= 1
+
+    rhythm_toks = sum(h["equiv_tokens"] for h in hours)
+    seven_d_toks = sum(r["equiv_tokens"] for r in body["per_model"]["7d"])
+    assert rhythm_toks == pytest.approx(seven_d_toks)
+    assert sum(h["turns"] for h in hours) == 3

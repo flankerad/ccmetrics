@@ -287,3 +287,79 @@ def test_v3_to_v4_migration_creates_plan_snapshots_no_data_loss(cc_env):
         assert n == 2
     finally:
         c2.close()
+
+
+# --- 6. plan trend: replayed measurements, never invented --------------------
+
+
+def _insert_snapshot(conn, ts: str, window_key: str, used_pct):
+    conn.execute(
+        "INSERT INTO plan_snapshots (ts, window_key, used_pct, resets_at, session_id) "
+        "VALUES (?, ?, ?, NULL, NULL)",
+        (ts, window_key, used_pct),
+    )
+
+
+def test_plan_payload_empty_store_has_no_trend_key_change(conn):
+    """USER story 3: without snapshots the payload is exactly the old empty
+    shape -- the page's hint contract, asserted whole."""
+    from ccmetrics.dash import server as dash_server
+
+    body = dash_server.plan_payload(conn)
+    assert body == {
+        "available": False,
+        "windows": [],
+        "setup_cmd": "ccmetrics statusline --setup",
+    }
+
+
+def test_plan_trend_replays_stored_points_in_order(conn):
+    """USER story 3: the trend is the stored readings, in ts order, values
+    untouched -- no rounding, no interpolation, no extra windows."""
+    from ccmetrics.dash import server as dash_server
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    for hours_ago, pct in ((3, 10.0), (2, 12.5), (1, 20.0)):
+        _insert_snapshot(conn, _iso(now - _dt.timedelta(hours=hours_ago)), "seven_day", pct)
+    _insert_snapshot(conn, _iso(now - _dt.timedelta(hours=1)), "five_hour", 55.0)
+    conn.commit()
+
+    body = dash_server.plan_payload(conn)
+    assert body["available"] is True
+    trend = body["trend"]
+    assert set(trend) == {"seven_day", "five_hour"}
+    assert [p["used_pct"] for p in trend["seven_day"]] == [10.0, 12.5, 20.0]
+    assert [p["ts"] for p in trend["seven_day"]] == sorted(
+        p["ts"] for p in trend["seven_day"]
+    )
+    assert trend["five_hour"] == [
+        {"ts": _iso(now - _dt.timedelta(hours=1)), "used_pct": 55.0}
+    ]
+
+
+def test_plan_trend_caps_at_newest_100_per_window(conn):
+    now = _dt.datetime.now(_dt.timezone.utc)
+    for i in range(105):
+        _insert_snapshot(
+            conn, _iso(now - _dt.timedelta(minutes=105 - i)), "seven_day", float(i)
+        )
+    conn.commit()
+
+    trend = store.plan_window_trend(conn)
+    pts = trend["seven_day"]
+    assert len(pts) == 100
+    # the oldest 5 readings (pct 0..4) fell off; the newest survive in order
+    assert pts[0]["used_pct"] == 5.0
+    assert pts[-1]["used_pct"] == 104.0
+
+
+def test_plan_trend_null_reading_stays_null(conn):
+    """A reading Claude Code sent without a percentage is absent data -- the
+    API must hand it over as None, never coerce it to 0."""
+    now = _dt.datetime.now(_dt.timezone.utc)
+    _insert_snapshot(conn, _iso(now - _dt.timedelta(hours=2)), "seven_day", None)
+    _insert_snapshot(conn, _iso(now - _dt.timedelta(hours=1)), "seven_day", 30.0)
+    conn.commit()
+
+    trend = store.plan_window_trend(conn)
+    assert [p["used_pct"] for p in trend["seven_day"]] == [None, 30.0]

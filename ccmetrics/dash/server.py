@@ -481,6 +481,71 @@ def _per_model(conn: sqlite3.Connection, project: str | None, days: int) -> list
     return rows
 
 
+def _per_model_series(conn: sqlite3.Connection, project: str | None, kind: str) -> list[dict]:
+    """The same per-model split as `_per_model`, cut into day or week buckets.
+
+    One query covers the whole span; the fold into buckets happens in Python so
+    `_period_defs` stays the only place day/week math lives.
+    """
+    defs = _period_defs("day", 7) if kind == "day" else _period_defs("week", 4)
+    if not defs:
+        return []
+    sql = ("SELECT substr(ts,1,10) d, model, SUM(cw5m) cw5m, SUM(cw1h) cw1h, "
+           "SUM(cread) cread, COUNT(*) turns FROM turns WHERE ts >= ?")
+    args: list = [defs[0]["start"]]
+    if project:
+        sql += " AND project = ?"
+        args.append(project)
+    sql += " GROUP BY d, model"
+    rows = conn.execute(sql, args).fetchall()
+    out: list[dict] = []
+    for d in defs:
+        models: dict[str, dict] = {}
+        for r in rows:
+            if not (d["start"] <= r["d"] <= d["end"]):
+                continue
+            name = r["model"] or "unknown model"
+            m = models.setdefault(name, {"model": name, "equiv_tokens": 0.0, "turns": 0})
+            m["equiv_tokens"] += costs.billable_input_equivalent(
+                r["cw5m"] or 0, r["cw1h"] or 0, r["cread"] or 0
+            )
+            m["turns"] += r["turns"] or 0
+        out.append({
+            "label": d["label"], "start": d["start"], "end": d["end"],
+            "models": sorted(models.values(), key=lambda m: m["equiv_tokens"], reverse=True),
+        })
+    return out
+
+
+def _rhythm(conn: sqlite3.Connection, project: str | None, days: int = 7) -> dict:
+    """Which hours of the day the turns land in, on this machine's own clock.
+
+    `turns.ts` is UTC; the hour a human recognises is the local one, so SQLite
+    converts on the way out. All 24 hours come back, the quiet ones as zeros.
+    """
+    import datetime as _dt
+
+    start = (_dt.date.today() - _dt.timedelta(days=days - 1)).isoformat()
+    sql = ("SELECT CAST(strftime('%H', ts, 'localtime') AS INTEGER) h, "
+           "SUM(cw5m) cw5m, SUM(cw1h) cw1h, SUM(cread) cread, COUNT(*) turns "
+           "FROM turns WHERE ts >= ?")
+    args: list = [start]
+    if project:
+        sql += " AND project = ?"
+        args.append(project)
+    sql += " GROUP BY h"
+    hours = [{"hour": h, "equiv_tokens": 0.0, "turns": 0} for h in range(24)]
+    for r in conn.execute(sql, args):
+        h = r["h"]
+        if h is None or not 0 <= h <= 23:  # unparseable timestamp — drop, never guess
+            continue
+        hours[h]["equiv_tokens"] = costs.billable_input_equivalent(
+            r["cw5m"] or 0, r["cw1h"] or 0, r["cread"] or 0
+        )
+        hours[h]["turns"] = r["turns"] or 0
+    return {"hours": hours, "days": days, "timezone": "local"}
+
+
 def _repo_share(conn: sqlite3.Connection, period: dict, cwds: dict[str, str]) -> dict:
     """Every repo's slice of ONE period, ephemeral temp dirs lumped into one row."""
     rows = conn.execute(
@@ -535,10 +600,16 @@ def usage_payload(conn: sqlite3.Connection, project: str | None) -> dict:
         "per_model": {k: _per_model(conn, project, d) for k, d in model_days.items()},
         "per_model_days": model_days,
         "per_model_labels": {k: f"last {d} days" for k, d in model_days.items()},
+        "per_model_daily": _per_model_series(conn, project, "day"),
+        "per_model_weekly": _per_model_series(conn, project, "week"),
+        "rhythm": _rhythm(conn, project),
         # say out loud where each block comes from and how far back it can see
         "sources": {
             "periods": "daily rollups (kept for the life of the store)",
             "per_model": f"per-turn rows (kept {WINDOW_DAYS} days)",
+            "per_model_series": f"per-turn rows (kept {WINDOW_DAYS} days) — weekly view "
+                                "sees at most ~4 weeks",
+            "rhythm": "per-turn timestamps, this machine's local clock, last 7 days",
         },
     }
     if project is None:
@@ -580,6 +651,7 @@ def plan_payload(conn: sqlite3.Connection) -> dict:
     return {
         "available": True,
         "windows": rows,
+        "trend": store.plan_window_trend(conn),
         "stale_after_hours": plan_mod.STALE_HOURS,
         "source": "Claude Code's own statusline feed (rate_limits)",
         "source_url": constants.STATUSLINE_DOC,

@@ -592,6 +592,31 @@ def latest_plan_windows(conn: sqlite3.Connection) -> dict:
     }
 
 
+def plan_window_trend(conn: sqlite3.Connection, days: int = 7) -> dict:
+    """Every stored reading per window over the last `days`: {window: [{ts, used_pct}]}.
+
+    A replay of what the statusline hook actually recorded — nothing is derived
+    or interpolated, so a window nobody reported simply does not appear. Capped
+    at the newest 100 points per window so a chatty hook cannot bloat the page.
+    """
+    import datetime as _dt
+
+    cutoff = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    try:
+        rows = conn.execute(
+            "SELECT window_key, ts, used_pct FROM plan_snapshots WHERE ts >= ? ORDER BY ts",
+            (cutoff,),
+        ).fetchall()
+    except sqlite3.OperationalError:  # store predates the table
+        return {}
+    out: dict = {}
+    for r in rows:
+        out.setdefault(r["window_key"], []).append({"ts": r["ts"], "used_pct": r["used_pct"]})
+    return {k: v[-100:] for k, v in out.items()}
+
+
 def prune_plan_snapshots(conn: sqlite3.Connection, now_iso: str, days: int | None = None) -> int:
     import datetime as _dt
 
