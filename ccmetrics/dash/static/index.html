@@ -680,69 +680,57 @@ function renderHorizon() {
 /* ==== Recoverable ledger (6.4b: ship exactly the mock\u2019s ledger -- three
    leak rows with a payoff bar; the waterfall/treemap/payoff-scatter
    alternatives are DECIDED not built this pass). ==== */
-var ACTION_STYLE = {
-  paste: { border: "var(--color-accent-700)", color: "var(--color-accent-300)", text: "Paste a line" },
-  habit: { border: "var(--color-neutral-700)", color: "var(--color-neutral-400)", text: "Change a habit" },
-  restructure: { border: "var(--color-neutral-700)", color: "var(--color-neutral-400)", text: "Restructure" }
-};
-function actionFor(effortLabel) { return ACTION_STYLE[effortLabel] || ACTION_STYLE.habit; }
-
 function renderRecoverable() {
   var host = document.getElementById("cc-recoverable");
   var f = state.findings;
   var w = state.windows;
   var all = (f && f.findings) || [];
   if (!all.length) {
-    host.innerHTML = '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);font-size:12.5px;color:var(--color-neutral-500)">No recoverable findings yet.</div>';
+    host.innerHTML = '<div class="px-panel px-faint" style="margin-top:20px">NO RECOVERABLE FINDINGS YET.</div>';
     return;
   }
   var total = all.reduce(function (a, x) { return a + (x.tokens_saved || 0); }, 0);
   var capsKnown = w && w.caps_known;
   var weeklyCap = capsKnown ? ((w.caps["weekly_all"] || w.caps["seven_day"] || {}).cap_equiv) : null;
-  var windowsWord = weeklyCap ? (total / weeklyCap).toFixed(1) + " weekly windows" : "\u2014 weekly windows (cap unknown)";
-
   var top = all.slice(0, 3);
-  /* 6.4g #5: the habit count must match what is on screen -- the mock's own
-     three rows are three distinct habits, never a total over findings the
-     page never shows. */
-  var habits = {};
-  top.forEach(function (x) { habits[x.name] = 1; });
-  var habitCount = Object.keys(habits).length;
+
+  var hero = w && w.hero;
+  var usedPct = hero && typeof hero.used_pct === "number" ? hero.used_pct : null;
+  var projection = "";
+  if (capsKnown && weeklyCap && usedPct !== null) {
+    var savedWeekly = top.reduce(function (a, x) { return a + (x.tokens_saved || 0); }, 0) * (7 / 30);
+    var afterPct = Math.max(0, usedPct - (savedWeekly / weeklyCap) * 100);
+    var afterColor = PX_LVL[pxLeftLvl(100 - afterPct)];
+    var label = top.length === 3 ? "FIX ALL THREE: " : "FIX THE TOP " + top.length + ": ";
+    projection = label + fmtPct(usedPct) + ' <span style="color:var(--ink)">&gt;</span> ' +
+      '<span style="color:' + afterColor + '">' + fmtPct(afterPct) + "</span>" +
+      '<span style="display:flex;gap:2px">' + pxMeter(afterPct, 16, afterColor, null, "width:7px;flex:none;height:10px") + "</span>" +
+      " · ";
+  }
+
   var rows = top.map(function (item, i) {
     var pct = total > 0 ? Math.round((item.tokens_saved || 0) / total * 100) : 0;
-    var act = actionFor(item.effort_label);
-    var perWindow = weeklyCap ? ((item.tokens_saved || 0) / weeklyCap).toFixed(2) + " weekly windows" : "\u2014";
+    var lvl = PX_LVL[pxLvl(pct)];
     var copyId = "cc-copy-" + i;
-    return '<div style="display:grid;grid-template-columns:1fr 152px 108px 92px;gap:20px;align-items:center;padding:18px 20px;background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-neutral-900)" class="cc-hover-leak">' +
+    return '<div style="display:grid;grid-template-columns:24px minmax(180px,2fr) minmax(120px,1.4fr) minmax(90px,0.9fr) 92px;gap:0 16px;align-items:center;border:2px solid var(--line);padding:12px 14px">' +
+      '<div class="px-faint">' + String(i + 1).padStart(2, "0") + "</div>" +
       "<div>" +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">' +
-      '<span style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">' + String(i + 1).padStart(2, "0") + "</span>" +
-      '<span style="font-family:var(--font-heading);font-size:17px;letter-spacing:-0.01em">' + esc(item.name) + "</span>" +
-      (item.project ? '<span style="padding:2px 7px;border-radius:3px;background:var(--color-neutral-900);font-size:10.5px;color:var(--color-neutral-400)">' + esc(baseName(item.cwd) || item.project) + "</span>" : "") +
+      '<div style="font-size:13px;text-transform:uppercase">' + esc(item.name) +
+      (item.project ? " · " + esc(baseName(item.cwd) || item.project) : "") + "</div>" +
+      '<div style="margin-top:4px;color:var(--dim)">' + esc(oneSentence(item.help)) + "</div>" +
+      '<div style="margin-top:5px;color:#f4c7ad">&gt; ' + esc(item.fix_text || "") + "</div>" +
       "</div>" +
-      '<div style="font-size:12.5px;color:var(--color-neutral-400)">' + esc(oneSentence(item.help)) + "</div>" +
-      "</div>" +
-      "<div>" +
-      '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-200)">' + fmtTok(item.tokens_saved) + '</span><span style="font-size:11px;color:var(--color-neutral-600)">' + pct + "%</span></div>" +
-      '<div style="height:3px;border-radius:2px;background:var(--color-neutral-900);margin-top:6px"><div style="width:' + pct + '%;height:3px;border-radius:2px;background:' + fillColor(pct) + '"></div></div>' +
-      '<div style="font-size:11px;color:var(--color-neutral-600);margin-top:5px">' + perWindow + "</div>" +
-      "</div>" +
-      '<div><span style="padding:3px 9px;border:1px solid ' + act.border + ';border-radius:3px;font-size:11px;color:' + act.color + '">' + act.text + "</span></div>" +
-      '<div id="' + copyId + '" data-fix="' + esc(item.fix_text || "") + '" class="cc-hover-copy" style="text-align:center;padding:8px 0;border:1px solid var(--color-neutral-700);border-radius:var(--radius-sm);font-family:var(--font-heading);font-size:12px;color:var(--color-neutral-200);cursor:pointer">Copy fix</div>' +
+      '<div style="display:flex;gap:2px">' + pxMeter(pct, 12, lvl) + "</div>" +
+      '<div style="font-size:13px;color:' + lvl + '">' + fmtTok(item.tokens_saved) + "</div>" +
+      '<div id="' + copyId + '" data-fix="' + esc(item.fix_text || "") + '" style="text-align:center;border:2px solid var(--line);padding:6px 0;cursor:pointer">COPY</div>' +
       "</div>";
   }).join("");
 
   host.innerHTML =
-    '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
-    '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px">' +
-    "<div>" +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Recoverable</div>' +
-    '<div style="display:flex;align-items:baseline;gap:12px">' +
-    '<span style="font-family:var(--font-heading);font-weight:500;font-size:34px;letter-spacing:-0.03em;color:var(--color-accent-200)">' + fmtTok(total) + ' tokens</span>' +
-    '<span style="font-size:13px;color:var(--color-neutral-500)">' + windowsWord + ", in " + habitCount + " habit" + (habitCount === 1 ? "" : "s") + "</span>" +
-    "</div></div>" +
-    '<div style="display:flex;align-items:center;gap:14px;font-size:12px;color:var(--color-neutral-500)"><span>' + all.length + " findings</span>" +
-    '<a href="/api/findings" target="_blank" rel="noopener" class="cc-hover-seeall" style="padding:6px 12px;border:1px solid var(--color-neutral-800);border-radius:var(--radius-sm);color:var(--color-neutral-300)">See all</a>' + "</div>" +
+    '<div class="px-panel" style="margin-top:20px">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">' +
+    '<span class="px-label">RECOVERABLE · ' + fmtTok(total) + ' TOKENS</span>' +
+    '<span style="display:flex;align-items:center;gap:10px;color:var(--dim);flex-wrap:wrap">' + projection + all.length + ' FINDINGS</span>' +
     "</div>" +
     '<div style="display:flex;flex-direction:column;gap:10px">' + rows + "</div>" +
     "</div>";
@@ -753,8 +741,8 @@ function renderRecoverable() {
     el.addEventListener("click", function () {
       var text = el.getAttribute("data-fix") || "";
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function () {});
-      el.textContent = "Copied";
-      setTimeout(function () { el.textContent = "Copy fix"; }, 1600);
+      el.textContent = "COPIED";
+      setTimeout(function () { el.textContent = "COPY"; }, 1600);
     });
   });
 }
