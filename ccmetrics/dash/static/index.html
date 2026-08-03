@@ -93,16 +93,6 @@ function lvlOfWeek(p) {
 }
 function fillColorWeek(p) { return LVL[lvlOfWeek(p)]; }
 function inkOnWeek(p) { var l = lvlOfWeek(p); return (l === 2 || l === 3) ? "var(--color-bg)" : "var(--color-neutral-100)"; }
-/* LVL[4]/"ran dry" is a claim about a real 5-hour block hitting its OWN cap
-   (_score's `dry`, untouched by this rescale). A week-share cell can land in
-   the same top colour band without any block having run dry -- reusing the
-   "ran dry" label for it would assert a dryness claim the plan forbids, so
-   the week-basis legend names that band by what it actually is instead. */
-var WEEK_LVL_LEGEND = [
-  { color: LVL[1], text: "quiet" }, { color: LVL[2], text: "busy" },
-  { color: LVL[3], text: "heavy" }, { color: LVL[4], text: "heaviest of the month" }
-];
-
 function shortModel(id) {
   if (!id) return null;
   var s = String(id).toLowerCase();
@@ -213,8 +203,6 @@ var state = {
   range: "day",
   copied: null,
   hover: null,
-  hz: null,
-  weekHover: null,
   windows: null, projects: null, findings: null, summary: null, usage: null, live: null, meta: null
 };
 
@@ -590,91 +578,63 @@ function renderHorizon() {
   if (!w) { host.innerHTML = ""; return; }
   var cells = w.horizon || [];
   var capsKnown = w.caps_known;
-  var maxTok = 0, weekCapKnown = false;
-  cells.forEach(function (c) {
-    if (c.equiv_tokens > maxTok) maxTok = c.equiv_tokens;
-    if (c.pct_of_week !== null && c.pct_of_week !== undefined) weekCapKnown = true;
-  });
-  /* PLAN-fill-and-clock: fill here is each window's share of the WEEKLY cap
-     (pct_of_week), not the 5-hour cap -- a single window is a small slice of
-     a week by nature, so the old "is the visible range spread out enough"
-     guard (needed only because a 5-hour denominator drowned real variation
-     in one flat band) is dropped along with it. Relative shading now fires
-     only for the genuine no-cap case: caps are unknown outright, or this
-     store has no weekly cap estimate yet. The cap itself is left alone:
-     nothing here invents, clamps or stretches one. */
-  var hzRelative = !capsKnown || !weekCapKnown;
+  var maxTok = 0;
+  cells.forEach(function (c) { if (c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; });
 
-  var dryCount = capsKnown ? w.dry_count_month : null;
-  var hzDryLabel = capsKnown ? (dryCount || 0) + " ran dry this month" : "cap unknown \u2014 no dry count";
-
-  var sel = state.hz !== null ? cells[state.hz] : null;
-  var hzLabel = sel ? (sel.label || sel.date) : "Hover a window";
-  var hzColor = sel && !hzRelative ? fillColorWeek(sel.pct_of_week) : "var(--color-neutral-400)";
-  var hzDetail;
-  if (sel) {
-    if (!hzRelative) {
-      hzDetail = fmtPct(sel.pct_of_week) + " of the week\u2019s cap" + (sel.leader ? " \u00b7 led by " + esc(shortModel(sel.leader)) : "");
-    } else {
-      hzDetail = fmtTok(sel.equiv_tokens) + " tokens" + (sel.leader ? " \u00b7 led by " + esc(shortModel(sel.leader)) : "");
-    }
-  } else {
-    hzDetail = cells.length + " half-day windows · the last " + WEEK_HALVES + " are this week";
-  }
-
-  var cellsHtml = cells.map(function (c, i) {
-    var bg, op;
-    if (!hzRelative) {
-      bg = fillColorWeek(c.pct_of_week);
+  var cellsHtml = cells.map(function (c) {
+    var bg;
+    if (capsKnown && c.pct_of_week !== null && c.pct_of_week !== undefined) {
+      bg = PX_LVL[pxLvl(c.pct_of_week)];
     } else {
       var frac = maxTok > 0 ? c.equiv_tokens / maxTok : 0;
-      bg = "color-mix(in srgb, var(--color-accent-500) " + Math.round(frac * 100) + "%, var(--color-neutral-900))";
+      bg = frac > 0.5 ? "var(--line)" : "var(--l0)";
     }
-    op = (state.hz === null || state.hz === i) ? "1" : "0.55";
-    return '<div data-i="' + i + '" class="cc-hz-cell" style="flex:1;height:48px;border-radius:1px;background:' + bg + ";opacity:" + op + ';transition:opacity 100ms;cursor:default"></div>';
+    return '<div style="flex:1;height:44px;background:' + bg + '"></div>';
   }).join("");
 
-  /* PLAN-cap-and-chrome Part 2 #4: a "THIS WEEK" marker under the run of
-     cells belonging to the account-wide week (the same WEEK_HALVES span the
-     hero/week grid use), like the reference mock's own marker. */
-  var weekMarkerHtml = cells.length > WEEK_HALVES
-    ? '<div style="display:flex;gap:2px;margin-top:3px">' +
-        cells.map(function (c, i) {
-          var inWeek = i >= cells.length - WEEK_HALVES;
-          return '<div style="flex:1;height:2px;border-radius:1px;background:' + (inWeek ? "var(--color-accent-500)" : "transparent") + '"></div>';
-        }).join("") +
-      "</div>" +
-      '<div style="display:flex"><div style="flex:' + (cells.length - WEEK_HALVES) + '"></div><div style="flex:' + WEEK_HALVES + ';text-align:center;margin-top:3px;font-size:9.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-accent-300)">This week</div></div>'
-    : "";
+  var dryHeader = capsKnown
+    ? '<span style="color:var(--l4)">' + (w.dry_count_month ?? "?") + " RAN DRY</span>"
+    : '<span style="color:var(--dim)">CAP UNKNOWN — NO DRY COUNT</span>';
+
+  var axisHtml;
+  if (cells.length > WEEK_HALVES) {
+    var first = cells[0] || {};
+    axisHtml = '<div style="display:flex;margin-top:8px">' +
+      '<div style="flex:' + (cells.length - WEEK_HALVES) + ';border-top:2px solid var(--line);padding-top:5px" class="px-faint">' + esc(first.label || first.date) + "</div>" +
+      '<div style="flex:' + WEEK_HALVES + ';border-top:2px solid var(--dim);padding-top:5px;padding-left:6px;color:var(--dim)">THIS WEEK</div>' +
+      "</div>";
+  } else {
+    var only = cells[0] || {};
+    axisHtml = '<div style="display:flex;margin-top:8px">' +
+      '<div style="flex:1;border-top:2px solid var(--line);padding-top:5px" class="px-faint">' + esc(only.label || only.date) + "</div>" +
+      "</div>";
+  }
 
   var caption;
-  if (!capsKnown) {
-    caption = "Fill here is relative to the heaviest window in range, not a cap \u2014 caps are unknown until a reading exists.";
-  } else if (hzRelative) {
-    caption = "The weekly cap is not known yet \u2014 fill here is relative to the heaviest window in range. Hover any window for its tokens.";
+  if (capsKnown) {
+    var dryCells = cells.filter(function (c) { return c.dry; });
+    var eveningDry = dryCells.filter(function (c) { return c.evening; }).length;
+    if (dryCells.length > 0) {
+      caption = eveningDry === 0
+        ? "NONE OF THE " + dryCells.length + " DRY WINDOWS WERE EVENING BLOCKS"
+        : eveningDry + " OF THE " + dryCells.length + " DRY WINDOWS WERE EVENING BLOCKS — A TIME OF DAY, NOT BAD LUCK";
+    } else {
+      caption = "NO WINDOW RAN DRY THIS MONTH";
+    }
   } else {
-    caption = "Fill is how much of the week\u2019s cap this window alone went through. Windows at the right edge are this week, in detail at the foot of the page.";
+    caption = "FILL IS RELATIVE TO THE HEAVIEST WINDOW IN RANGE — CAPS ARE UNKNOWN UNTIL A READING EXISTS.";
   }
 
   host.innerHTML =
-    '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
-    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">' +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">Every window \u00b7 ' + (w.horizon_days || 30) + ' days</div>' +
-    '<div style="font-size:12px;color:var(--color-neutral-500)">' + esc(hzDryLabel) + "</div>" +
+    '<div class="px-panel" style="margin-top:20px">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:14px">' +
+    '<span class="px-label">MONTH · ' + cells.length + ' WINDOWS</span>' +
+    dryHeader +
     "</div>" +
-    '<div style="display:flex;align-items:baseline;gap:10px;height:20px;margin-top:12px;font-size:12.5px">' +
-    '<span style="font-family:var(--font-heading);color:' + hzColor + '">' + esc(hzLabel) + "</span>" +
-    '<span style="color:var(--color-neutral-500)">' + esc(hzDetail) + "</span>" +
-    "</div>" +
-    '<div style="position:relative;display:flex;gap:2px;margin-top:6px">' + cellsHtml + "</div>" +
-    weekMarkerHtml +
-    '<div style="margin-top:16px;font-size:12.5px;color:var(--color-neutral-400);max-width:820px">' + esc(caption) + "</div>" +
+    '<div style="display:flex;gap:3px">' + cellsHtml + "</div>" +
+    axisHtml +
+    '<div style="margin-top:14px;color:var(--dim)">' + esc(caption) + "</div>" +
     "</div>";
-
-  Array.prototype.forEach.call(host.querySelectorAll(".cc-hz-cell"), function (el) {
-    el.addEventListener("mouseenter", function () { state.hz = parseInt(el.getAttribute("data-i"), 10); renderHorizon(); });
-    el.addEventListener("mouseleave", function () { state.hz = null; renderHorizon(); });
-  });
 }
 
 /* ==== Recoverable ledger (6.4b: ship exactly the mock\u2019s ledger -- three
@@ -1036,118 +996,89 @@ function renderWeek() {
   if (!w) { host.innerHTML = ""; return; }
   var capsKnown = w.caps_known;
   var grid = w.week || [];
-  /* PLAN-fill-and-clock: this fill is scored against the WEEKLY cap
-     (pct_of_week), like the 30-day strip -- see renderHorizon. Falls back to
-     the token-relative shading only when there is genuinely no weekly cap to
-     shade against, never when it is merely small. */
-  var weekCapKnown = false;
-  grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.pct_of_week !== null && c.pct_of_week !== undefined) weekCapKnown = true; }); });
-  var useWeekCap = capsKnown && weekCapKnown;
   var maxTok = 0;
-  if (!useWeekCap) grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; }); });
+  grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; }); });
 
-  function cellHtml(c, ri, ci) {
+  function cellHtml(c) {
     if (!c) {
-      return '<div style="flex:1;position:relative;height:48px;border-radius:var(--radius-sm);background:var(--color-neutral-900);border:1px solid var(--color-neutral-900);overflow:hidden"></div>';
+      return '<div style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
+        '<div style="width:6px;height:12px;background:transparent"></div>' +
+        pxMeter(0, 7, "var(--l0)", null, "height:12px") +
+        "</div>";
     }
-    var pct = useWeekCap ? c.pct_of_week : (maxTok > 0 ? c.equiv_tokens / maxTok * 100 : 0);
-    var fill = useWeekCap ? fillColorWeek(pct) : fillColor(pct);
-    var dry = capsKnown ? c.dry : false;
-    var dot = c.leader ? modelColor(shortModel(c.leader)) : "transparent";
-    var pctText = useWeekCap ? fmtPct(c.pct_of_week) : fmtTok(c.equiv_tokens);
-    return '<div data-r="' + ri + '" data-c="' + ci + '" class="cc-week-cell" style="flex:1;position:relative;height:48px;border-radius:var(--radius-sm);background:var(--color-neutral-900);border:1px solid ' + (dry ? "var(--lvl-4)" : "transparent") + ';overflow:hidden;cursor:default">' +
-      '<div style="position:absolute;left:0;right:0;bottom:0;height:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:' + fill + '"></div>' +
-      '<div style="position:absolute;left:5px;top:5px;padding:1px 4px;border-radius:3px;background:color-mix(in srgb, var(--color-bg) 88%, transparent);font-size:10.5px;line-height:1.25;color:var(--color-neutral-300)">' + esc(c.time || "") + "</div>" +
-      '<div style="position:absolute;left:7px;bottom:6px;display:flex;align-items:center;gap:5px">' +
-      '<span style="width:6px;height:6px;border-radius:2px;background:' + dot + '"></span>' +
-      '<span style="font-size:10.5px;color:' + (useWeekCap ? inkOnWeek(pct) : inkOn(pct)) + ';white-space:nowrap">' + pctText + "</span></div></div>";
+    var led = c.leader ? modelColor(shortModel(c.leader)) : "transparent";
+    var edge, fillPct, on;
+    if (capsKnown) {
+      edge = c.dry ? "var(--l4)" : "transparent";
+      fillPct = c.pct_of_week;
+      on = PX_LVL[pxLvl(c.pct_of_cap)];
+    } else {
+      edge = "transparent";
+      fillPct = maxTok > 0 ? (c.equiv_tokens / maxTok * 100) : 0;
+      on = "var(--line)";
+    }
+    fillPct = Math.max(0, Math.min(100, fillPct || 0));
+    return '<div style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid ' + edge + ';padding:2px">' +
+      '<div style="width:6px;height:12px;background:' + led + '"></div>' +
+      pxMeter(fillPct, 7, on, null, "height:12px") +
+      "</div>";
   }
-  var rowsHtml = grid.map(function (row, ri) {
-    var cells = (row.cells || []).map(function (c, ci) { return cellHtml(c, ri, ci); }).join("");
-    var labelColor = (row.blocks || 0) > 2 ? "var(--color-neutral-300)" : "var(--color-neutral-600)";
-    return '<div style="display:flex;align-items:stretch;gap:8px"><div style="width:30px;padding-top:14px;font-size:11px;color:' + labelColor + '">' + esc(row.day) + "</div>" + cells + "</div>";
+
+  var rowsHtml = grid.map(function (row) {
+    var cells = (row.cells || []).slice();
+    while (cells.length < 4) cells.push(null);
+    var cellsHtml = cells.map(cellHtml).join("");
+    var labelColor = (row.blocks || 0) > 2 ? "var(--ink)" : "var(--dim)";
+    var qualifying = cells.filter(function (c) { return c && ((c.equiv_tokens || c.turns) > 0); });
+    var tail, tailColor;
+    if (capsKnown) {
+      if (qualifying.length) {
+        var avg = Math.round(qualifying.reduce(function (a, c) { return a + (c.pct_of_cap || 0); }, 0) / qualifying.length);
+        tail = avg + "% AVG";
+        tailColor = PX_LVL[pxLvl(avg)];
+      } else {
+        tail = "—";
+        tailColor = "var(--dim)";
+      }
+    } else {
+      var sum = cells.reduce(function (a, c) { return a + (c ? (c.equiv_tokens || 0) : 0); }, 0);
+      tail = fmtTok(sum);
+      tailColor = "var(--dim)";
+    }
+    return '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div style="width:30px;color:' + labelColor + ';text-transform:uppercase">' + esc(row.day) + "</div>" +
+      cellsHtml +
+      '<div style="width:78px;text-align:right;color:' + tailColor + '">' + tail + "</div>" +
+      "</div>";
   }).join("");
 
-  /* 6.4g #7: the same hover readout the 30-day horizon already has -- window
-     start, tokens, turns, leading model. */
-  var whCell = null;
-  if (state.weekHover) {
-    var whRow = grid[state.weekHover.r];
-    whCell = whRow ? (whRow.cells || [])[state.weekHover.c] : null;
-  }
-  var whLabel = whCell ? ((whCell.day || "") + " " + (whCell.time || "")).trim() : "Hover a window";
-  var whColor = whCell ? (useWeekCap ? fillColorWeek(whCell.pct_of_week) : "var(--color-neutral-400)") : "var(--color-neutral-400)";
-  var whDetail = whCell
-    ? (fmtTok(whCell.equiv_tokens) + " tokens \u00b7 " + (whCell.turns || 0) + " turns" +
-       (whCell.leader ? " \u00b7 led by " + esc(shortModel(whCell.leader)) : ""))
-    : "";
+  var dryHeader = capsKnown
+    ? '<span style="color:var(--l4)">' + (w.dry_count_week ?? "?") + " RAN DRY</span>"
+    : '<span style="color:var(--dim)">CAP UNKNOWN — NO DRY COUNT</span>';
 
   var led = w.led_counts || {};
-  var ledLegend = Object.keys(led).map(function (m) {
-    return '<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:2px;background:' + modelColor(shortModel(m)) + '"></span>' + esc(shortModel(m)) + " led " + led[m] + "</span>";
+  var ledKeys = Object.keys(led);
+  var ledLegend = ledKeys.map(function (m, i) {
+    var prefix = i === 0 ? "LED BY " : "";
+    return '<span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:10px;background:' + modelColor(shortModel(m)) + '"></span>' + prefix + shortModel(m).toUpperCase() + " " + led[m] + "</span>";
   }).join("");
-  var lvlLegend = useWeekCap
-    ? WEEK_LVL_LEGEND.map(function (l) { return '<span style="display:flex;align-items:center;gap:6px"><span style="width:13px;height:9px;border-radius:2px;background:' + l.color + '"></span>' + l.text + "</span>"; }).join("")
-    : '<span style="color:var(--color-neutral-600)">tokens shown, not fill \u2014 cap unknown</span>';
 
-  var fullCount = capsKnown ? (w.dry_count_week || 0) : null;
-  var dryHeader = capsKnown
-    ? '<span style="font-family:var(--font-heading);font-size:15px;color:var(--lvl-4)">' + fullCount + "</span> of " + (w.week_blocks || 0) + " ran dry"
-    : '<span style="color:var(--color-neutral-500)">cap unknown \u2014 no dry count</span>';
-  var fillCaption = useWeekCap
-    ? "Fill is how much of the week\u2019s cap this window alone went through; the dot is the model that led it."
-    : capsKnown
-      ? "The weekly cap is not known yet, so fill is relative to the heaviest window this week; the dot is the model that led it."
-      : "Fill is relative to the heaviest window this week (no cap yet); the dot is the model that led it.";
-
-  var heaviest = w.heaviest || [];
-  var tableRows = heaviest.map(function (h) {
-    var pct = useWeekCap ? h.pct_of_week : (maxTok > 0 ? h.equiv_tokens / maxTok * 100 : 0);
-    var dry = capsKnown && h.dry;
-    var pctText = useWeekCap ? fmtPct(h.pct_of_week) : fmtTok(h.equiv_tokens);
-    return "<tr>" +
-      '<td style="color:' + (dry ? "var(--lvl-4)" : "var(--color-neutral-200)") + '">' + esc(h.name) + "</td>" +
-      "<td>" +
-      '<div style="display:flex;align-items:center;gap:9px">' +
-      '<span style="width:34px;font-family:var(--font-heading);color:' + (dry ? "var(--lvl-4)" : "var(--color-neutral-200)") + '">' + pctText + "</span>" +
-      '<span style="flex:1;height:5px;border-radius:3px;background:var(--color-neutral-900);display:block"><span style="display:block;height:5px;border-radius:3px;width:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:' + (useWeekCap ? fillColorWeek(pct) : fillColor(pct)) + '"></span></span>' +
-      "</div></td>" +
-      '<td><span style="display:flex;align-items:center;gap:7px;color:var(--color-neutral-400)"><span style="width:6px;height:6px;border-radius:2px;background:' + (h.leader ? modelColor(shortModel(h.leader)) : "transparent") + '"></span>' + esc(h.leader ? shortModel(h.leader) : "\u2014") + "</span></td>" +
-      '<td style="text-align:right;color:var(--color-neutral-500)">' + (h.turns || 0) + "</td>" +
-      "</tr>";
-  }).join("");
+  var lvlLegend = capsKnown
+    ? '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l1)"></span>ROOM</span>' +
+      '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l2)"></span>HALF</span>' +
+      '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l3)"></span>TIGHT</span>' +
+      '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l4)"></span>DRY</span>'
+    : '<span style="color:var(--dim)">TOKENS SHOWN, NOT FILL — CAP UNKNOWN</span>';
 
   host.innerHTML =
-    '<div style="display:grid;grid-template-columns:1fr 520px;gap:32px;margin-top:20px;padding:26px 28px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
-    "<div>" +
-    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">' +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">This week\u2019s windows</div>' +
-    '<div style="font-size:12px;color:var(--color-neutral-500)">' + dryHeader + "</div></div>" +
-    '<div style="font-size:12.5px;color:var(--color-neutral-500);margin-bottom:10px">' + fillCaption + "</div>" +
-    '<div style="display:flex;align-items:baseline;gap:10px;height:20px;margin-bottom:8px;font-size:12.5px">' +
-    '<span style="font-family:var(--font-heading);color:' + whColor + '">' + esc(whLabel) + "</span>" +
-    '<span style="color:var(--color-neutral-500)">' + whDetail + "</span></div>" +
-    '<div style="display:flex;gap:8px;margin-bottom:8px;padding-left:38px">' +
-    (w.slot_labels && w.slot_labels.length ? w.slot_labels : ["morning", "afternoon", "evening", "late"]).map(function (s) { return '<div style="flex:1;font-size:10px;color:var(--color-neutral-600)">' + esc(s) + "</div>"; }).join("") +
+    '<div class="px-panel" style="margin-top:20px">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:14px">' +
+    '<span class="px-label">THIS WEEK · ' + (w.week_blocks || 0) + ' WINDOWS</span>' +
+    dryHeader +
     "</div>" +
-    '<div style="display:flex;flex-direction:column;gap:7px">' + rowsHtml + "</div>" +
-    '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:11px;color:var(--color-neutral-500)">' + ledLegend + '<span style="flex:1"></span>' + lvlLegend + "</div>" +
-    "</div>" +
-    '<div style="padding-left:32px;border-left:1px solid var(--color-divider)">' +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:14px">Heaviest windows, exactly</div>' +
-    '<table class="table" style="width:100%;font-size:12.5px"><thead><tr>' +
-    '<th style="text-align:left">Window</th><th style="text-align:left;width:140px">Used</th><th style="text-align:left">Led by</th><th style="text-align:right">Turns</th>' +
-    "</tr></thead><tbody>" + tableRows + "</tbody></table>" +
-    '<div style="margin-top:12px;font-size:11.5px;color:var(--color-neutral-600)">The ' + heaviest.length + " heaviest of this week\u2019s " + (w.week_blocks || 0) + " windows.</div>" +
-    "</div></div>";
-
-  Array.prototype.forEach.call(host.querySelectorAll(".cc-week-cell"), function (el) {
-    el.addEventListener("mouseenter", function () {
-      state.weekHover = { r: parseInt(el.getAttribute("data-r"), 10), c: parseInt(el.getAttribute("data-c"), 10) };
-      renderWeek();
-    });
-    el.addEventListener("mouseleave", function () { state.weekHover = null; renderWeek(); });
-  });
+    '<div style="display:flex;flex-direction:column;gap:6px">' + rowsHtml + "</div>" +
+    '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;color:var(--dim)">' + lvlLegend + '<span style="flex:1"></span>' + ledLegend + "</div>" +
+    "</div>";
 }
 
 function renderFooter() {

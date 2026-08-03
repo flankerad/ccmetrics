@@ -132,8 +132,8 @@ def test_punch_list_2_strings_present(page_text):
     prior pass dropped or renamed. Regression guard so they cannot silently
     vanish again -- source presence only, exact wording where the mock's own
     wording is literal (not derived from live data)."""
-    for word in ("morning", "afternoon", "evening", "late"):
-        assert word in page_text  # item 1: week-grid column headers
+    # item 1 (week-grid morning/afternoon/evening/late column headers) was
+    # the slot-label row -- 10-pixel-week-month deletes it, the mock has none.
     assert "magnified" in page_text  # item 2: "That N%, magnified" sub-panel
     assert "Cache write 1h" in page_text
     assert "Cache write 5m" in page_text
@@ -175,9 +175,8 @@ def test_punch_list_3_correctness_and_strings(page_text):
     # item 6: absurd percentages get worded, not printed
     assert "much higher" in page_text
 
-    # item 7: week grid hover wiring (behavior itself needs a browser)
-    assert "cc-week-cell" in page_text
-    assert "weekHover" in page_text
+    # item 7 (week grid hover wiring) is gone: 10-pixel-week-month's mock has
+    # no hover readouts at all, in THIS WEEK or MONTH.
 
 
 def test_empty_store_page_parses_no_exception(conn, cc_env, running_server):
@@ -191,30 +190,25 @@ def test_empty_store_page_parses_no_exception(conn, cc_env, running_server):
     assert "__INTER_WOFF2_BASE64__" not in body
 
 
-def test_horizon_strip_shades_against_the_weekly_cap_not_the_5_hour_one(page_text):
-    """PLAN-fill-and-clock: a single window is a small slice of a week by
-    nature, so the 30-day strip\u2019s fill is scored against the WEEKLY cap
-    (pct_of_week), never the 5-hour one -- that denominator drowned every
-    real window in the lowest colour band. Relative shading now fires only
-    for the genuine no-cap case: caps unknown outright, or no weekly cap
-    estimate exists yet -- never merely because the spread looked small."""
-    assert "var hzRelative = !capsKnown || !weekCapKnown;" in page_text
-    assert "if (!hzRelative) {" in page_text          # cap bands only outside relative mode
-    assert "fillColorWeek(c.pct_of_week)" in page_text
-    assert "HZ_MIN_SPREAD_PCT" not in page_text       # the flat-range guard is gone with it
-    assert "The weekly cap is not known yet" in page_text
-    assert "Fill is how much of the week\\u2019s cap this window alone went through." in page_text
-    # the long-standing no-cap wording stays: relative mode is the same basis
-    assert "Fill here is relative to the heaviest window in range" in page_text
+def test_month_strip_is_hoverless_and_colours_straight_from_pct_of_week(page_text):
+    """10-pixel-week-month: the mock's MONTH strip has no hover state at all --
+    each cell's fill is coloured straight from PX_LVL[pxLvl(pct_of_week)] when
+    the weekly cap is known, falling back to a flat two-step token-relative
+    neutral (never a colour ramp) only when caps are genuinely unknown."""
+    assert "PX_LVL[pxLvl(c.pct_of_week)]" in page_text
+    assert 'bg = frac > 0.5 ? "var(--line)" : "var(--l0)";' in page_text
+    assert "cc-hz-cell" not in page_text
+    assert "state.hz" not in page_text
+    assert "FILL IS RELATIVE TO THE HEAVIEST WINDOW IN RANGE" in page_text
 
 
-def test_week_grid_also_shades_against_the_weekly_cap(page_text):
-    """The 7x4 week grid has exactly the same problem the 30-day strip had --
-    every real window is a small slice of a week -- so it is rescaled the
-    same way, with its own fallback for when no weekly cap exists."""
-    assert "var useWeekCap = capsKnown && weekCapKnown;" in page_text
-    assert "fillColorWeek(pct)" in page_text
-    assert "fmtPct(c.pct_of_week)" in page_text
+def test_week_grid_cell_fill_uses_pct_of_week_lit_by_pct_of_cap(page_text):
+    """The 7x4 THIS WEEK grid's 7-block meter fills to pct_of_week and lights
+    on PX_LVL[pxLvl(pct_of_cap)] when caps are known; caps-unknown windows
+    fall back to a token-relative fill against var(--line), no colour ramp."""
+    assert "fillPct = c.pct_of_week;" in page_text
+    assert "on = PX_LVL[pxLvl(c.pct_of_cap)];" in page_text
+    assert "TOKENS SHOWN, NOT FILL — CAP UNKNOWN" in page_text
 
 
 def test_week_lvl_edges_are_rescaled_for_a_share_of_the_week(page_text):
