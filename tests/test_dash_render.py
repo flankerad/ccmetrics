@@ -193,11 +193,12 @@ def test_month_strip_is_hoverless_and_colours_straight_from_pct_of_week(page_tex
     assert "FILL IS RELATIVE TO THE HEAVIEST WINDOW IN RANGE" in page_text
 
 
-def test_week_grid_cell_fill_uses_pct_of_week_lit_by_pct_of_cap(page_text):
-    """The 7x4 THIS WEEK grid's 7-block meter fills to pct_of_week and lights
-    on PX_LVL[pxLvl(pct_of_cap)] when caps are known; caps-unknown windows
-    fall back to a token-relative fill against var(--line), no colour ramp."""
-    assert "fillPct = c.pct_of_week;" in page_text
+def test_week_grid_cell_fill_uses_pct_of_cap_for_both_fill_and_colour(page_text):
+    """15-pixel-proportions #3: pct_of_week is null on every real week cell,
+    so the 7-block meter must fill AND colour from pct_of_cap instead; caps-
+    unknown windows fall back to a token-relative fill against var(--line),
+    no colour ramp."""
+    assert "fillPct = c.pct_of_cap;" in page_text
     assert "on = PX_LVL[pxLvl(c.pct_of_cap)];" in page_text
     assert "TOKENS SHOWN, NOT FILL — CAP UNKNOWN" in page_text
 
