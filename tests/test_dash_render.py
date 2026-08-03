@@ -76,12 +76,6 @@ def test_font_face_embedded_with_full_weight_range(page_text):
     assert "ui-monospace" in page_text
 
 
-def test_no_accent_2_ramp_declared(page_text):
-    assert re.search(r"--color-accent-2\s*:", page_text) is None
-    assert re.search(r"--color-accent-2-\d", page_text) is None
-    assert "--color-accent-200" in page_text
-
-
 def test_both_palettes_defined(page_text):
     assert ":root{" in page_text
     assert "data-palette" not in page_text
@@ -90,8 +84,9 @@ def test_both_palettes_defined(page_text):
     assert page_text.count("--l0:#2b2a26") == 1
 
 
-def test_caps_unknown_ribbon_present_in_source(page_text):
-    assert "renderRibbon" in page_text
+def test_caps_unknown_sentences_present_in_source(page_text):
+    """12-pixel-stories: the caps-unknown ribbon is deleted -- its sentences
+    now live in heroFuse's verdict copy directly."""
     assert "caps_known" in page_text
     assert "Caps are unknown until Claude Code" in page_text
 
@@ -205,34 +200,6 @@ def test_week_grid_cell_fill_uses_pct_of_week_lit_by_pct_of_cap(page_text):
     assert "fillPct = c.pct_of_week;" in page_text
     assert "on = PX_LVL[pxLvl(c.pct_of_cap)];" in page_text
     assert "TOKENS SHOWN, NOT FILL — CAP UNKNOWN" in page_text
-
-
-def test_week_lvl_edges_are_rescaled_for_a_share_of_the_week(page_text):
-    """PLAN-fill-and-clock: lvlOf's 45/75/95 bands were built for a share of
-    the 5-hour cap. A single window\u2019s share of a whole WEEK is small by
-    construction (the live store\u2019s worst window of the month never topped
-    24%), so lvlOfWeek uses its own edges, read off that live distribution:
-    <6% ordinary, 6-12% heavy, 12-20% very heavy, >=20% the worst of the
-    month. Boundary values are exercised directly against a mirror of the
-    published band edges, so a source change that alters WEEK_LVL_EDGES
-    without updating this test will fail here first."""
-    assert "var WEEK_LVL_EDGES = [6, 12, 20];" in page_text
-    assert "function lvlOfWeek(p) {" in page_text
-
-    def lvl_of_week(p, edges=(6, 12, 20)):
-        if p is None:
-            return 0
-        return 4 if p >= edges[2] else 3 if p >= edges[1] else 2 if p >= edges[0] else 1 if p > 0 else 0
-
-    assert lvl_of_week(0) == 0
-    assert lvl_of_week(0.1) == 1
-    assert lvl_of_week(5.9) == 1
-    assert lvl_of_week(6) == 2
-    assert lvl_of_week(11.9) == 2
-    assert lvl_of_week(12) == 3
-    assert lvl_of_week(19.9) == 3
-    assert lvl_of_week(20) == 4
-    assert lvl_of_week(23.07) == 4
 
 
 def test_fuse_day_row_derives_from_resets_at_and_tick_clearance_is_gone(page_text):

@@ -20,22 +20,6 @@ a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
 @keyframes ccpix2{0%,33.32%{opacity:0}33.33%,66.65%{opacity:1}66.66%,100%{opacity:0}}
 @keyframes ccpix3{0%,66.65%{opacity:0}66.66%,100%{opacity:1}}
 @keyframes ccblink{0%,49%{opacity:1}50%,100%{opacity:0}}
-/* LEGACY BRIDGE — keeps not-yet-rebuilt panels legible; phase 12-pixel-stories deletes it. */
-:root{
-  --color-bg:var(--bg);--color-surface:var(--surf);--color-divider:var(--line);
-  --color-text:var(--ink);
-  --color-neutral-100:var(--ink);--color-neutral-200:var(--ink);--color-neutral-300:#c9c2b6;
-  --color-neutral-400:var(--dim);--color-neutral-500:var(--dim);--color-neutral-600:#6f695f;
-  --color-neutral-700:#555047;--color-neutral-800:var(--line);--color-neutral-900:#2a2622;
-  --color-accent:var(--clay);--color-accent-200:#f4c7ad;--color-accent-300:#e8a37e;
-  --color-accent-500:var(--clay);--color-accent-700:#a35f3f;--color-accent-900:#5c3826;
-  --lvl-0:var(--l0);--lvl-1:var(--l1);--lvl-2:var(--l2);--lvl-3:var(--l3);--lvl-4:var(--l4);
-  --m-opus:var(--opus);--m-fable:var(--fable);--m-sonnet:var(--sonnet);
-  --m-haiku:var(--haiku);--m-opus48:var(--opus48);
-  --font-body:ui-monospace,'SF Mono',Menlo,monospace;--font-heading:ui-monospace,'SF Mono',Menlo,monospace;
-  --radius-sm:0;--radius-md:0;--radius-lg:0;--shadow-sm:none;--space-2:8px;
-}
-.cc-ribbon{display:flex;align-items:center;gap:10px;border:2px solid var(--line);background:var(--surf);padding:11px 13px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -43,7 +27,6 @@ a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
 
   <div id="cc-header"></div>
 
-  <div id="cc-ribbon"></div>
   <div id="cc-hero"></div>
   <div id="cc-recoverable"></div>
   <div id="cc-week"></div>
@@ -57,42 +40,10 @@ a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
 (function () {
 "use strict";
 
-/* ==== PLAN-dash-v2 6.1: renderVals()'s presentation maths, ported verbatim
-   where it is presentation (LVL/lvlOf/fillColor/inkOn/leftColor), except the
-   verdict copy (decision 6) and dry-logic when caps are unknown (6.3). ==== */
-
-var LVL = ["var(--lvl-0)", "var(--lvl-1)", "var(--lvl-2)", "var(--lvl-3)", "var(--lvl-4)"];
-function lvlOf(p) {
-  if (p === null || p === undefined) return 0;
-  return p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0;
-}
-function fillColor(p) { return LVL[lvlOf(p)]; }
-function inkOn(p) { var l = lvlOf(p); return (l === 2 || l === 3) ? "var(--color-bg)" : "var(--color-neutral-100)"; }
-function leftColor(pctLeft) {
-  if (pctLeft === null || pctLeft === undefined) return "var(--color-neutral-500)";
-  return pctLeft <= 10 ? LVL[4] : pctLeft <= 25 ? LVL[3] : pctLeft <= 55 ? LVL[2] : LVL[1];
-}
-/* ==== PLAN-fill-and-clock: the week grid and 30-day strip score each
-   window's equiv_tokens against the WEEKLY cap (pct_of_week), not the
-   5-hour cap lvlOf above was built for. A single window is a small slice
-   of a week by nature -- on the live store the worst window of the month
-   never topped 24% -- so lvlOf's 45/75/95 edges would leave every one of
-   these cells in the lowest band forever. WEEK_LVL_EDGES were read off that
-   same live distribution: most ordinary windows sit under 6% of the week,
-   6-12% is a genuinely heavy one, 12-20% a very heavy one, and only the
-   single worst window of the month cleared 20%. Never applied to dry --
-   that stays lvlOf/_score's 5-hour-cap claim. ==== */
-var WEEK_LVL_EDGES = [6, 12, 20];
 /* windows.WEEK_DAYS (7) x two half-day cells/day -- the account-wide week
    span the horizon strip's "THIS WEEK" marker highlights (PLAN-cap-and-chrome
    Part 2 #4), the same span the hero and week grid already use. */
 var WEEK_HALVES = 14;
-function lvlOfWeek(p) {
-  if (p === null || p === undefined) return 0;
-  return p >= WEEK_LVL_EDGES[2] ? 4 : p >= WEEK_LVL_EDGES[1] ? 3 : p >= WEEK_LVL_EDGES[0] ? 2 : p > 0 ? 1 : 0;
-}
-function fillColorWeek(p) { return LVL[lvlOfWeek(p)]; }
-function inkOnWeek(p) { var l = lvlOfWeek(p); return (l === 2 || l === 3) ? "var(--color-bg)" : "var(--color-neutral-100)"; }
 function shortModel(id) {
   if (!id) return null;
   var s = String(id).toLowerCase();
@@ -104,10 +55,10 @@ function shortModel(id) {
   return s;
 }
 var MODEL_COLOR = {
-  opus: "var(--m-opus)", fable: "var(--m-fable)", sonnet: "var(--m-sonnet)",
-  haiku: "var(--m-haiku)", opus48: "var(--m-opus48)"
+  opus: "var(--opus)", fable: "var(--fable)", sonnet: "var(--sonnet)",
+  haiku: "var(--haiku)", opus48: "var(--opus48)"
 };
-function modelColor(shortName) { return MODEL_COLOR[shortName] || "var(--color-neutral-500)"; }
+function modelColor(shortName) { return MODEL_COLOR[shortName] || "var(--dim)"; }
 
 var PX_LVL = ["var(--l0)", "var(--l1)", "var(--l2)", "var(--l3)", "var(--l4)"];
 function pxLvl(p) { return p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0; }
@@ -237,22 +188,6 @@ function renderHeader() {
     '<span style="color:var(--dim)">' + hh + ":" + mm + " · " + '<span id="cc-updated">updated just now</span><span style="animation:ccblink 1s steps(1,end) infinite"> _</span></span>';
 }
 
-/* ==== caps-unknown ribbon (6.3): not dismissible, tells the user how to
-   unlock cap-relative mechanics. Absent once a cap exists. ==== */
-function renderRibbon() {
-  var host = document.getElementById("cc-ribbon");
-  var w = state.windows;
-  if (!w || w.caps_known) { host.innerHTML = ""; return; }
-  var msg = w.hook_ran
-    ? "Collecting \u2014 not enough usage yet to estimate a cap."
-    : "Caps are unknown until Claude Code\u2019s /usage panel has been opened (or the statusline hook is installed). Until then, fill and reset times show; percentages and \u201cran dry\u201d do not.";
-  host.innerHTML =
-    '<div class="cc-ribbon" style="margin-top:14px">' +
-    '<span style="width:7px;height:7px;border-radius:4px;background:var(--color-accent-500);flex:0 0 auto"></span>' +
-    '<span>' + esc(msg) + '</span>' +
-    '</div>';
-}
-
 /* ==== hero: the fuse + three-limits headroom ====
    6.3 caps-unknown: fuse fills on share-of-week-so-far instead of used_pct;
    verdict swaps to the two defined sentences; wick/runs-out become em dash. */
@@ -353,7 +288,7 @@ function heroFuse() {
   var wick = (left === null || left === undefined) ? "\u2014" : fmtTok(left);
   var burntLine = (burnt === null || burnt === undefined)
     ? fmtTok(null)
-    : fmtTok(burnt) + ' <span style="font-size:11px;color:var(--color-neutral-600)">' + fmtPct(usedPct) + '</span>';
+    : fmtTok(burnt) + ' <span class="px-faint" style="font-size:11px">' + fmtPct(usedPct) + '</span>';
   /* 6.4g #2: runs_out_at can land after resets_at -- the week holds at the
      current burn rate. The backend already keeps early_hours strictly
      positive for that case (null instead), so the frontend need only pick
@@ -949,13 +884,12 @@ function boot() {
   }).catch(function (err) {
     _booting = false;
     var host = document.getElementById("cc-header");
-    host.innerHTML = '<div style="color:var(--color-neutral-400);font-size:13px">ccmetrics \u2014 could not reach the dash server (' + esc(err.message || err) + ")</div>";
+    host.innerHTML = '<div style="color:var(--dim);font-size:13px">ccmetrics — could not reach the dash server (' + esc(err.message || err) + ")</div>";
   });
 }
 
 function renderAll() {
   renderHeader();
-  renderRibbon();
   renderHero();
   renderLive();
   renderHorizon();
