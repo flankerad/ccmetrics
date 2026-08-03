@@ -73,6 +73,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print the settings.json fragment that turns this on and exit "
         "(prints only, never edits your files)",
     )
+    sl.add_argument(
+        "--passthrough",
+        metavar="CMD",
+        default=None,
+        help="your own status line command: it is run on the same session JSON "
+        "and ITS output is printed, after ccmetrics has recorded the plan %%. "
+        "Claude Code allows one status line command, so this keeps yours",
+    )
+
+    su = sub.add_parser(
+        "setup",
+        help="one-command installer for the status line hook (no flags: print "
+        "instructions only, changes nothing)",
+    )
+    su.add_argument(
+        "--apply",
+        action="store_true",
+        help="wire ccmetrics into statusLine.command, wrapping any command already there",
+    )
+    su.add_argument(
+        "--revert",
+        action="store_true",
+        help="undo --apply: restore the wrapped command, or remove statusLine if we added it",
+    )
+    su.add_argument(
+        "--check",
+        action="store_true",
+        help="read-only: is the status line wired to us, and when did it last hear from Claude Code",
+    )
+    su.add_argument(
+        "--settings",
+        metavar="PATH",
+        default=None,
+        help="settings.json to edit (default: ~/.claude/settings.json)",
+    )
 
     sub.add_parser("constants", help="print every constant with its source URL")
     det = sub.add_parser("detectors", help="re-run the leak detectors over the store")
@@ -145,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             raw = ""
         try:
-            print(plan_mod.run(raw))
+            print(plan_mod.run(raw, passthrough=getattr(args, "passthrough", None)))
         except Exception:
             print("ccmetrics")
         return 0
@@ -153,6 +188,38 @@ def main(argv: list[str] | None = None) -> int:
         from . import otel
 
         print(otel.setup_text(args.port))  # print-only: no file is ever written
+        return 0
+    if args.cmd == "setup":
+        from pathlib import Path
+
+        from . import plan as plan_mod
+
+        settings_path = Path(args.settings) if args.settings else plan_mod.default_settings_path()
+
+        if args.apply:
+            try:
+                result = plan_mod.apply_setup(settings_path)
+            except plan_mod.SetupError as e:
+                print(f"ccmetrics setup --apply: {e}")
+                return 1
+            print(result["message"])
+            return 0
+        if args.revert:
+            try:
+                result = plan_mod.revert_setup(settings_path)
+            except plan_mod.SetupError as e:
+                print(f"ccmetrics setup --revert: {e}")
+                return 1
+            print(result["message"])
+            return 0
+        if args.check:
+            conn = store.connect()
+            try:
+                print(plan_mod.check_setup(settings_path, conn))
+            finally:
+                conn.close()
+            return 0
+        print(plan_mod.setup_text())  # print-only: no file is ever written
         return 0
     conn = store.connect()
     try:

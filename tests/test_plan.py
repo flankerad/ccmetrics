@@ -9,6 +9,8 @@ import sqlite3
 
 import pytest
 
+import json
+
 from ccmetrics import plan, report, store
 
 BASE = _dt.datetime(2026, 7, 31, 12, 0, 0, tzinfo=_dt.timezone.utc)
@@ -363,3 +365,264 @@ def test_plan_trend_null_reading_stays_null(conn):
 
     trend = store.plan_window_trend(conn)
     assert [p["used_pct"] for p in trend["seven_day"]] == [None, 30.0]
+
+
+# --- read_usage_cache: the /usage cache (~/.claude.json) --------------------
+
+def _write_cache(path, utilization=None, oauth=None, fetched_ms=1785477153001):
+    body = {}
+    cu = {"fetchedAtMs": fetched_ms, "utilization": utilization if utilization is not None else {}}
+    body["cachedUsageUtilization"] = cu
+    if oauth is not None:
+        body["oauthAccount"] = oauth
+    path.write_text(json.dumps(body))
+
+def test_read_usage_cache_limits_session_weekly_all_and_scoped_fable(tmp_path):
+    p = tmp_path / "claude.json"
+    _write_cache(p, utilization={
+        "limits": [
+            {"kind": "session", "group": "session", "percent": 18, "severity": "normal",
+             "resets_at": "2026-07-31T15:00:00.868761+00:00", "scope": None, "is_active": True},
+            {"kind": "weekly_all", "group": "weekly", "percent": 85, "severity": "normal",
+             "resets_at": "2026-08-03T12:00:00.868783+00:00", "scope": None, "is_active": False},
+            {"kind": "weekly_scoped", "group": "weekly", "percent": 94, "severity": "normal",
+             "resets_at": "2026-08-03T12:00:00.868783+00:00", "is_active": True,
+             "scope": {"model": {"id": None, "display_name": "Fable"}, "surface": None}},
+        ],
+    })
+
+    out = plan.read_usage_cache(p)
+    assert out is not None
+    expected_fetched = _dt.datetime.fromtimestamp(
+        1785477153001 / 1000.0, _dt.timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert out["fetched_at"] == expected_fetched
+
+    windows = out["windows"]
+    assert list(windows) == ["session", "weekly_all", "weekly_scoped_fable"]
+    assert windows["session"]["label"] == "Current session"
+    assert windows["session"]["used_pct"] == pytest.approx(18.0)
+    assert windows["weekly_all"]["label"] == "This week · all models"
+    assert windows["weekly_all"]["used_pct"] == pytest.approx(85.0)
+    assert windows["weekly_scoped_fable"]["label"] == "This week · Fable"
+    assert windows["weekly_scoped_fable"]["model"] == "Fable"
+    assert windows["weekly_scoped_fable"]["used_pct"] == pytest.approx(94.0)
+
+def test_read_usage_cache_unknown_kind_kept_under_raw_label():
+    windows = plan._extract_bars_list([
+        {"kind": "seven_day_opus", "percent": 40, "resets_at": None, "is_active": True},
+    ])
+    assert set(windows) == {"seven_day_opus"}
+    assert windows["seven_day_opus"]["label"] == "seven day opus"
+    assert windows["seven_day_opus"]["used_pct"] == pytest.approx(40.0)
+
+def test_read_usage_cache_bars_skip_missing_or_nonnumeric_percent():
+    windows = plan._extract_bars_list([
+        {"kind": "session", "resets_at": None, "is_active": True},  # no percent at all
+        {"kind": "weekly_all", "percent": "n/a", "resets_at": None, "is_active": True},
+        {"kind": "weekly_all", "percent": 50, "resets_at": None, "is_active": True},
+    ])
+    assert set(windows) == {"weekly_all"}
+    assert windows["weekly_all"]["used_pct"] == pytest.approx(50.0)
+
+def test_read_usage_cache_missing_bars_falls_back_to_named_keys_nulls_ignored(tmp_path):
+    p = tmp_path / "claude.json"
+    _write_cache(p, utilization={
+        "five_hour": {"utilization": 7, "resets_at": "2026-07-31T10:40:00.868761+00:00"},
+        "seven_day": None,
+        "seven_day_opus": None,
+    })
+    out = plan.read_usage_cache(p)
+    assert out is not None
+    assert set(out["windows"]) == {"five_hour"}
+    assert out["windows"]["five_hour"]["used_pct"] == pytest.approx(7.0)
+    assert out["windows"]["five_hour"]["label"] == "last 5 hours"
+
+def test_read_usage_cache_junk_paths_return_none_never_raise(tmp_path):
+    missing = tmp_path / "nope.json"
+    assert plan.read_usage_cache(missing) is None
+
+    empty = tmp_path / "empty.json"
+    empty.write_text("")
+    assert plan.read_usage_cache(empty) is None
+
+    malformed = tmp_path / "bad.json"
+    malformed.write_text("{not json")
+    assert plan.read_usage_cache(malformed) is None
+
+    no_block = tmp_path / "noblock.json"
+    no_block.write_text(json.dumps({"oauthAccount": {}}))
+    assert plan.read_usage_cache(no_block) is None
+
+def test_plan_tier_known_key_maps_and_unknown_returns_none(tmp_path):
+    known = tmp_path / "known.json"
+    known.write_text(json.dumps({
+        "oauthAccount": {"organizationRateLimitTier": "default_claude_max_5x",
+                          "organizationType": "claude_max"},
+    }))
+    assert plan.plan_tier(known) == {
+        "key": "default_claude_max_5x", "label": "Max (5×)", "type": "claude_max",
+    }
+
+    unknown = tmp_path / "unknown.json"
+    unknown.write_text(json.dumps({"oauthAccount": {"organizationRateLimitTier": "mystery_tier"}}))
+    assert plan.plan_tier(unknown) is None
+
+    absent = tmp_path / "absent.json"
+    assert plan.plan_tier(absent) is None
+
+def test_window_labels_has_no_per_model_entry():
+    assert "seven_day_opus" not in plan.WINDOW_LABELS
+    assert all("opus" not in k and "sonnet" not in k and "haiku" not in k
+               for k in plan.WINDOW_LABELS)
+
+def test_read_usage_cache_bars_accepted_as_secondary_name(tmp_path):
+    """PLAN-dash-v2 1.1 correction: the real file keys this list `limits`;
+    `bars` is a secondary name kept only for future-proofing, so it must not
+    rot -- a payload carrying only `bars` still parses."""
+    p = tmp_path / "claude.json"
+    _write_cache(p, utilization={
+        "bars": [
+            {"kind": "session", "percent": 12, "resets_at": None, "is_active": True},
+        ],
+    })
+    out = plan.read_usage_cache(p)
+    assert out is not None
+    assert set(out["windows"]) == {"session"}
+    assert out["windows"]["session"]["used_pct"] == pytest.approx(12.0)
+
+def test_read_usage_cache_limits_preferred_over_bars_when_both_present(tmp_path):
+    p = tmp_path / "claude.json"
+    _write_cache(p, utilization={
+        "limits": [{"kind": "session", "percent": 40, "resets_at": None, "is_active": True}],
+        "bars": [{"kind": "session", "percent": 99, "resets_at": None, "is_active": True}],
+    })
+    out = plan.read_usage_cache(p)
+    assert out["windows"]["session"]["used_pct"] == pytest.approx(40.0)
+
+
+# --- record_usage_cache: snapshot on a new fetch time ------------------------
+
+def test_record_usage_cache_writes_rows_and_skips_unchanged(conn):
+    p = plan.usage_cache_path()
+    _write_cache(p, utilization={
+        "limits": [{"kind": "session", "percent": 20, "resets_at": None, "is_active": True}],
+    }, fetched_ms=1785477153001)
+
+    n = plan.record_usage_cache(conn)
+    assert n == 1
+    latest = store.latest_plan_windows(conn)
+    assert latest["session"]["used_pct"] == pytest.approx(20.0)
+
+    # unchanged cache, same fetchedAtMs -- writes zero rows
+    n2 = plan.record_usage_cache(conn)
+    assert n2 == 0
+
+def test_record_usage_cache_newer_fetch_writes_a_new_row(conn):
+    p = plan.usage_cache_path()
+    _write_cache(p, utilization={
+        "limits": [{"kind": "session", "percent": 20, "resets_at": None, "is_active": True}],
+    }, fetched_ms=1785477153001)
+    plan.record_usage_cache(conn)
+
+    _write_cache(p, utilization={
+        "limits": [{"kind": "session", "percent": 33, "resets_at": None, "is_active": True}],
+    }, fetched_ms=1785477153001 + 60000)
+    n = plan.record_usage_cache(conn)
+    assert n == 1
+    latest = store.latest_plan_windows(conn)
+    assert latest["session"]["used_pct"] == pytest.approx(33.0)
+
+
+# --- usage_credits: utilization.extra_usage ----------------------------------
+
+def test_usage_credits_reads_extra_usage(tmp_path):
+    p = tmp_path / "claude.json"
+    _write_cache(p, utilization={
+        "extra_usage": {
+            "is_enabled": False, "monthly_limit": 500, "used_credits": 0,
+            "utilization": 0, "currency": "USD", "decimal_places": 2,
+            "disabled_reason": "org_level_disabled_until",
+        },
+    })
+    out = plan.usage_credits(p)
+    assert out == {
+        "is_enabled": False, "monthly_limit": 500, "used_credits": 0,
+        "utilization": 0, "currency": "USD", "decimal_places": 2,
+        "disabled_reason": "org_level_disabled_until",
+    }
+
+def test_usage_credits_none_when_extra_usage_absent(tmp_path):
+    p = tmp_path / "claude.json"
+    _write_cache(p, utilization={"spend": {"used": {}, "limit": {}}})
+    assert plan.usage_credits(p) is None
+
+def test_usage_credits_none_on_missing_or_malformed_file(tmp_path):
+    assert plan.usage_credits(tmp_path / "nope.json") is None
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert plan.usage_credits(bad) is None
+
+
+# --- statusline chaining: `ccmetrics statusline --passthrough "..."` ---------
+# Claude Code allows exactly one status line command, and the payload it hands
+# that command is the only continuously-fresh source of plan percentages. So
+# ccmetrics has to be able to own the slot without taking it away from whatever
+# the user already had there.
+
+
+def test_passthrough_prints_the_wrapped_commands_output_not_our_own_line():
+    assert plan.run("{}", passthrough="printf theirs") == "theirs"
+
+
+def test_passthrough_is_handed_the_same_stdin_and_the_snapshot_is_still_stored(conn):
+    reset = BASE + _dt.timedelta(hours=2)
+    payload = json.dumps({
+        "session_id": "sess-chain",
+        "rate_limits": {"five_hour": {"used_percentage": 31, "resets_at": _epoch(reset)}},
+    })
+
+    out = plan.run(payload, passthrough="cat")
+
+    assert json.loads(out) == json.loads(payload)  # the child saw the payload
+    latest = store.latest_plan_windows(conn)       # and ccmetrics still recorded it
+    assert latest["five_hour"]["used_pct"] == pytest.approx(31.0)
+
+
+@pytest.mark.parametrize("cmd", [
+    "ccmetrics-no-such-command-xyz",  # missing
+    "exit 3",                         # non-zero exit
+    "true",                           # exits 0, prints nothing
+    "   ",                            # empty command string
+])
+def test_passthrough_failure_modes_fall_back_to_our_own_line(cmd):
+    """A status line is the user's editor chrome: it may never go blank or
+    loud, so every way the wrapped command can let us down ends in ccmetrics'
+    own line instead."""
+    assert plan.run("{}", passthrough=cmd) == "ccmetrics"
+
+
+def test_passthrough_slow_command_times_out_and_falls_back(monkeypatch):
+    monkeypatch.setattr(plan, "PASSTHROUGH_TIMEOUT_S", 0.2)
+    assert plan.run("{}", passthrough="sleep 5") == "ccmetrics"
+
+
+def test_cli_statusline_with_a_broken_passthrough_prints_a_line_and_exits_0(
+    cc_env, monkeypatch, capsys
+):
+    import io
+    import sys
+
+    from ccmetrics.cli import main
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+    assert main(["statusline", "--passthrough", "ccmetrics-no-such-command-xyz"]) == 0
+    assert capsys.readouterr().out.strip() == "ccmetrics"
+
+
+def test_setup_text_shows_both_the_plain_and_the_chained_fragment():
+    text = plan.setup_text()
+    assert chr(34) + "command" + chr(34) + ": " + chr(34) + "ccmetrics statusline" + chr(34) in text
+    assert "--passthrough" in text
+    assert "Claude Code runs exactly one command" in text

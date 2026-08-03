@@ -13,7 +13,7 @@ import urllib.request
 
 import pytest
 
-from ccmetrics import costs, detectors, ingest
+from ccmetrics import constants, costs, detectors, ingest, plan
 from ccmetrics.dash import server as dash_server
 
 from .util import assistant_rec, make_project, session_path, ts_at, write_lines
@@ -122,6 +122,51 @@ def test_api_meta_shape(conn, cc_env, running_server):
     body = _get_json(f"{base}/api/meta")
     for key in ("version", "db_path", "schema_version", "window_days"):
         assert key in body
+
+
+def test_api_windows_shape_no_cache(conn, cc_env, running_server):
+    """Neither source present -- tier/credits/source/fetched_at all None,
+    never a guess."""
+    _seed(conn, cc_env)
+    base, _ = running_server
+    body = _get_json(f"{base}/api/windows")
+    for key in ("scope", "caps_known", "hero", "headroom", "week", "horizon",
+                "tier", "credits", "source", "fetched_at"):
+        assert key in body
+    assert body["tier"] is None
+    assert body["credits"] is None
+    assert body["source"] is None
+    assert body["fetched_at"] is None
+
+
+def test_api_windows_shape_with_cache(conn, cc_env, running_server):
+    """Cache present -- the four new fields are populated from it."""
+    p = plan.usage_cache_path()
+    p.write_text(json.dumps({
+        "cachedUsageUtilization": {
+            "fetchedAtMs": 1785477153001,
+            "utilization": {
+                "limits": [
+                    {"kind": "session", "percent": 7, "resets_at": None,
+                     "is_active": True, "severity": "normal"},
+                ],
+                "extra_usage": {
+                    "is_enabled": False, "monthly_limit": 500, "used_credits": 0,
+                    "utilization": 0, "currency": "USD", "decimal_places": 2,
+                    "disabled_reason": "org_level_disabled_until",
+                },
+            },
+        },
+        "oauthAccount": {"organizationRateLimitTier": "default_claude_max_5x"},
+    }))
+    _seed(conn, cc_env)
+    base, _ = running_server
+    body = _get_json(f"{base}/api/windows")
+    assert body["tier"] == {"key": "default_claude_max_5x", "label": "Max (5×)",
+                             "type": "claude_max"}
+    assert body["credits"]["monthly_limit"] == 500
+    assert body["source"] == "cache"
+    assert body["fetched_at"] is not None
 
 
 def test_api_unknown_path_404(running_server):
@@ -259,7 +304,9 @@ def test_usage_payload_periods_and_global_sums(conn, cc_env):
 
     body = dash_server.usage_payload(conn, None)
     periods = body["periods"]
-    assert len(periods["day"]) == 14
+    # the daily bucket count follows per-turn retention, so the dollars chart
+    # covers the same 30 days as the panels beside it
+    assert len(periods["day"]) == constants.value(constants.RETENTION["turn_days"])
     assert len(periods["week"]) == 8
     assert len(periods["month"]) == 6
 

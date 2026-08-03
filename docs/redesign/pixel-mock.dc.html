@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --bg:#191714;--surf:#221e1a;--line:#3a352e;--ink:#ece7df;--dim:#8f887c;
+  --clay:#d9825a;--l0:#2b2a26;--l1:#4f7a58;--l2:#9aa04a;--l3:#c8873c;--l4:#bd4a3a;
+  --opus:#7594c9;--fable:#a37fc9;--sonnet:#5f9fa8;--haiku:#8f9cb0;
+}
+body{margin:0;background:#191714}
+a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
+@keyframes ccpix{0%,33.32%{opacity:1}33.33%,100%{opacity:0}}
+@keyframes ccpix2{0%,33.32%{opacity:0}33.33%,66.65%{opacity:1}66.66%,100%{opacity:0}}
+@keyframes ccpix3{0%,66.65%{opacity:0}66.66%,100%{opacity:1}}
+@keyframes ccblink{0%,49%{opacity:1}50%,100%{opacity:0}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:var(--bg);color:var(--ink);font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;padding:28px 32px 56px;image-rendering:pixelated">
+
+  <div style="display:flex;align-items:center;gap:14px;padding-bottom:14px;border-bottom:2px solid var(--line)">
+    <div style="display:flex;align-items:flex-end;gap:2px;height:14px">
+      <div style="width:4px;height:6px;background:var(--haiku)"></div>
+      <div style="width:4px;height:10px;background:var(--sonnet)"></div>
+      <div style="width:4px;height:14px;background:var(--opus)"></div>
+      <div style="width:4px;height:8px;background:var(--fable)"></div>
+    </div>
+    <span style="letter-spacing:0.14em;text-transform:uppercase">ccmetrics</span>
+    <span style="color:var(--dim)">max 5x · all projects</span>
+    <span style="flex:1"></span>
+    <span style="color:var(--dim)">17:12 · updated now<span style="animation:ccblink 1s steps(1,end) infinite"> _</span></span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,300px);gap:20px;margin-top:20px">
+
+    <div style="border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="border:2px solid var(--line);padding:8px 12px;font-size:17px;color:#f4c7ad">{{ face }}</div>
+        <div>
+          <div style="font-size:15px;letter-spacing:0.02em">BURNING FASTER THAN THE WEEK REFILLS</div>
+          <div style="margin-top:4px;color:var(--dim)">flame is 8 points ahead of the clock · fable is the short one</div>
+        </div>
+      </div>
+
+      <div style="position:relative;margin-top:44px">
+        <div style="position:absolute;left:71%;top:-30px;margin-left:-6px;transform:translateX(-100%);white-space:nowrap;color:var(--dim);z-index:6">clock &gt;</div>
+        <div style="position:absolute;left:71%;top:-22px;width:2px;height:56px;background:var(--dim);z-index:6"></div>
+
+        <div style="display:flex;gap:2px;height:22px">
+          <sc-for list="{{ fuseCells }}" as="c" hint-placeholder-count="40">
+            <div style="flex:1;height:22px;background:{{ c.bg }}"></div>
+          </sc-for>
+        </div>
+
+        <div style="position:absolute;left:79%;top:22px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">
+          <div style="position:absolute;left:0;bottom:0;width:14px;height:20px;transform:scale(2.4);transform-origin:bottom center">
+            <div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;animation:ccpix 0.42s steps(1,end) infinite"></div>
+            <div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:8px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,8px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,0px 12px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,12px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix2 0.42s steps(1,end) infinite"></div>
+            <div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,4px 2px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,2px 6px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix3 0.42s steps(1,end) infinite"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;margin-top:12px;color:var(--dim)">
+          <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+            <div style="flex:1;border-left:2px solid var(--line);padding-left:5px">{{ d }}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:14px 26px;margin-top:22px;padding-top:14px;border-top:2px solid var(--line)">
+        <div><div style="color:var(--dim)">BURNT</div><div style="font-size:15px;margin-top:3px">149.4M / 79%</div></div>
+        <div><div style="color:var(--dim)">LEFT</div><div style="font-size:15px;margin-top:3px;color:var(--l3)">39.6M</div></div>
+        <div><div style="color:var(--dim)">EMPTY AT</div><div style="font-size:15px;margin-top:3px">SUN 21:00</div></div>
+        <div><div style="color:var(--dim)">RATE</div><div style="font-size:15px;margin-top:3px;color:#f4c7ad">2.2M/hr · $10.93/hr</div></div>
+      </div>
+    </div>
+
+    <div style="border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+      <div style="color:var(--dim);letter-spacing:0.12em">LIMITS LEFT</div>
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:14px">
+        <sc-for list="{{ limits }}" as="l" hint-placeholder-count="3">
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span style="color:var(--dim)">{{ l.name }}</span>
+              <span style="font-size:15px;color:{{ l.color }}">{{ l.left }}</span>
+            </div>
+            <div style="display:flex;gap:2px">
+              <sc-for list="{{ l.cells }}" as="c" hint-placeholder-count="16">
+                <div style="flex:1;height:12px;background:{{ c.bg }}"></div>
+              </sc-for>
+            </div>
+            <div style="margin-top:5px;color:#6f695f">{{ l.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:18px;padding:11px 13px;border:2px solid var(--line);color:var(--ink)">&gt; PUT <span style="color:var(--fable)">FABLE</span> DOWN UNTIL MONDAY</div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+      <span style="color:var(--dim);letter-spacing:0.12em">RECOVERABLE · 217M TOKENS</span>
+      <span style="display:flex;align-items:center;gap:10px;color:var(--dim)">FIX ALL THREE: 79% <span style="color:var(--ink)">&gt;</span> <span style="color:{{ afterColor }}">{{ afterPct }}</span>
+        <span style="display:flex;gap:2px">
+          <sc-for list="{{ afterCells }}" as="c" hint-placeholder-count="16">
+            <span style="width:7px;height:10px;background:{{ c.bg }}"></span>
+          </sc-for>
+        </span>
+        · 107 FINDINGS</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <sc-for list="{{ leaks }}" as="k" hint-placeholder-count="3">
+        <div style="display:grid;grid-template-columns:24px minmax(180px,2fr) minmax(120px,1.4fr) minmax(90px,0.9fr) 92px;gap:0 16px;align-items:center;border:2px solid var(--line);padding:12px 14px">
+          <div style="color:#6f695f">{{ k.no }}</div>
+          <div>
+            <div style="font-size:13px">{{ k.title }}</div>
+            <div style="margin-top:4px;color:var(--dim)">{{ k.fix }}</div>
+            <div style="margin-top:5px;color:#f4c7ad">&gt; {{ k.cmd }}</div>
+          </div>
+          <div style="display:flex;gap:2px">
+            <sc-for list="{{ k.cells }}" as="c" hint-placeholder-count="12">
+              <div style="flex:1;height:12px;background:{{ c.bg }}"></div>
+            </sc-for>
+          </div>
+          <div style="font-size:13px;color:{{ k.color }}">{{ k.saves }}</div>
+          <div style="text-align:center;border:2px solid var(--line);padding:6px 0;cursor:pointer" style-hover="border-color:var(--clay);color:#f4c7ad">COPY</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px">
+      <span style="color:var(--dim);letter-spacing:0.12em">THIS WEEK · 20 WINDOWS</span>
+      <span style="color:var(--l4)">2 RAN DRY</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <sc-for list="{{ grid }}" as="row" hint-placeholder-count="7">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:30px;color:{{ row.labelColor }}">{{ row.day }}</div>
+          <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="4">
+            <div style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid {{ c.edge }};padding:2px">
+              <div style="width:6px;height:12px;background:{{ c.led }}"></div>
+              <sc-for list="{{ c.blocks }}" as="b" hint-placeholder-count="7">
+                <div style="flex:1;height:12px;background:{{ b.bg }}"></div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <div style="width:78px;text-align:right;color:{{ row.sumColor }}">{{ row.sum }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;color:var(--dim)">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l1)"></span>ROOM</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l2)"></span>HALF</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l3)"></span>TIGHT</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--l4)"></span>DRY</span>
+      <span style="flex:1"></span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:10px;background:var(--opus)"></span>{{ ledOpus }}</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:10px;background:var(--fable)"></span>{{ ledFable }}</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:10px;background:var(--sonnet)"></span>{{ ledSonnet }}</span>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:20px 26px;margin-top:20px;border:2px solid var(--line);background:var(--surf);padding:14px 20px">
+    <span style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;background:var(--clay);animation:ccblink 1.4s steps(1,end) infinite"></span>LIVE<span style="color:var(--dim)">ccmetrics · opus 5 · 46 turns · 3m</span></span>
+    <span style="color:var(--dim)">BLOCK <span style="color:var(--ink)">6.3M/15M</span></span>
+    <span style="color:var(--dim)">RATE <span style="color:var(--ink)">2.2M/hr</span> · <span style="color:var(--ink)">$10.93/hr</span> · <span style="color:var(--l2)">16%/hr</span></span>
+    <span style="color:var(--dim)">CTX <span style="color:var(--ink)">9%</span></span>
+    <span style="color:var(--dim)">CACHE <span style="color:var(--ink)">94%</span></span>
+    <span style="flex:1"></span>
+    <span style="color:var(--dim)">SESSION $3.10</span>
+  </div>
+
+  <div style="margin-top:20px;border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px">
+      <span style="color:var(--dim);letter-spacing:0.12em">MONTH · 60 WINDOWS</span>
+      <span style="color:var(--l4)">{{ monthDry }} RAN DRY</span>
+    </div>
+    <div style="display:flex;gap:3px">
+      <sc-for list="{{ month }}" as="m" hint-placeholder-count="60">
+        <div style="flex:1;height:44px;background:{{ m.bg }}"></div>
+      </sc-for>
+    </div>
+    <div style="display:flex;margin-top:8px;color:#6f695f">
+      <div style="flex:40;border-top:2px solid var(--line);padding-top:5px">JUL 1</div>
+      <div style="flex:20;border-top:2px solid var(--dim);padding-top:5px;padding-left:6px;color:var(--dim)">THIS WEEK</div>
+    </div>
+    <div style="margin-top:14px;color:var(--dim)">{{ monthCaption }}</div>
+  </div>
+
+  <div style="margin-top:20px;border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+      <span style="color:var(--dim);letter-spacing:0.12em">PROJECTS · 30 DAYS</span>
+      <span style="color:var(--dim)">603.8M TOKENS</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <sc-for list="{{ projects }}" as="p" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:24px minmax(110px,1.2fr) minmax(150px,2fr) minmax(60px,0.7fr) minmax(110px,1.6fr);gap:0 16px;align-items:center">
+          <div style="color:#6f695f">{{ p.no }}</div>
+          <div>{{ p.name }}</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:34px;color:{{ p.color }}">{{ p.share }}</span>
+            <span style="flex:1;display:flex;gap:2px">
+              <sc-for list="{{ p.cells }}" as="c" hint-placeholder-count="20">
+                <span style="flex:1;height:10px;background:{{ c.bg }}"></span>
+              </sc-for>
+            </span>
+          </div>
+          <div style="text-align:right;color:var(--dim)">{{ p.tokens }}</div>
+          <div style="color:#6f695f">{{ p.leak }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span style="color:var(--dim);letter-spacing:0.12em">VALUE ABSORBED · 30 DAYS</span>
+      <span style="color:var(--dim)">$3,952 AT API PRICES · NOT A BILL</span>
+    </div>
+    <div style="color:#6f695f;margin-bottom:14px">1 BLOCK = $50 · COLOUR IS THE DAY'S SIZE</div>
+    <div style="display:flex;align-items:flex-end;gap:3px;height:120px">
+      <sc-for list="{{ value }}" as="v" hint-placeholder-count="30">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%">
+          <sc-for list="{{ v.blocks }}" as="b" hint-placeholder-count="8">
+            <div style="height:12px;background:{{ b.bg }}"></div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;color:#6f695f">
+      <span>JUL 1</span><span>JUL 10</span><span>JUL 20</span><span>JUL 30</span>
+    </div>
+    <div style="margin-top:12px;color:var(--dim)">FOUR TALLEST DAYS = $1,860 · 47% OF THE MONTH</div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:22px;padding-top:14px;border-top:2px solid var(--line);color:#6f695f">
+    <span>READ-ONLY · NOTHING LEAVES THIS MACHINE</span>
+    <span>QUOTA FROM THE STATUSLINE HOOK</span>
+    <span style="flex:1"></span>
+    <span>CCMETRICS 0.2.0 · 1,641 SESSION FILES</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:860}}">
+class Component extends DCLogic {
+  renderVals() {
+    const L = ['var(--l0)', 'var(--l1)', 'var(--l2)', 'var(--l3)', 'var(--l4)'];
+    const lvl = (p) => L[p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0];
+    const leftLvl = (p) => L[p <= 10 ? 4 : p <= 25 ? 3 : p <= 55 ? 2 : 1];
+    const meter = (pct, n, on, off) => Array.from({ length: n }, (_, i) => ({
+      bg: (i / n) * 100 < pct ? on : (off || 'var(--l0)')
+    }));
+
+    /* the fuse, as 40 discrete cells stepping green -> red */
+    const fuseCells = Array.from({ length: 40 }, (_, i) => {
+      const at = (i / 40) * 100;
+      return { bg: at < 79 ? lvl(Math.round((at / 79) * 100)) : 'var(--l0)' };
+    });
+
+    const limits = [
+      { name: 'BLOCK 5H', left: '57%', pct: 43, note: '8.7M OF 15M · RESET 19:30' },
+      { name: 'WEEK ALL', left: '21%', pct: 79, note: '39.6M OF 189M · 2 DAYS' },
+      { name: 'WEEK FABLE', left: '6%', pct: 94, note: '2.6M OF 43.8M · ONE EVENING' }
+    ].map(l => {
+      const color = leftLvl(100 - l.pct);
+      return { ...l, color, cells: meter(100 - l.pct, 16, color) };
+    });
+
+    const raw = [
+      ['Mon', [46, 71, 88]], ['Tue', [34, 63, 97]], ['Wed', [28, 55, 76]], ['Thu', [41, 82, 100]],
+      ['Fri', [38, 43, 66]], ['Sat', [19, 31]], ['Sun', [14, 26, 58]]
+    ];
+    const ledCount = { opus: 0, fable: 0, sonnet: 0 };
+    const grid = raw.map(([day, arr]) => {
+      const cells = [0, 1, 2, 3].map(i => {
+        const p = arr[i];
+        if (p === undefined) return { edge: 'var(--l0)', led: 'transparent', blocks: meter(0, 7, 'var(--l0)') };
+        const who = p >= 95 ? 'fable' : (i === 0 && p < 40) ? 'sonnet' : 'opus';
+        ledCount[who]++;
+        const led = 'var(--' + who + ')';
+        return { edge: p >= 95 ? 'var(--l4)' : 'transparent', led, blocks: meter(p, 7, lvl(p)) };
+      });
+      const sum = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+      return { day, cells, sum: sum + '% AVG', labelColor: arr.length > 2 ? 'var(--ink)' : 'var(--dim)', sumColor: lvl(sum) };
+    });
+
+    /* month: 40 generated windows + this week's 20 */
+    const weekPcts = raw.reduce((a, [, arr]) => a.concat(arr), []);
+    const monthPcts = [];
+    for (let i = 0; i < 40; i++) {
+      const w = Math.sin(i / 3.1) * 26 + Math.sin(i / 9.7) * 30 + 52 + (i % 3 === 2 ? 12 : 0) - (i % 14 >= 12 ? 34 : 0);
+      monthPcts.push(Math.max(0, Math.min(100, Math.round(w))));
+    }
+    weekPcts.forEach(p => monthPcts.push(p));
+    const month = monthPcts.map(p => ({ bg: lvl(p) }));
+    const monthDry = monthPcts.filter(p => p >= 95).length;
+    const evenings = monthPcts.filter((p, i) => p >= 95 && (i % 3 === 2 || i >= 40)).length;
+    const monthCaption = evenings + ' OF THE ' + monthDry + ' DRY WINDOWS WERE EVENING BLOCKS — A TIME OF DAY, NOT BAD LUCK';
+
+    const afterPct = Math.round(((149.4 - 217 / 4.3) / 189) * 100);
+    const leaks = [
+      { no: '01', title: 'PREMIUM MODEL ON SMALL TURNS · CLAUAID', fix: 'switch to a cheap model for quick turns', cmd: '/model sonnet', pct: 64, saves: '120.9M' },
+      { no: '02', title: 'SUDDEN EXPENSIVE TURNS · CLAUAID', fix: 'start a fresh session when one turn spikes', cmd: '/clear, then re-ask', pct: 40, saves: '75.6M' },
+      { no: '03', title: 'COLD START AFTER A BREAK · CLAUAID', fix: 'add a line to CLAUDE.md', cmd: 'CLAUDE.md: keep context lean', pct: 11, saves: '20.5M' }
+    ].map(k => ({ ...k, color: lvl(k.pct), cells: meter(k.pct, 12, lvl(k.pct)) }));
+
+    const projects = [
+      ['clauaid', 71, '429.6M', 'PREMIUM MODEL'], ['draavi', 8, '50.8M', 'PREMIUM MODEL'],
+      ['soshitsu', 6, '32.8M', 'PREMIUM MODEL'], ['ccmetrics', 4, '25.7M', 'PREMIUM MODEL'],
+      ['pdf_form', 4, '22.1M', 'PREMIUM MODEL'], ['flanker.ad', 3, '21.1M', 'PREMIUM MODEL'],
+      ['claude_dir', 1, '6.9M', 'PREMIUM MODEL'], ['everything else', 2, '14.8M', '—']
+    ].map(([name, pct, tokens, leak], i) => ({
+      no: String(i + 1).padStart(2, '0'), name, share: pct + '%', tokens, leak,
+      color: pct >= 45 ? lvl(pct) : 'var(--ink)',
+      cells: meter(pct, 20, lvl(pct))
+    }));
+
+    const daily = [95, 120, 88, 250, 390, 200, 130, 105, 100, 260, 300, 150, 120, 100, 95, 130, 110, 330, 210, 140, 120, 200, 175, 130, 90, 60, 110, 300, 350, 240];
+    const value = daily.map(v => {
+      const n = Math.max(1, Math.round(v / 50));
+      const c = lvl(Math.round((v / 400) * 100));
+      return { blocks: Array.from({ length: n }, () => ({ bg: c })) };
+    });
+
+    return {
+      afterPct: afterPct + '%',
+      afterColor: leftLvl(100 - afterPct),
+      afterCells: meter(afterPct, 16, leftLvl(100 - afterPct)),
+      ledOpus: 'LED BY OPUS ' + ledCount.opus,
+      ledFable: 'FABLE ' + ledCount.fable,
+      ledSonnet: 'SONNET ' + ledCount.sonnet,
+      face: '(•_•;)',
+      days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'],
+      fuseCells, limits, grid, month, monthDry, monthCaption, leaks, projects, value
+    };
+  }
+}
+</script>
+</body>
+</html>

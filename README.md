@@ -73,6 +73,21 @@ ccmetrics statusline --setup   # prints the ~/.claude/settings.json fragment; ed
 
 Turn it on and your status line becomes `Opus · $0.31 · wk 62% · 5h 31% · ctx 24%`, while `ccmetrics dash` grows a **PLAN** card and `ccmetrics` prints a PLAN line. Only the percentage, the reset time and the session id are stored (90 days, metadata as always); readings older than 6 hours are labelled stale rather than shown as current. Leave it off and nothing changes — the card and the line simply never appear.
 
+#### Turn it on with one command
+
+Claude Code only runs one status-line command, so wiring ccmetrics in by hand means editing JSON. `ccmetrics setup` does it for you:
+
+```bash
+ccmetrics setup --apply    # turns the status line on; keeps your own command if you had one
+ccmetrics setup --check    # confirms it's wired up, and shows when a plan % was last seen
+```
+
+What `--apply` does: it opens `~/.claude/settings.json` (create `--settings <path>` to point at a different file, e.g. a project-level settings.json), saves a backup next to it (`settings.json.bak-ccmetrics`), and sets the status line to `ccmetrics statusline`. If you already had a status line command, it wraps yours instead of replacing it, so your status line still looks the same — ccmetrics just also records your plan %. It's safe to run more than once: if it's already wired up, it says so and changes nothing.
+
+Changed your mind? `ccmetrics setup --revert` puts your settings back the way they were — no need for the backup file, it reads its own state back out of the settings file.
+
+If `ccmetrics` isn't on your PATH, `--apply` writes the full path to whichever `ccmetrics` you ran it with, so the status line keeps working either way. `--check` will tell you loudly if that ever stops being true.
+
 ## The 12 leak detectors
 
 Each ships a pre-written fix template filled from your own numbers:

@@ -30,11 +30,23 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
+import re
+import shlex
+import shutil
+import sys
+from pathlib import Path
 
 from . import constants
 
 STALE_HOURS = constants.value(constants.PLAN["stale_hours"])
 MIN_INTERVAL_S = constants.value(constants.PLAN["min_interval_seconds"])
+
+# How long a chained statusline command (--passthrough) may take before
+# ccmetrics gives up on it and prints its own line. Deliberately short: this
+# runs on every redraw of the user's editor chrome, so a slow child would be
+# felt as a frozen status line, not as a late one.
+PASSTHROUGH_TIMEOUT_S = 2.0
 
 # short tag for the statusline, long words for the dashboard. Windows Claude
 # Code has not documented are shown under their own raw name rather than
@@ -42,9 +54,17 @@ MIN_INTERVAL_S = constants.value(constants.PLAN["min_interval_seconds"])
 WINDOW_LABELS = {
     "five_hour": ("5h", "last 5 hours"),
     "seven_day": ("wk", "this week"),
-    "seven_day_opus": ("opus wk", "this week · Opus"),
+    # No per-model entry here on purpose (PLAN-redesign A2): WHICH model gets
+    # its own weekly window is an account fact, not a constant -- it arrives on
+    # the bar itself, as `scope.model.display_name`.
+    "session": ("5h", "current session"),
+    "weekly_all": ("wk", "this week"),
 }
-WINDOW_ORDER = ("seven_day", "five_hour")
+WINDOW_ORDER = ("seven_day", "five_hour", "session", "weekly_all")
+
+# Key prefix for a weekly window that applies to one model only. The rest of
+# the key is that model's own name, lowercased.
+SCOPED_PREFIX = "weekly_scoped_"
 
 _NAME_OK = set("abcdefghijklmnopqrstuvwxyz0123456789_")
 
@@ -91,6 +111,310 @@ def _clean_name(name) -> str | None:
     if not n or len(n) > 32 or not set(n) <= _NAME_OK:
         return None
     return n
+
+
+# --- the /usage cache (~/.claude.json) --------------------------------------
+#
+# A second, optional local source (PLAN-dash-v2 3.1): Claude Code writes its
+# own reading of `cachedUsageUtilization` to ~/.claude.json every time the
+# /usage panel runs. Unlike the statusline feed above this needs no user
+# setup, but it is a snapshot, not a stream -- it only changes when /usage is
+# opened again. Read `limits` (`bars` is accepted only as a secondary name,
+# PLAN-dash-v2 1.1 correction -- the real file has no `bars` key at all),
+# never the named `five_hour`/`seven_day`/`seven_day_opus` placeholders
+# inside `utilization`: those are mostly null and, on this account, the
+# scoped weekly window is Fable, not Opus -- WHICH model is scoped is an
+# account fact that arrives on the entry itself.
+
+
+def usage_cache_path() -> Path:
+    """~/.claude.json, overridable by CCMETRICS_CLAUDE_CONFIG for tests."""
+    override = os.environ.get("CCMETRICS_CLAUDE_CONFIG")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".claude.json"
+
+
+def _cache_reset_iso(v) -> str | None:
+    """`limits[].resets_at` (or `bars[].resets_at`) is an ISO-8601 string
+    (sub-second), unlike the statusline feed's unix-epoch `resets_at`.
+    Garbage in, None out."""
+    if not isinstance(v, str) or not v.strip():
+        return None
+    t = v.strip()
+    if t.endswith("Z"):
+        t = t[:-1] + "+00:00"
+    try:
+        d = _dt.datetime.fromisoformat(t)
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=_dt.timezone.utc)
+    return d.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _bar_window(bar: dict, idx: int):
+    """One `limits[]` (or `bars[]`) entry -> (sort_order, key, entry) or
+    None to skip it.
+
+    Bars with a missing/non-numeric percent are skipped, not defaulted. A
+    `kind` we do not recognise is kept under its own raw kind/label rather
+    than dropped -- never silently, never guessed at.
+    """
+    pct = _pct(bar.get("percent"))
+    if pct is None:
+        return None
+    kind = bar.get("kind")
+    resets_at = _cache_reset_iso(bar.get("resets_at"))
+    severity = bar.get("severity") if isinstance(bar.get("severity"), str) else None
+    is_active = bool(bar.get("is_active"))
+    model = None
+
+    if kind == "session":
+        key, label, short, order = "session", "Current session", "5h", 0
+    elif kind == "weekly_all":
+        key, label, short, order = "weekly_all", "This week · all models", "wk", 1
+    elif kind == "weekly_scoped":
+        name = None
+        scope = bar.get("scope")
+        if isinstance(scope, dict):
+            m = scope.get("model")
+            if isinstance(m, dict):
+                dn = m.get("display_name")
+                if isinstance(dn, str) and dn.strip():
+                    name = dn.strip()
+        cleaned = _clean_name(name) if name else None
+        if not cleaned:
+            return None  # a scoped bar we cannot name is dropped, not guessed at
+        key, label, short, order = SCOPED_PREFIX + cleaned, "This week · " + name, "wk", 2
+        model = name
+    else:
+        if not isinstance(kind, str) or not kind.strip():
+            return None
+        cleaned = _clean_name(kind) or kind.strip().lower().replace(" ", "_")[:32]
+        key, label, short, order = cleaned, kind.replace("_", " "), kind.replace("_", " "), 2
+
+    entry = {
+        "used_pct": pct,
+        "resets_at": resets_at,
+        "label": label,
+        "short": short,
+        "model": model,
+        "is_active": is_active,
+        "severity": severity,
+    }
+    return order, idx, key, entry
+
+
+def _extract_bars_list(source: list) -> dict:
+    entries = []
+    for idx, bar in enumerate(source):
+        if not isinstance(bar, dict):
+            continue
+        got = _bar_window(bar, idx)
+        if got is not None:
+            entries.append(got)
+    entries.sort(key=lambda e: (e[0], e[1]))
+    out: dict = {}
+    for _order, _idx, key, entry in entries:
+        out[key] = entry
+    return out
+
+
+def _extract_named_windows(util: dict) -> dict:
+    """Fallback when `limits`/`bars` is absent or empty: the named
+    `five_hour`/`seven_day` placeholders, nulls ignored."""
+    out: dict = {}
+    for key in ("five_hour", "seven_day"):
+        w = util.get(key)
+        if not isinstance(w, dict):
+            continue
+        pct = _pct(w.get("utilization"))
+        if pct is None:
+            continue
+        short, label = window_labels(key)
+        out[key] = {
+            "used_pct": pct,
+            "resets_at": _cache_reset_iso(w.get("resets_at")),
+            "label": label,
+            "short": short,
+            "model": None,
+            "is_active": bool(w.get("is_active")) if "is_active" in w else True,
+            "severity": w.get("severity") if isinstance(w.get("severity"), str) else None,
+        }
+    return out
+
+
+def read_usage_cache(path=None) -> dict | None:
+    """The `/usage` cache Claude Code writes to ~/.claude.json, or None.
+
+    None when the file is missing, unreadable, not JSON, or has no
+    `cachedUsageUtilization` block. Never raises.
+    """
+    p = Path(path) if path else usage_cache_path()
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    cu = data.get("cachedUsageUtilization")
+    if not isinstance(cu, dict):
+        return None
+    util = cu.get("utilization")
+    if not isinstance(util, dict):
+        return None
+
+    fetched_ms = _num(cu.get("fetchedAtMs"))
+    fetched_at = None
+    if fetched_ms is not None:
+        fetched_at = _dt.datetime.fromtimestamp(
+            fetched_ms / 1000.0, _dt.timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # PLAN-dash-v2 1.1 correction (2026-08-02): the real file keys this list
+    # `limits`, not `bars` -- `bars` is accepted only as a secondary name for
+    # future-proofing, in case Claude Code renames it back. Neither present
+    # (or an empty list) falls back to the named five_hour/seven_day keys.
+    limits = util.get("limits")
+    if not isinstance(limits, list):
+        limits = util.get("bars")
+    if isinstance(limits, list) and limits:
+        windows = _extract_bars_list(limits)
+    else:
+        windows = _extract_named_windows(util)
+
+    return {"fetched_at": fetched_at, "windows": windows}
+
+
+# --- the plan tier ------------------------------------------------------
+#
+# `oauthAccount.organizationRateLimitTier` (e.g. `default_claude_max_5x`),
+# read never guessed. `organizationType` rides along for context; it is not
+# what decides the label.
+
+_KNOWN_TIERS = {
+    "default_claude_max_5x": ("Max (5×)", "claude_max"),
+    "default_claude_max_20x": ("Max (20×)", "claude_max"),
+    "default_claude_pro": ("Pro", "claude_pro"),
+    "default_claude_free": ("Free", "claude_free"),
+}
+_TIER_MAX_PATTERN = re.compile(r"^.*_max_(\d+)x$")
+
+
+def plan_tier(path=None) -> dict | None:
+    """{"key": ..., "label": ..., "type": ...} or None when unrecognised."""
+    p = Path(path) if path else usage_cache_path()
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    oauth = data.get("oauthAccount")
+    if not isinstance(oauth, dict):
+        return None
+    key = oauth.get("organizationRateLimitTier")
+    if not isinstance(key, str) or not key.strip():
+        return None
+    key = key.strip()
+
+    if key in _KNOWN_TIERS:
+        label, tier_type = _KNOWN_TIERS[key]
+    else:
+        m = _TIER_MAX_PATTERN.match(key)
+        if not m:
+            return None  # unrecognised: no guess, no partial dict
+        label, tier_type = "Max (" + m.group(1) + "×)", "claude_max"
+
+    return {"key": key, "label": label, "type": tier_type}
+
+
+_CREDIT_FIELDS = (
+    "is_enabled", "monthly_limit", "used_credits", "utilization",
+    "currency", "decimal_places", "disabled_reason",
+)
+
+
+def usage_credits(path=None) -> dict | None:
+    """`cachedUsageUtilization.utilization.extra_usage`, whitelisted.
+
+    PLAN-dash-v2 5 correction: this, not the parallel `spend` block, is the
+    source -- `extra_usage` is the simpler verified shape. None when the
+    file, the `cachedUsageUtilization` block or `extra_usage` itself is
+    absent. Never raises.
+    """
+    p = Path(path) if path else usage_cache_path()
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    cu = data.get("cachedUsageUtilization")
+    if not isinstance(cu, dict):
+        return None
+    util = cu.get("utilization")
+    if not isinstance(util, dict):
+        return None
+    extra = util.get("extra_usage")
+    if not isinstance(extra, dict):
+        return None
+    return {k: extra.get(k) for k in _CREDIT_FIELDS}
+
+
+def record_usage_cache(conn, cache=None, path=None) -> int:
+    """Store one `plan_snapshots` row per window in `cache`, returns rows written.
+
+    Written only when `fetched_at` is newer than the newest stored ts for that
+    window -- an unchanged cache on a repeat ingest writes zero rows. Never
+    raises: called from the ingest path, and a failure to read the cache must
+    never fail an ingest.
+    """
+    from . import store
+
+    if cache is None:
+        cache = read_usage_cache(path)
+    if not cache:
+        return 0
+    fetched_at = cache.get("fetched_at")
+    windows = cache.get("windows") or {}
+    if not fetched_at or not windows:
+        return 0
+
+    candidates = {}
+    for key, w in windows.items():
+        pct = w.get("used_pct")
+        if pct is None:
+            continue
+        candidates[key] = {"used_pct": pct, "resets_at": w.get("resets_at")}
+    if not candidates:
+        return 0
+
+    fresh = {}
+    for key, w in candidates.items():
+        row = conn.execute(
+            "SELECT MAX(ts) t FROM plan_snapshots WHERE window_key=?", (key,)
+        ).fetchone()
+        newest = row["t"] if row else None
+        write_it = (newest is None) or (newest < fetched_at)
+        if write_it:
+            fresh[key] = w
+    if not fresh:
+        return 0
+    return store.insert_plan_snapshot(conn, fetched_at, fresh, session_id=None)
 
 
 def extract(payload: dict) -> dict:
@@ -245,11 +569,49 @@ def render_line(data: dict) -> str:
     return " · ".join(parts) if parts else "ccmetrics"
 
 
-def run(stdin_text: str) -> str:
+def _passthrough(command: str, stdin_text: str) -> str | None:
+    """Run the user's own statusline command on the same stdin, return its line.
+
+    Claude Code allows exactly ONE statusline command. Rather than displace
+    whatever the user already had there, ccmetrics takes the slot and hands the
+    payload straight on. Everything here is best-effort: any failure returns
+    None and the caller falls back to ccmetrics' own line. The timeout is short
+    on purpose -- a hung child would freeze the status line on every redraw,
+    which is worse than a missing line.
+    """
+    import subprocess
+
+    if not command or not command.strip():
+        return None
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            timeout=PASSTHROUGH_TIMEOUT_S,
+        )
+    except Exception:
+        return None  # missing binary, timeout, bad shell -- all the same answer
+    if proc.returncode != 0:
+        return None
+    out = (proc.stdout or "").strip("\n")
+    return out if out.strip() else None
+
+
+def run(stdin_text: str, passthrough: str | None = None) -> str:
     """Read one JSON object, store what it says about the plan, return the line.
 
     Every step is optional: unparseable input still prints something, and a
     store that cannot be opened still prints the model and cost from stdin.
+
+    `passthrough` is the user's own statusline command, if they had one. The
+    payload is read once and given to both: ccmetrics records the plan snapshot
+    from it, then prints THAT command's output in place of its own line, so
+    owning the single statusline slot costs the user nothing. Anything going
+    wrong with it -- missing, failing, slow, silent -- falls back to ccmetrics'
+    own line, because a status line must never go blank or loud.
     """
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
@@ -267,6 +629,13 @@ def run(stdin_text: str) -> str:
                 conn.close()
         except Exception:
             pass  # a statusline must never fail loudly: it is the user's editor chrome
+    if passthrough:
+        try:
+            borrowed = _passthrough(passthrough, stdin_text)
+        except Exception:
+            borrowed = None
+        if borrowed is not None:
+            return borrowed
     return render_line(data)
 
 
@@ -276,6 +645,15 @@ def run(stdin_text: str) -> str:
 def setup_text() -> str:
     fragment = json.dumps(
         {"statusLine": {"type": "command", "command": "ccmetrics statusline"}},
+        indent=2,
+    )
+    chained = json.dumps(
+        {
+            "statusLine": {
+                "type": "command",
+                "command": "ccmetrics statusline --passthrough 'YOUR EXISTING COMMAND'",
+            }
+        },
         indent=2,
     )
     return "\n".join(
@@ -292,6 +670,16 @@ def setup_text() -> str:
             "Turn it on by adding this to ~/.claude/settings.json:",
             "",
             fragment,
+            "",
+            "Already have a status line? Claude Code runs exactly one command, so",
+            "wrap yours instead of replacing it. ccmetrics reads the payload, records",
+            "your plan %, then runs your command on the same payload and prints ITS",
+            "output -- your status line looks exactly as it did:",
+            "",
+            chained,
+            "",
+            f"If that command is missing, fails, prints nothing or takes longer than",
+            f"{PASSTHROUGH_TIMEOUT_S:.0f}s, ccmetrics prints its own line instead and still exits 0.",
             "",
             "You then get a status line like:",
             "",
@@ -311,3 +699,336 @@ def setup_text() -> str:
             f"        contract: {constants.STATUSLINE_DOC}",
         ]
     )
+
+
+# --- setup: --apply / --revert / --check -------------------------------------
+
+
+def default_settings_path() -> Path:
+    return Path.home() / ".claude" / "settings.json"
+
+
+class SetupError(Exception):
+    """Refused to touch settings.json — message is safe to print as-is."""
+
+
+PROBE_TIMEOUT_S = 2.0
+
+
+def _probe_supports_passthrough(exe_tokens: list[str]) -> bool | None:
+    """Runs `<exe> statusline --help` and checks whether --passthrough is
+    listed in it -- the cheapest proof that a resolved build actually
+    supports the flag `--apply` writes, rather than merely existing under
+    that name.
+
+    True/False once the probe actually completes; None when it couldn't be
+    completed at all (missing binary, timeout, crash) -- an unknown, never
+    treated as "unsupported". Never touches stdin or the store, and is
+    always bounded by a short timeout, so a broken binary can't hang
+    `--check` or `--apply`.
+    """
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            [*exe_tokens, "statusline", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT_S,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    return "--passthrough" in (proc.stdout or "")
+
+
+def _exe_tokens(command: str) -> list[str] | None:
+    """The executable argv prefix of a `ccmetrics statusline` command, e.g.
+    ['ccmetrics'] or the `<python> -m ccmetrics` form. None if `command`
+    doesn't look like one of ours.
+    """
+    tokens = _split_command(command)
+    if not tokens or "statusline" not in tokens:
+        return None
+    idx = tokens.index("statusline")
+    exe = tokens[:idx]
+    return exe or None
+
+
+def resolve_invocation() -> tuple[str, str | None]:
+    """How this ccmetrics should be invoked from another process's shell.
+
+    Returns (invocation, warning). Prefers a bare `ccmetrics` when it
+    resolves on PATH to a build that actually matches what's running this
+    process — the friendliest thing to leave in someone's settings.json.
+
+    But a bare command is only as good as whatever `ccmetrics` happens to
+    resolve to: on a machine with an older `uv tool install` shadowing this
+    checkout, it can be a stale build that predates a flag this checkout
+    relies on (e.g. --passthrough), so wiring it up silently produces a
+    status line that errors on every redraw. When PATH's `ccmetrics` isn't
+    provably the exact file running this process, this probes it for
+    --passthrough support; if that's missing, unconfirmed, or the file
+    plainly differs, it falls back to the absolute path of the
+    currently-running executable instead — guaranteed to behave exactly as
+    just verified — and returns a warning explaining the substitution.
+
+    Falls back further, to `<python> -m ccmetrics`, if even the running
+    executable is not a real file on disk (e.g. it was run as
+    `python -m ccmetrics` directly).
+    """
+    self_exe = Path(sys.argv[0]).resolve()
+    fallback = str(self_exe) if self_exe.exists() else f"{shlex.quote(sys.executable)} -m ccmetrics"
+
+    which_path = shutil.which("ccmetrics")
+    if not which_path:
+        return fallback, None
+
+    which_resolved = Path(which_path).resolve()
+    if self_exe.exists() and which_resolved == self_exe:
+        return "ccmetrics", None
+
+    support = _probe_supports_passthrough([which_path])
+    if support is False:
+        reason = "does not support --passthrough — it's an older build than the one running this setup"
+    elif support is None:
+        reason = "could not be confirmed to match this build (the --help probe failed)"
+    else:
+        reason = "is a different file than the one currently running this setup"
+    return fallback, (
+        f"WARNING: the ccmetrics on PATH ({which_path}) {reason}. Writing "
+        f"the absolute path of this build ({fallback}) into settings.json "
+        "instead of bare `ccmetrics`, so the status line is guaranteed to "
+        "work. To fix `ccmetrics` on PATH too, reinstall ccmetrics from "
+        "this checkout (e.g. `uv tool install --force .`)."
+    )
+
+
+def _split_command(command: str) -> list[str] | None:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return None
+
+
+def _is_ours_command(command: str) -> bool:
+    """True if `command` is a `ccmetrics statusline` invocation, plain or wrapped."""
+    tokens = _split_command(command)
+    if not tokens or "statusline" not in tokens:
+        return False
+    idx = tokens.index("statusline")
+    exe_tokens = tokens[:idx]
+    if len(exe_tokens) == 1:
+        return Path(exe_tokens[0]).name == "ccmetrics"
+    if len(exe_tokens) == 3 and exe_tokens[1] == "-m" and exe_tokens[2] == "ccmetrics":
+        return True
+    return False
+
+
+def _extract_passthrough(command: str) -> str | None:
+    """Pull the wrapped command back out of `--passthrough '<cmd>'`, if present."""
+    tokens = _split_command(command) or []
+    if "--passthrough" not in tokens:
+        return None
+    i = tokens.index("--passthrough")
+    return tokens[i + 1] if i + 1 < len(tokens) else None
+
+
+def _command_resolves(command: str) -> bool:
+    """Whether the executable named at the front of `command` would actually run."""
+    tokens = _split_command(command)
+    if not tokens:
+        return False
+    exe = tokens[0]
+    if Path(exe).is_absolute():
+        return Path(exe).exists() and os.access(exe, os.X_OK)
+    return shutil.which(exe) is not None
+
+
+def _load_settings(settings_path: Path) -> tuple[dict, str | None]:
+    """Returns (data, raw). `raw` is None when the file did not exist yet."""
+    if not settings_path.exists():
+        return {}, None
+    raw = settings_path.read_text()
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except ValueError as e:
+        raise SetupError(
+            f"{settings_path} is not valid JSON ({e}) — leaving it untouched. "
+            "Fix or remove it, then run `ccmetrics setup --apply` again."
+        ) from e
+    if not isinstance(data, dict):
+        raise SetupError(f"{settings_path} is not a JSON object — leaving it untouched.")
+    return data, raw
+
+
+def _backup(settings_path: Path, raw: str) -> Path:
+    backup_path = settings_path.with_name(settings_path.name + ".bak-ccmetrics")
+    backup_path.write_text(raw)
+    return backup_path
+
+
+def apply_setup(settings_path: Path) -> dict:
+    """Wire `ccmetrics statusline` into statusLine.command.
+
+    Returns {"changed": bool, "message": str, ...}. Raises SetupError, and
+    changes nothing, when the existing file can't be safely understood.
+    """
+    data, raw = _load_settings(settings_path)
+    sl = data.get("statusLine")
+    invocation, invocation_warning = resolve_invocation()
+    plain_command = f"{invocation} statusline"
+
+    if sl is None:
+        old_desc = "(none)"
+        new_command = plain_command
+    else:
+        if not isinstance(sl, dict) or sl.get("type") != "command":
+            raise SetupError(
+                f"{settings_path} has a statusLine we don't understand "
+                f"({sl!r}) — leaving it untouched. Fix or remove it by hand, "
+                "then run `ccmetrics setup --apply` again."
+            )
+        current = sl.get("command")
+        if not isinstance(current, str) or not current.strip():
+            raise SetupError(
+                f"{settings_path} has a statusLine.command we don't understand "
+                f"({current!r}) — leaving it untouched."
+            )
+        if _is_ours_command(current):
+            return {
+                "changed": False,
+                "message": f"already wired: {current!r} — nothing to change.",
+            }
+        old_desc = current
+        new_command = f"{invocation} statusline --passthrough {shlex.quote(current)}"
+
+    backup_path = _backup(settings_path, raw) if raw is not None else None
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    data["statusLine"] = {"type": "command", "command": new_command}
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    lines = []
+    if invocation_warning:
+        lines.append(invocation_warning)
+    lines += [
+        f"statusLine.command: {old_desc!r} -> {new_command!r}",
+        f"written to {settings_path}",
+        f"backup: {backup_path}" if backup_path else "backup: none (file was created fresh)",
+    ]
+    return {
+        "changed": True,
+        "old": old_desc,
+        "new": new_command,
+        "backup": backup_path,
+        "invocation_warning": invocation_warning,
+        "message": "\n".join(lines),
+    }
+
+
+def revert_setup(settings_path: Path) -> dict:
+    """Undo apply_setup: restore a wrapped command, or drop statusLine if we
+    added it outright. Works from the settings file alone — does not depend
+    on the backup file still existing.
+    """
+    data, raw = _load_settings(settings_path)
+    if raw is None:
+        return {"changed": False, "message": f"{settings_path} does not exist — nothing to revert."}
+    sl = data.get("statusLine")
+    if not isinstance(sl, dict) or sl.get("type") != "command":
+        return {"changed": False, "message": "statusLine is not wired to ccmetrics — nothing to revert."}
+    current = sl.get("command")
+    if not isinstance(current, str) or not _is_ours_command(current):
+        return {"changed": False, "message": "statusLine is not wired to ccmetrics — nothing to revert."}
+
+    backup_path = _backup(settings_path, raw)
+    passthrough = _extract_passthrough(current)
+    if passthrough:
+        data["statusLine"]["command"] = passthrough
+        new_desc = passthrough
+    else:
+        del data["statusLine"]
+        new_desc = "(removed)"
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    lines = [
+        f"statusLine.command: {current!r} -> {new_desc!r}",
+        f"written to {settings_path}",
+        f"backup: {backup_path}",
+    ]
+    return {
+        "changed": True,
+        "old": current,
+        "new": new_desc,
+        "backup": backup_path,
+        "message": "\n".join(lines),
+    }
+
+
+def check_setup(settings_path: Path, conn=None) -> str:
+    """Read-only: is the status line wired to us, and when did the plan feed
+    last hear from Claude Code. Never writes anything.
+    """
+    lines: list[str] = []
+    data = None
+    raw = None
+    try:
+        data, raw = _load_settings(settings_path)
+    except SetupError as e:
+        lines.append(str(e))
+
+    if raw is None and not lines:
+        lines.append(f"{settings_path}: no settings file — status line not wired.")
+    elif data is not None:
+        sl = data.get("statusLine")
+        if not isinstance(sl, dict) or sl.get("type") != "command":
+            lines.append("status line: not wired to ccmetrics.")
+        else:
+            cmd = sl.get("command")
+            if not isinstance(cmd, str) or not _is_ours_command(cmd):
+                lines.append(f"status line: wired to something else ({cmd!r}).")
+            else:
+                lines.append(f"status line: wired to ccmetrics ({cmd!r}).")
+                if not _command_resolves(cmd):
+                    lines.append(
+                        "WARNING: that command does not resolve on this machine — "
+                        "the status line will print nothing. Re-run `ccmetrics setup --apply`."
+                    )
+                elif _extract_passthrough(cmd) is not None:
+                    exe_tokens = _exe_tokens(cmd)
+                    if exe_tokens and "/" not in exe_tokens[0]:
+                        resolved = shutil.which(exe_tokens[0])
+                        if resolved:
+                            exe_tokens = [resolved, *exe_tokens[1:]]
+                    support = _probe_supports_passthrough(exe_tokens) if exe_tokens else None
+                    if support is False:
+                        lines.append(
+                            "WARNING: the ccmetrics that resolves on PATH does not "
+                            "support --passthrough — it's an older build than this "
+                            "command needs, so the status line will print an argparse "
+                            "error on every redraw instead of recording anything. "
+                            "Reinstall ccmetrics from this checkout so the copy on "
+                            "PATH matches (e.g. `uv tool install --force .`), then "
+                            "run `ccmetrics setup --apply` again."
+                        )
+                    elif support is None:
+                        lines.append(
+                            "note: could not confirm the resolved ccmetrics supports "
+                            "--passthrough (the --help probe failed) — if the status "
+                            "line goes blank, reinstall ccmetrics from this checkout."
+                        )
+
+    if conn is not None:
+        from . import store
+
+        windows = store.latest_plan_windows(conn)
+        ts_values = [w["ts"] for w in windows.values() if w.get("ts")]
+        if ts_values:
+            lines.append(f"most recent plan reading stored: {max(ts_values)}")
+        else:
+            lines.append(
+                "no plan reading stored yet — it appears after the first reply of a session."
+            )
+
+    return "\n".join(lines)

@@ -31,6 +31,9 @@ def cc_env(tmp_path, monkeypatch):
     monkeypatch.setenv("CCMETRICS_PROJECTS_DIR", str(projects_dir))
     monkeypatch.setenv("CCMETRICS_DB", str(db_path))
     monkeypatch.delenv("CCMETRICS_CLAUDE_DIR", raising=False)
+    # Point the /usage-cache reader at a file that does not exist by default --
+    # no test may ever read the real ~/.claude.json (PLAN-dash-v2 7).
+    monkeypatch.setenv("CCMETRICS_CLAUDE_CONFIG", str(tmp_path / "claude.json"))
     return {"projects_dir": projects_dir, "db_path": db_path}
 
 

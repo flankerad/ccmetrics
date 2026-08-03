@@ -29,7 +29,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from . import constants, costs, store
+from . import constants, costs, plan, store
 
 PROJECTS_DIRNAME = "projects"
 
@@ -600,6 +600,15 @@ def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: in
     det_started = time.time()
     det_stats = detectors.run_and_store(conn)
     det_stats["elapsed_s"] = round(time.time() - det_started, 3)
+
+    # PLAN-dash-v2 3.4: the /usage cache is a second, optional local source --
+    # a snapshot Claude Code writes to ~/.claude.json, never a stream. Every
+    # ingest folds in whatever it currently says; a missing/unreadable/stale
+    # cache must never fail an ingest.
+    try:
+        plan.record_usage_cache(conn)
+    except Exception:
+        pass
 
     store.set_meta(conn, "last_ingest", now_iso)
     store.set_meta(conn, "corpus_dir", str(projects_dir))

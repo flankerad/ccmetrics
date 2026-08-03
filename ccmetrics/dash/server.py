@@ -10,6 +10,7 @@ byte of message text):
     GET /api/projects          per-project table rows + delta vs prior 30 days
     GET /api/findings[?project=]  ranked findings with fix text
     GET /api/usage[?project=]  usage per period / per model / per repo (no plan %)
+    GET /api/windows[?project=]  5-hour blocks, cap estimates, weekly projection
     GET /api/live              R7 live tiles
     GET /api/plan              real plan-limit %, only if `ccmetrics statusline` feeds it
     GET /api/constants         provenance table (every constant + source URL)
@@ -30,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .. import __version__, constants, costs, detectors, live, report, store
+from .. import __version__, constants, costs, detectors, live, report, store, windows
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 7433
@@ -584,7 +585,10 @@ def _repo_share(conn: sqlite3.Connection, period: dict, cwds: dict[str, str]) ->
 
 def usage_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     periods = {
-        "day": _period_defs("day", 14),
+        # The full per-turn retention window, so the dollars chart and the
+        # 30-day panels beside it cover the same stretch of time. Only this
+        # call site moves: `_per_model_series` asks for 7 days on purpose.
+        "day": _period_defs("day", WINDOW_DAYS),
         "week": _period_defs("week", 8),
         "month": _period_defs("month", 6),
     }
@@ -618,6 +622,17 @@ def usage_payload(conn: sqlite3.Connection, project: str | None) -> dict:
             k: _repo_share(conn, defs[-1], cwds) for k, defs in periods.items()
         }
     return payload
+
+
+def windows_payload(conn: sqlite3.Connection, project: str | None) -> dict:
+    """Quota mechanics for the dash: blocks, caps, projection (windows.py).
+
+    The live tiles are read here rather than inside `windows` so that module
+    stays a pure function over the store. An open session reports its own
+    trailing burn, which is fresher than anything the ingested blocks can say,
+    so the projection prefers it when there is one.
+    """
+    return windows.windows_payload(conn, project, live_tiles=live.tiles(conn, project))
 
 
 def live_payload(conn: sqlite3.Connection, project: str | None) -> dict:
@@ -701,8 +716,12 @@ class Handler(BaseHTTPRequestHandler):
         # Local-only page, no external requests: lock that in.
         self.send_header(
             "Content-Security-Policy",
+            # font-src is NOT optional here: the page embeds Inter as a base64
+            # @font-face, and without this it falls back to default-src 'none'
+            # and the font is silently blocked -- with no external URL for a
+            # grep to catch, because base64 never contains a scheme.
             "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
-            "img-src data:; connect-src 'self'",
+            "img-src data:; font-src data:; connect-src 'self'",
         )
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
@@ -727,7 +746,9 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 self._static("index.html")
             elif path == "/api/summary":
-                self._json(summary_payload(conn, None))
+                # ?project= scopes it. Ignoring the parameter here used to show
+                # global numbers under a project heading, silently.
+                self._json(summary_payload(conn, project))
             elif path == "/api/projects":
                 self._json(projects_payload(conn))
             elif path.startswith("/api/project/"):
@@ -740,6 +761,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(findings_payload(conn, project))
             elif path == "/api/usage":
                 self._json(usage_payload(conn, project))
+            elif path == "/api/windows":
+                self._json(windows_payload(conn, project))
             elif path == "/api/live":
                 self._json(live_payload(conn, project))
             elif path == "/api/plan":

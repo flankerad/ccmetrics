@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-620beb5e-daf3-4dd4-ac5f-9b2b56840c93/styles.css">
+<script src="_ds/nocturne-620beb5e-daf3-4dd4-ac5f-9b2b56840c93/_ds_bundle.js"></script>
+<style>
+/* Warm terminal retune of the Nocturne tokens: same ramp structure and lightness
+   scale, clay hue instead of blurple. Two extra scales sit alongside it —
+   --m-* for model identity, --lvl-* for how full a window is (green to red).
+   Model colour never means fullness and fullness never means a model. */
+:root{
+  --color-bg:#191714;
+  --color-surface:#241f1b;
+  --color-text:#ece7df;
+  --color-accent:#d9825a;
+  --color-accent-2:#dba473;
+  --color-divider:color-mix(in srgb, #ece7df 15%, transparent);
+
+  --color-neutral-100:#faf7f2;
+  --color-neutral-200:#ece7de;
+  --color-neutral-300:#d8d2c7;
+  --color-neutral-400:#bab3a6;
+  --color-neutral-500:#9a9387;
+  --color-neutral-600:#7c766b;
+  --color-neutral-700:#605b52;
+  --color-neutral-800:#45413a;
+  --color-neutral-900:#2d2a25;
+
+  --color-accent-100:#fff6f1;
+  --color-accent-200:#fbe2d5;
+  --color-accent-300:#f4c7ad;
+  --color-accent-400:#eaa681;
+  --color-accent-500:#d9825a;
+  --color-accent-600:#b56743;
+  --color-accent-700:#8b4f33;
+  --color-accent-800:#643a26;
+  --color-accent-900:#3b241a;
+
+  --color-accent-2-100:#fff8f0;
+  --color-accent-2-200:#fbe8d2;
+  --color-accent-2-300:#f2d3a9;
+  --color-accent-2-400:#e4b57c;
+  --color-accent-2-500:#cf9557;
+  --color-accent-2-600:#aa7842;
+  --color-accent-2-700:#815b32;
+  --color-accent-2-800:#5d4226;
+  --color-accent-2-900:#392919;
+
+  --m-opus:#7594c9;
+  --m-fable:#a37fc9;
+  --m-sonnet:#5f9fa8;
+  --m-haiku:#8f9cb0;
+
+  --lvl-0:#2b2a26;
+  --lvl-1:#4f7a58;
+  --lvl-2:#9aa04a;
+  --lvl-3:#c8873c;
+  --lvl-4:#bd4a3a;
+
+  --shadow-sm:0 0 0 1px #45413a;
+  --shadow-md:0 0 0 1px #605b52, 0 6px 18px rgba(0,0,0,0.55);
+  --shadow-lg:0 0 0 1px #9a9387, 0 16px 40px rgba(0,0,0,0.65);
+}
+body{margin:0;background:#191714}
+a{color:var(--color-accent);text-decoration:none}
+a:hover{color:var(--color-accent-300)}
+@keyframes ccpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+@keyframes ccpix{0%,33.32%{opacity:1}33.33%,100%{opacity:0}}
+@keyframes ccpix2{0%,33.32%{opacity:0}33.33%,66.65%{opacity:1}66.66%,100%{opacity:0}}
+@keyframes ccpix3{0%,66.65%{opacity:0}66.66%,100%{opacity:1}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:14px;padding-bottom:56px">
+
+  <div style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:14px 32px;background:color-mix(in srgb, var(--color-bg) 90%, transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--color-divider)">
+    <div style="display:flex;align-items:flex-end;gap:2px;height:16px">
+      <div style="width:3px;height:6px;background:var(--m-haiku);border-radius:1px"></div>
+      <div style="width:3px;height:11px;background:var(--m-sonnet);border-radius:1px"></div>
+      <div style="width:3px;height:16px;background:var(--m-opus);border-radius:1px"></div>
+      <div style="width:3px;height:9px;background:var(--m-fable);border-radius:1px"></div>
+    </div>
+    <div style="font-family:var(--font-heading);font-weight:500;font-size:15px;letter-spacing:-0.01em">ccmetrics</div>
+    <div style="width:1px;height:18px;background:var(--color-divider)"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--color-neutral-500)">
+      <span style="color:var(--color-neutral-300)">All projects</span><span>·</span><span>Max (5×) plan</span>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--color-neutral-500)">
+      <span>updated just now</span>
+      <div style="padding:5px 10px;border:1px solid var(--color-neutral-800);border-radius:var(--radius-sm);color:var(--color-neutral-400);cursor:pointer" style-hover="border-color:var(--color-accent-700);color:var(--color-accent-300)">Theme</div>
+    </div>
+  </div>
+
+  <div style="max-width:1320px;margin:0 auto;padding:0 32px">
+
+    <div style="display:grid;grid-template-columns:1fr 330px;gap:0;margin-top:32px;background:linear-gradient(150deg, var(--color-accent-900) 0%, var(--color-surface) 58%);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden">
+      <div style="position:relative;padding:26px 30px 24px">
+        <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:linear-gradient(180deg,var(--color-accent),transparent)"></div>
+
+        <div style="display:flex;align-items:center;gap:16px">
+          <div style="padding:11px 15px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:var(--radius-md);font-family:ui-monospace,Menlo,monospace;font-size:20px;color:var(--color-accent-300);line-height:1;white-space:nowrap">{{ face }}</div>
+          <div>
+            <div style="font-family:var(--font-heading);font-size:20px;letter-spacing:-0.015em;color:var(--color-neutral-100)">{{ verdict }}</div>
+            <div style="margin-top:5px;font-size:13px;color:var(--color-neutral-500)">{{ verdictSub }}</div>
+          </div>
+        </div>
+
+        <div style="position:relative;margin-top:64px">
+          <div style="position:absolute;left:{{ clockPos }};top:-50px;margin-left:-8px;transform:translateX(-100%);white-space:nowrap;font-size:10.5px;color:var(--color-neutral-400);z-index:6">the clock is here →</div>
+          <div style="position:absolute;left:{{ clockPos }};top:-40px;width:1px;height:68px;background:var(--color-neutral-600);z-index:6"></div>
+
+          <div style="position:relative;height:22px;border-radius:11px;background:var(--color-neutral-900);overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:{{ usedPos }};background:linear-gradient(90deg, #4f7a58 0 14%, #6d8551 14% 30%, #9aa04a 30% 46%, #b8933f 46% 62%, #c8873c 62% 76%, #c06a3a 76% 88%, #bd4a3a 88% 100%)"></div>
+          </div>
+
+          <div style="position:absolute;left:{{ usedPos }};top:22px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">
+            <div style="position:absolute;left:-11px;bottom:-8px;width:36px;height:50px;background:radial-gradient(ellipse at 50% 72%, #f07f2c 0%, transparent 66%);opacity:0.3;filter:blur(8px)"></div>
+            <div style="position:absolute;left:0;bottom:0;width:14px;height:20px;transform:scale(2.6);transform-origin:bottom center">
+              <div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;animation:ccpix 0.42s steps(1,end) infinite"></div>
+              <div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:8px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,8px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,0px 12px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,12px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix2 0.42s steps(1,end) infinite"></div>
+              <div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,4px 2px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,2px 6px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix3 0.42s steps(1,end) infinite"></div>
+            </div>
+          </div>
+
+          <div style="display:flex;margin-top:16px">
+            <sc-for list="{{ fuseDays }}" as="d" hint-placeholder-count="7">
+              <div style="flex:1;border-left:1px solid var(--color-neutral-800);padding-left:6px;font-size:10px;color:{{ d.color }}">{{ d.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:30px;margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider)">
+          <div><div style="font-size:11px;color:var(--color-neutral-600)">Burnt this week</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">149.4M <span style="font-size:11px;color:var(--color-neutral-600)">79%</span></div></div>
+          <div><div style="font-size:11px;color:var(--color-neutral-600)">Wick left</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px;color:var(--lvl-3)">39.6M</div></div>
+          <div><div style="font-size:11px;color:var(--color-neutral-600)">Runs out</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">Sun 21:00 <span style="font-size:11px;color:var(--color-neutral-600)">20h early</span></div></div>
+          <div><div style="font-size:11px;color:var(--color-neutral-600)">Resets</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">Mon 17:30</div></div>
+          <div style="padding-left:30px;border-left:1px solid var(--color-divider)"><div style="font-size:11px;color:var(--color-neutral-600)">Burning right now</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px;color:var(--color-accent-200);white-space:nowrap">2.2M/hr <span style="font-size:11px;color:var(--color-neutral-600)">· $10.93/hr</span></div><div style="margin-top:2px;font-size:11px;color:var(--color-neutral-600);white-space:nowrap">16% of a block per hour</div></div>
+        </div>
+      </div>
+
+      <div style="padding:26px 28px 24px;border-left:1px solid var(--color-divider);background:color-mix(in srgb, var(--color-bg) 45%, transparent)">
+        <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">Three limits, what is left</div>
+        <div style="display:flex;flex-direction:column;gap:15px;margin-top:16px">
+          <sc-for list="{{ headroom }}" as="hr" hint-placeholder-count="3">
+            <div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+                <span style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-neutral-400)"><span style="width:6px;height:6px;border-radius:2px;background:{{ hr.dot }}"></span>{{ hr.short }}</span>
+                <span style="font-family:var(--font-heading);font-size:18px;color:{{ hr.color }}">{{ hr.left }}</span>
+              </div>
+              <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--color-neutral-900)">
+                <div style="width:{{ hr.usedW }};background:var(--color-neutral-800)"></div>
+                <div style="width:{{ hr.leftW }};background:{{ hr.color }}"></div>
+              </div>
+              <div style="margin-top:5px;font-size:11px;color:var(--color-neutral-600)">{{ hr.note }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:20px;padding:13px 15px;background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-neutral-900);font-size:12.5px;color:var(--color-neutral-300)">Do this: <span style="color:var(--lvl-3)">put fable down until Monday.</span> Sonnet covers the same turns and draws from the pooled window, which still has a fifth left.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:0;margin-top:14px;padding:14px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:center;gap:9px;padding-right:22px">
+        <span style="width:7px;height:7px;border-radius:4px;background:var(--color-accent);animation:ccpulse 1.8s ease-in-out infinite"></span>
+        <span style="font-family:var(--font-heading);font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-accent-300)">Live</span>
+        <span style="font-size:12.5px;color:var(--color-neutral-300)">ccmetrics</span>
+        <span style="font-size:12px;color:var(--color-neutral-600)">opus 5 · 46 turns · 3m ago</span>
+      </div>
+      <div style="width:1px;height:38px;background:var(--color-divider)"></div>
+      <div style="padding:0 22px">
+        <div style="font-size:11px;color:var(--color-neutral-600)">Burn rate</div>
+        <div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">2.2M tok/hr <span style="font-size:11px;color:var(--color-neutral-600)">· $10.93/hr</span></div>
+      </div>
+      <div style="width:1px;height:38px;background:var(--color-divider)"></div>
+      <div style="padding:0 22px">
+        <div style="font-size:11px;color:var(--color-neutral-600)">Same rate, in quota</div>
+        <div style="font-family:var(--font-heading);font-size:15px;margin-top:2px;color:var(--lvl-2)">16%/hr <span style="font-size:11px;color:var(--color-neutral-600)">· block lands at 79%</span></div>
+      </div>
+      <div style="width:1px;height:38px;background:var(--color-divider)"></div>
+      <div style="padding:0 22px">
+        <div style="font-size:11px;color:var(--color-neutral-600)">This block</div>
+        <div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">6.3M <span style="font-size:11px;color:var(--color-neutral-600)">of ≈15M · 214 turns</span></div>
+      </div>
+      <div style="width:1px;height:38px;background:var(--color-divider)"></div>
+      <div style="padding:0 22px">
+        <div style="font-size:11px;color:var(--color-neutral-600)">Context</div>
+        <div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">9% <span style="font-size:11px;color:var(--color-neutral-600)">of 1.0M</span></div>
+      </div>
+      <div style="width:1px;height:38px;background:var(--color-divider)"></div>
+      <div style="padding:0 22px">
+        <div style="font-size:11px;color:var(--color-neutral-600)">From cache</div>
+        <div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">94%</div>
+      </div>
+      <div style="width:1px;height:38px;background:var(--color-divider)"></div>
+      <div style="padding:0 0 0 22px">
+        <div style="font-size:11px;color:var(--color-neutral-600)">Session so far</div>
+        <div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">$3.10</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">
+        <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">Every window · 30 days</div>
+        <div style="font-size:12px;color:var(--color-neutral-500)">{{ hzDry }} ran dry this month</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;height:20px;margin-top:12px;font-size:12.5px">
+        <span style="font-family:var(--font-heading);color:{{ hzColor }}">{{ hzLabel }}</span>
+        <span style="color:var(--color-neutral-500)">{{ hzDetail }}</span>
+      </div>
+      <div style="position:relative;display:flex;gap:2px;margin-top:6px">
+        <div style="position:absolute;left:66.6%;top:-5px;bottom:-5px;width:1px;background:var(--color-neutral-600);z-index:2"></div>
+        <sc-for list="{{ horizon }}" as="h" hint-placeholder-count="60">
+          <div onMouseEnter="{{ h.enter }}" onMouseLeave="{{ h.leave }}" style="flex:1;height:48px;border-radius:1px;background:{{ h.bg }};opacity:{{ h.op }};transition:opacity 100ms;cursor:default"></div>
+        </sc-for>
+      </div>
+      <div style="display:flex;margin-top:8px;font-size:10px;color:var(--color-neutral-600)">
+        <div style="flex:40;border-top:1px solid var(--color-neutral-800);padding-top:5px">Jul 1</div>
+        <div style="flex:20;border-top:1px solid var(--color-neutral-600);padding-top:5px;padding-left:6px;color:var(--color-neutral-300)">this week · the same 20 windows, in detail at the foot of the page</div>
+      </div>
+      <div style="margin-top:16px;font-size:12.5px;color:var(--color-neutral-400);max-width:820px">{{ hzCaption }}</div>
+    </div>
+
+    <div style="margin-top:20px;padding:26px 28px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px">
+        <div>
+          <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Recoverable</div>
+          <div style="display:flex;align-items:baseline;gap:12px">
+            <span style="font-family:var(--font-heading);font-weight:500;font-size:34px;letter-spacing:-0.03em;color:var(--color-accent-200)">217M tokens</span>
+            <span style="font-size:13px;color:var(--color-neutral-500)">1.1 weekly windows, in three habits</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;font-size:12px;color:var(--color-neutral-500)">
+          <span>107 findings</span>
+          <a href="#" style="padding:6px 12px;border:1px solid var(--color-neutral-800);border-radius:var(--radius-sm);color:var(--color-neutral-300)" style-hover="border-color:var(--color-accent-700);color:var(--color-accent-300)">See all</a>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:1fr 152px 108px 92px;gap:20px;align-items:center;padding:18px 20px;background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-neutral-900)" style-hover="border-color:var(--color-neutral-800)">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+              <span style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">01</span>
+              <span style="font-family:var(--font-heading);font-size:17px;letter-spacing:-0.01em">Premium model on small turns</span>
+              <span style="padding:2px 7px;border-radius:3px;background:var(--color-neutral-900);font-size:10.5px;color:var(--color-neutral-400)">clauaid</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--color-neutral-400)">Switch to a cheap model for the quick turns, then switch back. 2,140 turns qualify.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-200)">120.9M</span><span style="font-size:11px;color:var(--color-neutral-600)">64%</span></div>
+            <div style="height:3px;border-radius:2px;background:var(--color-neutral-900);margin-top:6px"><div style="width:100%;height:3px;border-radius:2px;background:var(--lvl-3)"></div></div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:5px">0.64 weekly windows</div>
+          </div>
+          <div><span style="padding:3px 9px;border:1px solid var(--color-accent-700);border-radius:3px;font-size:11px;color:var(--color-accent-300)">Paste a line</span></div>
+          <div onClick="{{ copyA }}" style="text-align:center;padding:8px 0;border:1px solid var(--color-neutral-700);border-radius:var(--radius-sm);font-family:var(--font-heading);font-size:12px;color:var(--color-neutral-200);cursor:pointer" style-hover="border-color:var(--color-accent);color:var(--color-accent-200)">{{ labelA }}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 152px 108px 92px;gap:20px;align-items:center;padding:18px 20px;background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-neutral-900)" style-hover="border-color:var(--color-neutral-800)">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+              <span style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">02</span>
+              <span style="font-family:var(--font-heading);font-size:17px;letter-spacing:-0.01em">Sudden expensive turns</span>
+              <span style="padding:2px 7px;border-radius:3px;background:var(--color-neutral-900);font-size:10.5px;color:var(--color-neutral-400)">clauaid</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--color-neutral-400)">Start a fresh session when one turn costs several times the last few. 38 windows affected.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-200)">75.6M</span><span style="font-size:11px;color:var(--color-neutral-600)">40%</span></div>
+            <div style="height:3px;border-radius:2px;background:var(--color-neutral-900);margin-top:6px"><div style="width:62%;height:3px;border-radius:2px;background:var(--lvl-2)"></div></div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:5px">0.40 weekly windows</div>
+          </div>
+          <div><span style="padding:3px 9px;border:1px solid var(--color-neutral-700);border-radius:3px;font-size:11px;color:var(--color-neutral-400)">Change a habit</span></div>
+          <div onClick="{{ copyB }}" style="text-align:center;padding:8px 0;border:1px solid var(--color-neutral-700);border-radius:var(--radius-sm);font-family:var(--font-heading);font-size:12px;color:var(--color-neutral-200);cursor:pointer" style-hover="border-color:var(--color-accent);color:var(--color-accent-200)">{{ labelB }}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 152px 108px 92px;gap:20px;align-items:center;padding:18px 20px;background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-neutral-900)" style-hover="border-color:var(--color-neutral-800)">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+              <span style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">03</span>
+              <span style="font-family:var(--font-heading);font-size:17px;letter-spacing:-0.01em">Cold start after a break</span>
+              <span style="padding:2px 7px;border-radius:3px;background:var(--color-neutral-900);font-size:10.5px;color:var(--color-neutral-400)">clauaid</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--color-neutral-400)">Add a line to CLAUDE.md so long breaks stop costing a re-send at the top of each window.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-200)">20.5M</span><span style="font-size:11px;color:var(--color-neutral-600)">11%</span></div>
+            <div style="height:3px;border-radius:2px;background:var(--color-neutral-900);margin-top:6px"><div style="width:17%;height:3px;border-radius:2px;background:var(--lvl-1)"></div></div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:5px">0.11 weekly windows</div>
+          </div>
+          <div><span style="padding:3px 9px;border:1px solid var(--color-accent-700);border-radius:3px;font-size:11px;color:var(--color-accent-300)">Paste a line</span></div>
+          <div onClick="{{ copyC }}" style="text-align:center;padding:8px 0;border:1px solid var(--color-neutral-700);border-radius:var(--radius-sm);font-family:var(--font-heading);font-size:12px;color:var(--color-neutral-200);cursor:pointer" style-hover="border-color:var(--color-accent);color:var(--color-accent-200)">{{ labelC }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px">
+        <div>
+          <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:6px">Which projects drain the window</div>
+          <div style="font-size:12.5px;color:var(--color-neutral-500)">30 days · {{ projMonthTotal }} tokens. Click a row to scope the whole page to it.</div>
+        </div>
+        <div style="font-size:12.5px;color:var(--color-neutral-400);text-align:right;max-width:420px">{{ projLead }}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:0 12px 8px;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider)">
+        <div></div>
+        <div>Project</div>
+        <div>Share of the month</div>
+        <div style="text-align:right">Tokens</div>
+        <div style="text-align:right">Cache</div>
+        <div>Biggest leak</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column">
+        <sc-for list="{{ projects }}" as="row" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:11px 12px;border-radius:var(--radius-sm);border-bottom:1px solid var(--color-neutral-900);cursor:pointer" style-hover="background:var(--color-accent-900)">
+            <div style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">{{ row.rank }}</div>
+            <div>
+              <div style="font-size:13.5px;color:var(--color-neutral-200)">{{ row.name }}</div>
+              <div style="font-size:10.5px;color:var(--color-neutral-600);font-family:ui-monospace,Menlo,monospace">{{ row.path }}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="width:34px;font-family:var(--font-heading);font-size:14px;color:{{ row.shareColor }}">{{ row.share }}</span>
+              <span style="flex:1;height:7px;border-radius:4px;background:var(--color-neutral-900);display:block"><span style="display:block;height:7px;border-radius:4px;width:{{ row.bar }};background:{{ row.barColor }}"></span></span>
+            </div>
+            <div style="text-align:right;font-size:13px;color:var(--color-neutral-300)">{{ row.tokens }}</div>
+            <div style="text-align:right;font-size:12.5px;color:var(--color-neutral-500)">{{ row.cache }}</div>
+            <div>
+              <div style="font-size:12.5px;color:var(--color-neutral-300)">{{ row.leak }}</div>
+              <div style="font-size:10.5px;color:{{ row.deltaColor }}">{{ row.leakSave }} · {{ row.delta }}</div>
+            </div>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:11px 12px;font-size:12.5px;color:var(--color-neutral-600)">
+          <div></div>
+          <div>everything else<div style="font-size:10.5px;color:var(--color-neutral-700)">6 projects · 37 temp folders</div></div>
+          <div>{{ otherShare }}</div>
+          <div style="text-align:right">11.6M</div>
+          <div style="text-align:right">72%</div>
+          <div></div>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ showDollars }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:28px;margin-top:20px;padding:24px 28px 26px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">
+        <div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:18px">
+            <div>
+              <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Value the plan absorbed · 30 days</div>
+              <div style="display:flex;align-items:baseline;gap:12px">
+                <span style="font-family:var(--font-heading);font-weight:500;font-size:23px;letter-spacing:-0.02em;color:var(--color-neutral-200)">$3,952</span>
+                <span style="font-size:13px;color:var(--color-neutral-500)">at API prices — not a bill, and not what your quota counts</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:2px;padding:3px;background:var(--color-bg);border-radius:var(--radius-sm)">
+              <div onClick="{{ setDay }}" style="padding:5px 12px;border-radius:3px;font-size:11.5px;cursor:pointer;color:{{ dayColor }};background:{{ dayBg }}">Per day</div>
+              <div onClick="{{ setWeek }}" style="padding:5px 12px;border-radius:3px;font-size:11.5px;cursor:pointer;color:{{ weekColor }};background:{{ weekBg }}">Per week</div>
+              <div onClick="{{ setTotal }}" style="padding:5px 12px;border-radius:3px;font-size:11.5px;cursor:pointer;color:{{ totalColor }};background:{{ totalBg }}">Running total</div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:baseline;gap:10px;height:22px;margin-bottom:10px;font-size:12.5px">
+            <span style="font-family:var(--font-heading);color:{{ readoutColor }}">{{ readoutLabel }}</span>
+            <span style="color:var(--color-neutral-500)">{{ readoutDetail }}</span>
+          </div>
+
+          <div style="position:relative;padding-left:46px">
+            <sc-for list="{{ ticks }}" as="tk" hint-placeholder-count="5">
+              <div style="position:absolute;left:46px;right:0;top:{{ tk.top }};height:1px;background:{{ tk.line }}"></div>
+            </sc-for>
+            <sc-for list="{{ ticks }}" as="tk" hint-placeholder-count="5">
+              <div style="position:absolute;left:0;width:38px;top:{{ tk.top }};margin-top:-8px;text-align:right;font-size:10.5px;color:var(--color-neutral-600)">{{ tk.label }}</div>
+            </sc-for>
+            <div style="position:relative;height:110px">
+              <svg viewBox="0 0 1000 110" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:110px;display:block;overflow:visible">
+                <defs>
+                  <linearGradient id="ccheat" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1000" y2="0">
+                    <sc-for list="{{ lineStops }}" as="st" hint-placeholder-count="30">
+                      <stop offset="{{ st.o }}" stop-color="{{ st.c }}"></stop>
+                    </sc-for>
+                  </linearGradient>
+                  <linearGradient id="ccvalfill" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1000" y2="0">
+                    <sc-for list="{{ lineStops }}" as="st" hint-placeholder-count="30">
+                      <stop offset="{{ st.o }}" stop-color="{{ st.c }}" stop-opacity="0.16"></stop>
+                    </sc-for>
+                  </linearGradient>
+                </defs>
+                <polygon fill="url(#ccvalfill)" points="{{ areaPts }}"></polygon>
+                <polyline fill="none" stroke="url(#ccheat)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="{{ linePts }}"></polyline>
+                <sc-for list="{{ marks }}" as="mk" hint-placeholder-count="4">
+                  <circle cx="{{ mk.x }}" cy="{{ mk.y }}" r="3" fill="var(--color-bg)" stroke="{{ mk.color }}" stroke-width="1.6" vector-effect="non-scaling-stroke"></circle>
+                </sc-for>
+              </svg>
+              <sc-if value="{{ hoverOn }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:{{ hoverLeft }};top:0;bottom:0;width:1px;background:var(--color-neutral-500);z-index:2"></div>
+              </sc-if>
+              <sc-if value="{{ hoverOn }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:{{ hoverLeft }};top:{{ hoverTop }};width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:5px;background:var(--color-neutral-200);z-index:3"></div>
+              </sc-if>
+              <div style="position:absolute;inset:0;display:flex;z-index:4">
+                <sc-for list="{{ bars }}" as="bar" hint-placeholder-count="30">
+                  <div onMouseEnter="{{ bar.enter }}" onMouseLeave="{{ bar.leave }}" style="flex:1;height:100%;cursor:default"></div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;margin-top:8px">
+              <sc-for list="{{ bars }}" as="bar" hint-placeholder-count="30">
+                <div style="flex:1;text-align:center;font-size:10px;color:var(--color-neutral-600);white-space:nowrap">{{ bar.axis }}</div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="margin-top:18px;font-size:12.5px;color:var(--color-neutral-400);max-width:620px">The four tallest days are $1,860 — 47% of the month.</div>
+        </div>
+
+        <div style="padding-left:28px;border-left:1px solid var(--color-divider)">
+          <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:14px">What the quota counted</div>
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-family:var(--font-heading);font-weight:500;font-size:23px;letter-spacing:-0.02em;color:var(--color-neutral-200)">3%</span>
+            <span style="font-size:12.5px;color:var(--color-neutral-500)">of 4.3B tokens</span>
+          </div>
+          <div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px;margin-bottom:16px">The other 97% came back from cache at a tenth of the weight.</div>
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden">
+            <div style="width:97%;background:var(--lvl-1)"></div>
+            <div style="width:3%;background:var(--lvl-4);border-left:1px solid var(--color-surface)"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10.5px;color:var(--color-neutral-600)">
+            <span style="color:var(--lvl-1)">free from cache · 4.2B</span><span style="color:var(--lvl-4)">charged · 116.5M</span>
+          </div>
+          <div style="position:relative;margin-top:14px;padding:14px 14px 12px;background:var(--color-bg);border:1px solid var(--color-neutral-900);border-radius:var(--radius-md)">
+            <div style="font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">That 3%, magnified</div>
+            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:12px">
+              <div style="width:47.6%;background:var(--color-accent)"></div>
+              <div style="width:51.4%;background:var(--color-accent-500);border-left:1px solid var(--color-bg)"></div>
+              <div style="width:1%;background:var(--color-neutral-400);border-left:1px solid var(--color-bg)"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-4)"></span><span style="flex:1;color:var(--color-neutral-400)">Cache write 1h</span><span style="color:var(--color-neutral-300)">59.9M</span></div>
+              <div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-3)"></span><span style="flex:1;color:var(--color-neutral-400)">Cache write 5m</span><span style="color:var(--color-neutral-300)">55.5M</span></div>
+              <div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-1)"></span><span style="flex:1;color:var(--color-neutral-400)">Output</span><span style="color:var(--color-neutral-300)">1.1M</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:10.5px;color:var(--color-neutral-500)">
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-1)"></span>free</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-3)"></span>costs a little</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-4)"></span>costs the most</span>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--color-neutral-400)">Writes are the half you can shrink — and they burn the weekly window fastest.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:1fr 520px;gap:32px;margin-top:20px;padding:26px 28px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">
+      <div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">
+          <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">This week's windows</div>
+          <div style="font-size:12px;color:var(--color-neutral-500)"><span style="font-family:var(--font-heading);font-size:15px;color:var(--lvl-4)">{{ fullCount }}</span> of 20 ran dry</div>
+        </div>
+        <div style="font-size:12.5px;color:var(--color-neutral-500);margin-bottom:16px">Fill is how much of the 5-hour cap went; the dot is the model that led it.</div>
+
+        <div style="display:flex;gap:8px;margin-bottom:8px;padding-left:38px">
+          <div style="flex:1;font-size:10px;color:var(--color-neutral-600)">morning</div>
+          <div style="flex:1;font-size:10px;color:var(--color-neutral-600)">afternoon</div>
+          <div style="flex:1;font-size:10px;color:var(--color-neutral-600)">evening</div>
+          <div style="flex:1;font-size:10px;color:var(--color-neutral-600)">late</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <sc-for list="{{ weekGrid }}" as="row" hint-placeholder-count="7">
+            <div style="display:flex;align-items:stretch;gap:8px">
+              <div style="width:30px;padding-top:14px;font-size:11px;color:{{ row.labelColor }}">{{ row.day }}</div>
+              <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="4">
+                <div style="flex:1;position:relative;height:48px;border-radius:var(--radius-sm);background:var(--color-neutral-900);border:1px solid {{ c.edge }};overflow:hidden">
+                  <div style="position:absolute;left:0;right:0;bottom:0;height:{{ c.h }};background:{{ c.fill }}"></div>
+                  <div style="position:absolute;left:5px;top:5px;padding:1px 4px;border-radius:3px;background:{{ c.timeBg }};font-size:10.5px;line-height:1.25;color:{{ c.timeColor }}">{{ c.time }}</div>
+                  <div style="position:absolute;left:7px;bottom:6px;display:flex;align-items:center;gap:5px">
+                    <span style="width:6px;height:6px;border-radius:2px;background:{{ c.dot }}"></span>
+                    <span style="font-size:10.5px;color:{{ c.textColor }};white-space:nowrap">{{ c.pctText }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:11px;color:var(--color-neutral-500)">
+          <sc-for list="{{ ledLegend }}" as="l" hint-placeholder-count="4">
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:2px;background:{{ l.color }}"></span>{{ l.text }}</span>
+          </sc-for>
+          <span style="flex:1"></span>
+          <sc-for list="{{ lvlLegend }}" as="g" hint-placeholder-count="5">
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:13px;height:9px;border-radius:2px;background:{{ g.color }}"></span>{{ g.text }}</span>
+          </sc-for>
+        </div>
+        <div style="margin-top:16px;font-size:12.5px;color:var(--color-neutral-400)">Both dry windows were evenings, and fable led both.</div>
+      </div>
+
+      <div style="padding-left:32px;border-left:1px solid var(--color-divider)">
+        <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:14px">Heaviest windows, exactly</div>
+        <table class="table" style="width:100%;font-size:12.5px">
+          <thead>
+            <tr>
+              <th style="text-align:left">Window</th>
+              <th style="text-align:left;width:140px">Used</th>
+              <th style="text-align:left">Led by</th>
+              <th style="text-align:right">Turns</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{ weekTable }}" as="w" hint-placeholder-count="8">
+              <tr>
+                <td style="color:{{ w.nameColor }}">{{ w.name }}</td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:9px">
+                    <span style="width:34px;font-family:var(--font-heading);color:{{ w.pctColor }}">{{ w.pct }}</span>
+                    <span style="flex:1;height:5px;border-radius:3px;background:var(--color-neutral-900);display:block"><span style="display:block;height:5px;border-radius:3px;width:{{ w.pct }};background:{{ w.fill }}"></span></span>
+                  </div>
+                </td>
+                <td><span style="display:flex;align-items:center;gap:7px;color:var(--color-neutral-400)"><span style="width:6px;height:6px;border-radius:2px;background:{{ w.dot }}"></span>{{ w.leader }}</span></td>
+                <td style="text-align:right;color:var(--color-neutral-500)">{{ w.turns }}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <div style="margin-top:12px;font-size:11.5px;color:var(--color-neutral-600)">The 8 heaviest of this week's 20 windows.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:32px;margin-top:28px;padding-top:20px;border-top:1px solid var(--color-divider);font-size:11.5px;color:var(--color-neutral-600)">
+      <span><span style="color:var(--color-neutral-400)">Read-only.</span> It reads your session files and never sends anything anywhere.</span>
+      <span><span style="color:var(--color-neutral-400)">Quota numbers come from the statusline hook</span>; caps are estimates from your own history.</span>
+      <div style="flex:1"></div>
+      <span>ccmetrics 0.2.0 · 1,641 session files · last ingest 11:48</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;palette&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Warm terminal&quot;,&quot;Nocturne blurple&quot;],&quot;default&quot;:&quot;Warm terminal&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;showDollars&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Content&quot;}}">
+class Component extends DCLogic {
+  state = { range: 'day', copied: null, hover: null, hz: null };
+
+  componentDidMount() { this.applyPalette(); }
+  componentDidUpdate() { this.applyPalette(); }
+
+  applyPalette() {
+    const blurple = {
+      '--color-bg': '#161826', '--color-surface': '#232532', '--color-text': '#e9e9ed',
+      '--color-accent': '#9184d9', '--color-divider': 'color-mix(in srgb, #e9e9ed 16%, transparent)',
+      '--color-neutral-100': '#f3f5fe', '--color-neutral-200': '#e4e7f5', '--color-neutral-300': '#cfd3e5',
+      '--color-neutral-400': '#b2b6ca', '--color-neutral-500': '#9397ab', '--color-neutral-600': '#75798c',
+      '--color-neutral-700': '#595d6c', '--color-neutral-800': '#3f424d', '--color-neutral-900': '#292b31',
+      '--color-accent-100': '#f5f4ff', '--color-accent-200': '#e7e5fe', '--color-accent-300': '#d2cefd',
+      '--color-accent-400': '#b5abfc', '--color-accent-500': '#968ae0', '--color-accent-600': '#796cbf',
+      '--color-accent-700': '#5d5294', '--color-accent-800': '#423a6a', '--color-accent-900': '#2b2741',
+      '--m-opus': '#9184d9', '--m-fable': '#b9a0e8', '--m-sonnet': '#7f9ad9', '--m-haiku': '#8f9cb0'
+    };
+    const root = document.documentElement;
+    const useBlurple = (this.props.palette || 'Warm terminal') === 'Nocturne blurple';
+    Object.keys(blurple).forEach(k => {
+      if (useBlurple) root.style.setProperty(k, blurple[k]); else root.style.removeProperty(k);
+    });
+    document.body.style.background = useBlurple ? '#161826' : '#191714';
+  }
+
+  copy(key) {
+    this.setState({ copied: key });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ copied: null }), 1600);
+  }
+
+  renderVals() {
+    const r = this.state.range, c = this.state.copied, hv = this.state.hover, hz = this.state.hz;
+
+    /* ══ the one scale for "how full is a window" ═══════════════════ */
+    const LVL = ['var(--lvl-0)', 'var(--lvl-1)', 'var(--lvl-2)', 'var(--lvl-3)', 'var(--lvl-4)'];
+    const lvlOf = (p) => p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0;
+    const fillColor = (p) => LVL[lvlOf(p)];
+    const inkOn = (p) => (lvlOf(p) === 2 || lvlOf(p) === 3) ? 'var(--color-bg)' : 'var(--color-neutral-100)';
+    const lvlLegend = [
+      { color: LVL[1], text: 'room' }, { color: LVL[2], text: 'half' },
+      { color: LVL[3], text: 'tight' }, { color: LVL[4], text: 'ran dry' }
+    ];
+
+    const C = ['var(--m-opus)', 'var(--m-fable)', 'var(--m-sonnet)', 'var(--m-haiku)'];
+    const shortNames = ['opus', 'fable', 'sonnet', 'haiku'];
+
+    /* ══ hero: the fuse ════════════════════════════════════════════ */
+    const usedPct = 79, clockPct = 71;
+    const behind = usedPct - clockPct;
+    const face = behind > 6 ? '(•_•;)' : behind > 0 ? '(•ᴗ•)' : '(¬‿¬)';
+    const verdict = behind > 6 ? 'Burning faster than the week refills.' : 'Comfortably inside the week.';
+    const verdictSub = 'The flame is ' + behind + ' points ahead of the clock. Fable is the part that is actually short.';
+    const fuseDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label, i) => ({
+      label, color: i < 5 ? 'var(--color-neutral-500)' : 'var(--color-neutral-700)'
+    }));
+    /* Cumulative limits are judged by what is LEFT, not by how full they look:
+       a weekly window at 94% has one evening in it, which is an emergency, while
+       a 5-hour window at 94% is simply a busy afternoon. */
+    const leftColor = (pctLeft) => pctLeft <= 10 ? LVL[4] : pctLeft <= 25 ? LVL[3] : pctLeft <= 55 ? LVL[2] : LVL[1];
+    const headroom = [
+      { short: '5-hour block', dot: 'var(--color-neutral-500)', left: '57%', usedW: '43%', leftW: '57%', color: leftColor(57), note: '8.7M of ≈15M · resets 19:30' },
+      { short: 'Week · all models', dot: 'var(--color-neutral-500)', left: '21%', usedW: '79%', leftW: '21%', color: leftColor(21), note: '39.6M of ≈189M · two days to run' },
+      { short: 'Week · fable only', dot: 'var(--m-fable)', left: '6%', usedW: '94%', leftW: '6%', color: leftColor(6), note: '2.6M of ≈43.8M · about one evening' }
+    ];
+
+    /* ══ this week's twenty windows ════════════════════════════════ */
+    const raw = [
+      { day: 'Mon', t: '09:00', pct: 46, mix: [0.58, 0.22, 0.18, 0.02] },
+      { day: 'Mon', t: '14:00', pct: 71, mix: [0.62, 0.24, 0.12, 0.02] },
+      { day: 'Mon', t: '19:00', pct: 88, mix: [0.55, 0.32, 0.11, 0.02] },
+      { day: 'Tue', t: '09:00', pct: 34, mix: [0.51, 0.19, 0.27, 0.03] },
+      { day: 'Tue', t: '14:00', pct: 63, mix: [0.60, 0.26, 0.12, 0.02] },
+      { day: 'Tue', t: '19:00', pct: 97, mix: [0.52, 0.36, 0.10, 0.02] },
+      { day: 'Wed', t: '09:00', pct: 28, mix: [0.48, 0.17, 0.31, 0.04] },
+      { day: 'Wed', t: '14:00', pct: 55, mix: [0.59, 0.23, 0.16, 0.02] },
+      { day: 'Wed', t: '19:00', pct: 76, mix: [0.56, 0.30, 0.12, 0.02] },
+      { day: 'Thu', t: '09:00', pct: 41, mix: [0.54, 0.21, 0.22, 0.03] },
+      { day: 'Thu', t: '14:00', pct: 82, mix: [0.61, 0.27, 0.10, 0.02] },
+      { day: 'Thu', t: '19:00', pct: 100, mix: [0.49, 0.39, 0.10, 0.02] },
+      { day: 'Fri', t: '09:00', pct: 38, mix: [0.53, 0.20, 0.24, 0.03] },
+      { day: 'Fri', t: '14:00', pct: 43, mix: [0.61, 0.24, 0.13, 0.02] },
+      { day: 'Fri', t: '19:00', pct: 66, mix: [0.57, 0.28, 0.13, 0.02] },
+      { day: 'Sat', t: '11:00', pct: 19, mix: [0.42, 0.12, 0.38, 0.08] },
+      { day: 'Sat', t: '16:00', pct: 31, mix: [0.50, 0.18, 0.28, 0.04] },
+      { day: 'Sun', t: '12:00', pct: 14, mix: [0.39, 0.10, 0.42, 0.09] },
+      { day: 'Sun', t: '17:00', pct: 26, mix: [0.47, 0.16, 0.32, 0.05] },
+      { day: 'Sun', t: '22:00', pct: 58, mix: [0.57, 0.25, 0.16, 0.02] }
+    ];
+    const leaderOf = (mix) => { let bi = 0; mix.forEach((v, i) => { if (v > mix[bi]) bi = i; }); return bi; };
+    const week = raw.map(b => {
+      const dry = b.pct >= 95;
+      return { ...b, dry, li: dry ? 1 : leaderOf(b.mix) };
+    });
+    const slotOf = (tm) => { const h = parseInt(tm, 10); return h < 12 ? 0 : h < 17 ? 1 : h < 22 ? 2 : 3; };
+    const weekGrid = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+      const mine = week.filter(b => b.day === day);
+      const cells = [0, 1, 2, 3].map(slot => {
+        const b = mine.find(x => slotOf(x.t) === slot);
+        if (!b) return { h: '0%', fill: 'transparent', time: '', pctText: '—', dot: 'transparent', edge: 'var(--color-neutral-900)', textColor: 'var(--color-neutral-700)', timeColor: 'var(--color-neutral-700)', timeBg: 'transparent' };
+        return {
+          h: b.pct + '%', fill: fillColor(b.pct), time: b.t,
+          pctText: b.pct + '%',
+          dot: C[b.li],
+          edge: b.dry ? 'var(--lvl-4)' : 'transparent',
+          textColor: inkOn(b.pct),
+          timeColor: 'var(--color-neutral-300)',
+          timeBg: 'color-mix(in srgb, var(--color-bg) 88%, transparent)'
+        };
+      });
+      return { day, cells, labelColor: mine.length > 2 ? 'var(--color-neutral-300)' : 'var(--color-neutral-600)' };
+    });
+    const fullCount = week.filter(b => b.dry).length;
+    const ledCount = [0, 0, 0, 0];
+    week.forEach(b => { ledCount[b.li]++; });
+    const ledLegend = ledCount.map((n, i) => ({ color: C[i], text: shortNames[i] + ' led ' + n, n })).filter(l => l.n > 0);
+    const weekTable = [...week].sort((a, b) => b.pct - a.pct).slice(0, 8).map(b => ({
+      name: b.day + ' ' + b.t,
+      nameColor: b.dry ? 'var(--lvl-4)' : 'var(--color-neutral-200)',
+      pct: b.pct + '%',
+      pctColor: b.dry ? 'var(--lvl-4)' : 'var(--color-neutral-200)',
+      fill: fillColor(b.pct), dot: C[b.li], leader: shortNames[b.li],
+      turns: Math.round(b.pct * 5.4)
+    }));
+
+    /* ══ the month, one cell per window ════════════════════════════ */
+    const hzRaw = [];
+    for (let i = 0; i < 40; i++) {
+      const wave = Math.sin(i / 3.1) * 26 + Math.sin(i / 9.7) * 30 + 52;
+      const weekend = (i % 14 >= 12) ? -34 : 0;
+      const evening = i % 3 === 2 ? 12 : 0;
+      const pct = Math.max(0, Math.min(100, Math.round(wave + weekend + evening)));
+      const slot = ['09:00', '14:00', '19:00'][i % 3];
+      hzRaw.push({ pct, label: 'Jul ' + (Math.floor(i / 3) + 1) + ' · ' + slot, leader: null });
+    }
+    week.forEach((b, i) => hzRaw.push({
+      pct: b.pct,
+      label: 'Jul ' + (24 + Math.floor(i * 7 / 20)) + ' · ' + b.day + ' ' + b.t,
+      leader: shortNames[b.li]
+    }));
+    const horizon = hzRaw.map((b, i) => ({
+      bg: fillColor(b.pct),
+      op: hz === null || hz === i ? '1' : '0.55',
+      enter: () => this.setState({ hz: i }),
+      leave: () => this.setState({ hz: null })
+    }));
+    const hzSel = hz === null ? null : hzRaw[hz];
+    const hzDry = hzRaw.filter(b => b.pct >= 95).length;
+    /* count runs of adjacent dry windows so the caption cannot drift from the chart */
+    let hzRuns = 0;
+    hzRaw.forEach((b, i) => { if (b.pct >= 95 && !(i > 0 && hzRaw[i - 1].pct >= 95)) hzRuns++; });
+    const hzEvening = hzRaw.filter(b => b.pct >= 95 && /19:00|22:00/.test(b.label)).length;
+    const clustered = hzRuns <= hzDry / 2;
+    const hzCaption = hzEvening + ' of the ' + hzDry + ' dry windows this month were evening blocks, and the amber near-misses sit in the same slot — it is a time of day, not bad luck. ' +
+      (clustered
+        ? 'They also come in runs: ' + hzRuns + ' stretches rather than ' + hzDry + ' scattered days.'
+        : 'They are spread across the month rather than clustered, so no single week explains it.');
+
+    /* ══ projects, repos, hours ════════════════════════════════════ */
+    const projRaw = [
+      { name: 'clauaid', path: '~/Dev/clauaid', n: 429.6, tokens: '429.6M', share: '68%', cache: '98%', delta: '▲ much higher', up: true, leak: 'Premium model on small turns', leakSave: '120.9M saveable' },
+      { name: 'draavi', path: '~/Dev/draavi', n: 50.8, tokens: '50.8M', share: '8%', cache: '98%', delta: '▲ +148%', up: true, leak: 'Premium model on small turns', leakSave: '9.8M saveable' },
+      { name: 'soshitsu', path: '~/Dev/soshitsu', n: 32.8, tokens: '32.8M', share: '5%', cache: '99%', delta: '—', up: false, leak: 'Premium model on small turns', leakSave: '6.4M saveable' },
+      { name: 'ccmetrics', path: '~/Dev/claude_dir/ccmetrics', n: 25.7, tokens: '25.7M', share: '4%', cache: '96%', delta: '—', up: false, leak: 'Premium model on small turns', leakSave: '6.2M saveable' },
+      { name: 'pdf_form', path: '~/Dev/pdf_form', n: 22.1, tokens: '22.1M', share: '4%', cache: '92%', delta: '—', up: false, leak: 'Premium model on small turns', leakSave: '7.0M saveable' },
+      { name: 'flanker.ad', path: '~/Dev/flanker.ad', n: 21.1, tokens: '21.1M', share: '3%', cache: '97%', delta: '—', up: false, leak: 'Premium model on small turns', leakSave: '1.4M saveable' },
+      { name: 'claude_dir', path: '~/Dev/claude_dir', n: 6.9, tokens: '6.9M', share: '1%', cache: '93%', delta: '▲ +1940%', up: true, leak: 'Premium model on small turns', leakSave: '1.5M saveable' },
+      { name: 'research', path: '~/Dev/claude_dir/research', n: 3.2, tokens: '3.2M', share: '1%', cache: '94%', delta: '—', up: false, leak: 'Cold start after a break', leakSave: '495.3K saveable' }
+    ];
+    const OTHER_N = 11.6; /* 6 small projects + 37 temp folders, shown as the last row */
+    const projTotal = projRaw.reduce((a, p) => a + p.n, 0) + OTHER_N;
+    const projects = projRaw.map((p, i) => {
+      const sharePct = Math.round((p.n / projTotal) * 100);
+      return {
+        ...p,
+        rank: String(i + 1).padStart(2, '0'),
+        share: sharePct + '%',
+        bar: Math.max(2, sharePct) + '%',
+        barColor: fillColor(sharePct),
+        shareColor: sharePct >= 45 ? fillColor(sharePct) : 'var(--color-neutral-300)',
+        deltaColor: p.up ? 'var(--lvl-3)' : 'var(--color-neutral-600)'
+      };
+    });
+
+    const leadShare = Math.round((projRaw[0].n / projTotal) * 100);
+    const fractionWord = leadShare >= 70 ? 'nearly three quarters' : leadShare >= 62 ? 'two thirds' : leadShare >= 45 ? 'about half' : leadShare + '%';
+    const projLead = projRaw[0].name + ' alone is ' + fractionWord + ' of the month — every other project together fits in the rest.';
+    const otherShare = Math.round((OTHER_N / projTotal) * 100) + '%';
+    const projMonthTotal = (Math.round(projTotal * 10) / 10) + 'M';
+
+    /* ══ value used (dollars), demoted to the bottom ═══════════════ */
+    const daily = [95, 120, 88, 250, 390, 200, 130, 105, 100, 260, 300, 150, 120, 100, 95, 130, 110, 330, 210, 140, 120, 200, 175, 130, 90, 60, 110, 300, 350, 240];
+    const money = (n) => n >= 1000 ? '$' + n.toLocaleString('en-US') : '$' + Math.round(n);
+    const mk = (label, v, sub) => ({ label, v, sub });
+    let series;
+    if (r === 'week') {
+      const spans = [[0, 6, 'Jul 1–6'], [6, 12, 'Jul 7–12'], [12, 18, 'Jul 13–18'], [18, 24, 'Jul 19–24'], [24, 30, 'Jul 25–30']];
+      series = spans.map(([a, b, label]) => mk(label, daily.slice(a, b).reduce((x, y) => x + y, 0), (b - a) + ' days'));
+    } else if (r === 'total') {
+      let run = 0;
+      series = daily.map((v, i) => { run += v; return mk('Jul ' + (i + 1), run, 'running total'); });
+    } else {
+      series = daily.map((v, i) => mk('Jul ' + (i + 1), v, Math.round(v / 32) + '.' + (i % 9) + 'M tokens · ' + (70 + (i * 7) % 25) + '% opus'));
+    }
+    const peak = Math.max(...series.map(s => s.v));
+    const step = peak > 3000 ? 1000 : peak > 900 ? 500 : 100;
+    const axisMax = Math.ceil(peak / step) * step;
+    const spike = r === 'day' ? 240 : r === 'week' ? 900 : Infinity;
+    /* dollars are drawn as a line on the theme's accent — the green-to-red scale
+       stays reserved for quota limits, which dollars are not. */
+    const n = series.length, VW = 1000, VH = 110;
+    const px = (i) => n === 1 ? VW / 2 : (i / (n - 1)) * VW;
+    const py = (v) => VH - (v / axisMax) * (VH - 5);
+    const linePts = series.map((s, i) => px(i).toFixed(1) + ',' + py(s.v).toFixed(1)).join(' ');
+    const areaPts = '0,' + VH + ' ' + linePts + ' ' + VW + ',' + VH;
+    /* the same green-to-red scale, applied to the day's size against the axis */
+    const lineStops = series.map((s, i) => ({
+      o: (n === 1 ? 50 : (i / (n - 1)) * 100).toFixed(2) + '%',
+      c: fillColor(Math.round((s.v / axisMax) * 100))
+    }));
+    const marks = series
+      .map((s, i) => ({ s, i }))
+      .filter(o => o.s.v >= spike)
+      .slice(0, 6)
+      .map(o => ({ x: px(o.i).toFixed(1), y: py(o.s.v).toFixed(1), color: fillColor(Math.round((o.s.v / axisMax) * 100)) }));
+    const bars = series.map((s, i) => ({
+      axis: r === 'day' ? (i % 5 === 0 ? String(i + 1) : '') : r === 'total' ? (i % 5 === 0 ? 'Jul ' + (i + 1) : '') : s.label,
+      enter: () => this.setState({ hover: i }),
+      leave: () => this.setState({ hover: null })
+    }));
+    const hoverOn = hv !== null;
+    const hoverLeft = hoverOn ? ((px(hv) / VW) * 100) + '%' : '0%';
+    const hoverTop = hoverOn ? ((py(series[hv].v) / VH) * 100) + '%' : '0%';
+    const nTicks = Math.round(axisMax / step), ticks = [];
+    for (let i = nTicks; i >= 0; i--) {
+      ticks.push({
+        label: i === 0 ? '$0' : money(i * step),
+        top: (100 - (i / nTicks) * 100) + '%',
+        line: i === 0 ? 'var(--color-neutral-800)' : 'var(--color-neutral-900)'
+      });
+    }
+    const h = hv === null ? null : series[hv];
+    const readout = h
+      ? { label: h.label + ' · ' + money(h.v), detail: h.sub, color: 'var(--color-neutral-200)' }
+      : { label: r === 'total' ? '$3,952 by Jul 30' : 'Hover a day', detail: r === 'total' ? 'the month adds up in four steps, not thirty' : r === 'week' ? 'six-day buckets · heaviest is Jul 25–30' : 'day by day · five days carry the month', color: 'var(--color-neutral-400)' };
+    const seg = (cur, k) => ({
+      color: cur === k ? 'var(--color-accent-200)' : 'var(--color-neutral-500)',
+      bg: cur === k ? 'var(--color-accent-900)' : 'transparent'
+    });
+    const d = seg(r, 'day'), w = seg(r, 'week'), tt = seg(r, 'total');
+
+    return {
+      face, verdict, verdictSub, fuseDays, headroom,
+      usedPos: usedPct + '%', clockPos: clockPct + '%',
+      weekGrid, weekTable, fullCount, ledLegend, lvlLegend,
+      horizon, hzDry, hzCaption,
+      hzLabel: hzSel ? hzSel.label : 'Hover a window',
+      hzDetail: hzSel ? (hzSel.pct + '% of the cap used' + (hzSel.leader ? ' · led by ' + hzSel.leader : '')) : '60 five-hour windows · the last 20 are this week',
+      hzColor: hzSel ? fillColor(hzSel.pct) : 'var(--color-neutral-400)',
+      projects, projLead, otherShare, projMonthTotal,
+      leakColorA: fillColor(64), leakColorB: fillColor(40), leakColorC: fillColor(11),
+      showDollars: this.props.showDollars !== false,
+      bars, ticks, linePts, areaPts, marks, lineStops, hoverOn, hoverLeft, hoverTop,
+      readoutLabel: readout.label, readoutDetail: readout.detail, readoutColor: readout.color,
+      setDay: () => this.setState({ range: 'day', hover: null }),
+      setWeek: () => this.setState({ range: 'week', hover: null }),
+      setTotal: () => this.setState({ range: 'total', hover: null }),
+      dayColor: d.color, dayBg: d.bg, weekColor: w.color, weekBg: w.bg, totalColor: tt.color, totalBg: tt.bg,
+      copyA: () => this.copy('a'), copyB: () => this.copy('b'), copyC: () => this.copy('c'),
+      labelA: c === 'a' ? 'Copied' : 'Copy fix',
+      labelB: c === 'b' ? 'Copied' : 'Copy fix',
+      labelC: c === 'c' ? 'Copied' : 'Copy fix'
+    };
+  }
+}
+</script>
+</body>
+</html>
