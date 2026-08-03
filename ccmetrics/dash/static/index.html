@@ -454,7 +454,7 @@ function renderLive() {
 
   var dot = '<span style="width:8px;height:8px;background:' + (isLive ? "var(--clay)" : "var(--line)") + ';' + (isLive ? "animation:ccblink 1.4s steps(1,end) infinite" : "") + '"></span>';
   var label = isLive
-    ? 'LIVE<span style="color:var(--dim)">' + esc(live.project || "session") + " · " + esc(shortModel(live.model) || "?") + " · " + (live.turns || 0) + " turns · " + esc(agoText(live.last_turn_at)) + "</span>"
+    ? 'LIVE<span style="color:var(--dim)">' + esc(baseName(live.cwd) || live.project || "session") + " · " + esc(shortModel(live.model) || "?") + " · " + (live.turns || 0) + " turns · " + esc(agoText(live.last_turn_at)) + "</span>"
     : 'LIVE<span style="color:var(--dim)">no session' + (live && live.reason ? " · " + esc(live.reason) : "") + "</span>";
 
   var blockVal = isLive && cur ? fmtTok(cur.equiv_tokens) : "—";
@@ -851,7 +851,7 @@ function renderFooter() {
   var quotaSpan = "";
   if (w && w.source) {
     var srcLabel = w.source === "statusline_hook" ? "THE STATUSLINE HOOK" :
-      w.source === "usage_cache" ? "THE /USAGE CACHE" : esc(String(w.source).toUpperCase());
+      w.source === "usage_cache" ? "THE /USAGE CACHE" : w.source === "both" ? "THE STATUSLINE HOOK AND THE /USAGE CACHE" : esc(String(w.source).toUpperCase());
     quotaSpan = "<span>QUOTA FROM " + srcLabel + "</span>";
   } else if (w && w.setup_cmd) {
     quotaSpan = "<span>QUOTA OFF · " + esc(w.setup_cmd) + "</span>";
