@@ -1,1865 +1,1229 @@
-<!doctype html>
-<html lang="en" data-theme="auto">
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ccmetrics · glance</title>
-<!--
-  One self-contained file: inline CSS + inline JS, zero external requests
-  (no fonts, no CDN, no analytics). Everything it draws comes from the local
-  /api/* endpoints, which carry counts and timestamps only.
-  Palette/typography contract is fixed and colourblind-validated - do not
-  substitute colours.
--->
+<title>ccmetrics</title>
 <style>
-/* ---------------------------------------------------------------------------
-   Exchange-desk visual system: flat panels, hairline rules, one gold accent,
-   reserved green/red for direction. Two colour jobs are kept strictly apart:
-
-     CHROME  gold (--gold / --gold-ink)  -> tabs, links, buttons, focus, the
-             logo, the spend line. Anything gold is either interactive or the
-             one headline series.
-     STATE   --up / --down               -> reserved. Never a series colour.
-     DATA    --s1..--s4                  -> series identity only.
-
-   The four series steps are not eyeballed. They were derived by search over
-   OKLCH (one step per hue family: gold / blue / teal / magenta, every family
-   held >=25 deg clear of the reserved up-green and down-red hues so a series
-   can never impersonate a state) and then run through the data-viz validator
-   against BOTH panel surfaces, on the ALL-PAIRS list because the per-model
-   rows re-sort by share and any two of them can end up adjacent:
-
-     dark  on #1E2329 -> L band PASS · chroma PASS · CVD 11.5 (protan) PASS
-                         · normal-vision 22.5 PASS · contrast >=3:1 PASS
-     light on #FFFFFF -> L band PASS · chroma PASS · CVD 15.6 (deutan) PASS
-                         · normal-vision 22.1 PASS · contrast >=3:1 PASS
-
-   Do not substitute a colour without re-running that validator.
-
-   Text colours are checked separately (WCAG, not the categorical checks):
-   Binance's bright gold #F0B90B is 8.8:1 on the dark panel but only 1.8:1 on
-   white, so light mode carries its own darker gold step for text and marks.
-   Same story for the up/down pair - hence the -ink variants.
---------------------------------------------------------------------------- */
-:root {
-  --page:#fafafa; --surface:#ffffff; --panel-hover:#f5f7fa;
-  --ink:#1e2329; --muted:#6b7684;
-  --hair:#eaecef; --hair-strong:#d8dce1;
-  --gold:#b8860b; --gold-ink:#96650a; --gold-hover:#7a5208;
-  --gold-fill:rgba(184,134,11,.14);
-  --up:#00875a; --up-ink:#00875a; --down:#c6193a; --down-ink:#c6193a;
-  --s1:#c27b00; --s2:#1162fb; --s3:#00a2a1; --s4:#a30098;
-  --shadow:0 2px 8px rgba(24,26,32,.10);
+:root{
+  --bg:#191714;--surf:#221e1a;--line:#3a352e;--ink:#ece7df;--dim:#8f887c;
+  --clay:#d9825a;--l0:#2b2a26;--l1:#4f7a58;--l2:#9aa04a;--l3:#c8873c;--l4:#bd4a3a;
+  --opus:#7594c9;--fable:#a37fc9;--sonnet:#5f9fa8;--haiku:#8f9cb0;--opus48:#6b83b0;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --page:#0b0e11; --surface:#1e2329; --panel-hover:#2b3139;
-    --ink:#eaecef; --muted:#848e9c;
-    --hair:#2b3139; --hair-strong:#474d57;
-    --gold:#f0b90b; --gold-ink:#f0b90b; --gold-hover:#fcd535;
-    --gold-fill:rgba(240,185,11,.12);
-    --up:#0ecb81; --up-ink:#0ecb81; --down:#f6465d; --down-ink:#ff6a7d;
-    --s1:#cb8100; --s2:#1d6aff; --s3:#00a9a3; --s4:#bd26be;
-    --shadow:0 2px 8px rgba(0,0,0,.5);
-  }
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;image-rendering:pixelated}
+a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
+.px-panel{border:2px solid var(--line);background:var(--surf);padding:18px 20px 20px}
+.px-label{color:var(--dim);letter-spacing:0.12em;text-transform:uppercase}
+.px-faint{color:#6f695f}
+@keyframes ccpix{0%,33.32%{opacity:1}33.33%,100%{opacity:0}}
+@keyframes ccpix2{0%,33.32%{opacity:0}33.33%,66.65%{opacity:1}66.66%,100%{opacity:0}}
+@keyframes ccpix3{0%,66.65%{opacity:0}66.66%,100%{opacity:1}}
+@keyframes ccblink{0%,49%{opacity:1}50%,100%{opacity:0}}
+/* LEGACY BRIDGE — keeps not-yet-rebuilt panels legible; phase 12-pixel-stories deletes it. */
+:root{
+  --color-bg:var(--bg);--color-surface:var(--surf);--color-divider:var(--line);
+  --color-text:var(--ink);
+  --color-neutral-100:var(--ink);--color-neutral-200:var(--ink);--color-neutral-300:#c9c2b6;
+  --color-neutral-400:var(--dim);--color-neutral-500:var(--dim);--color-neutral-600:#6f695f;
+  --color-neutral-700:#555047;--color-neutral-800:var(--line);--color-neutral-900:#2a2622;
+  --color-accent:var(--clay);--color-accent-200:#f4c7ad;--color-accent-300:#e8a37e;
+  --color-accent-500:var(--clay);--color-accent-700:#a35f3f;--color-accent-900:#5c3826;
+  --lvl-0:var(--l0);--lvl-1:var(--l1);--lvl-2:var(--l2);--lvl-3:var(--l3);--lvl-4:var(--l4);
+  --m-opus:var(--opus);--m-fable:var(--fable);--m-sonnet:var(--sonnet);
+  --m-haiku:var(--haiku);--m-opus48:var(--opus48);
+  --font-body:ui-monospace,'SF Mono',Menlo,monospace;--font-heading:ui-monospace,'SF Mono',Menlo,monospace;
+  --radius-sm:0;--radius-md:0;--radius-lg:0;--shadow-sm:none;--space-2:8px;
 }
-:root[data-theme="light"] {
-  --page:#fafafa; --surface:#ffffff; --panel-hover:#f5f7fa;
-  --ink:#1e2329; --muted:#6b7684;
-  --hair:#eaecef; --hair-strong:#d8dce1;
-  --gold:#b8860b; --gold-ink:#96650a; --gold-hover:#7a5208;
-  --gold-fill:rgba(184,134,11,.14);
-  --up:#00875a; --up-ink:#00875a; --down:#c6193a; --down-ink:#c6193a;
-  --s1:#c27b00; --s2:#1162fb; --s3:#00a2a1; --s4:#a30098;
-  --shadow:0 2px 8px rgba(24,26,32,.10);
-}
-:root[data-theme="dark"] {
-  --page:#0b0e11; --surface:#1e2329; --panel-hover:#2b3139;
-  --ink:#eaecef; --muted:#848e9c;
-  --hair:#2b3139; --hair-strong:#474d57;
-  --gold:#f0b90b; --gold-ink:#f0b90b; --gold-hover:#fcd535;
-  --gold-fill:rgba(240,185,11,.12);
-  --up:#0ecb81; --up-ink:#0ecb81; --down:#f6465d; --down-ink:#ff6a7d;
-  --s1:#cb8100; --s2:#1d6aff; --s3:#00a9a3; --s4:#bd26be;
-  --shadow:0 2px 8px rgba(0,0,0,.5);
-}
-
-* { box-sizing:border-box; }
-html,body { margin:0; padding:0; }
-html { scrollbar-color:var(--panel-hover) transparent; scrollbar-width:thin; }
-body {
-  background:var(--page); color:var(--ink);
-  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  font-size:13px; line-height:1.45;
-  -webkit-font-smoothing:antialiased;
-}
-/* the exchange detail: a thin, quiet thumb that never draws the eye */
-::-webkit-scrollbar { width:8px; height:8px; }
-::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:var(--panel-hover); border-radius:0; }
-::-webkit-scrollbar-thumb:hover { background:var(--hair-strong); }
-.wrap { max-width:1200px; margin:0 auto; padding:16px 16px 56px; }
-.num { font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
-
-/* top bar: mark + wordmark left, state chips right, one hairline under it */
-header {
-  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-  padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid var(--hair);
-}
-.brand { font-weight:600; letter-spacing:-.01em; color:var(--ink); font-size:16px; display:inline-flex; align-items:center; }
-/* The repo mark, inlined (no file fetch: the CSP here allows no external
-   requests). Drawn 1:1 — a 40x28 viewBox rendered at 40x28 px on integer
-   coordinates, so every edge lands on a device pixel at 1x. Neutral bars are
-   --muted; the leaking bar, the droplet and the "cc" are the chrome gold, so
-   the mark wears the same accent as the tabs, links and the spend line. */
-.brand-mark { margin-right:8px; flex:0 0 auto; }
-.brand-mark .bm-bar { fill:var(--muted); }
-.brand-mark .bm-hot { fill:var(--gold-ink); }
-.brand-cc { color:var(--gold-ink); }
-.scope { color:var(--muted); font-size:12px; }
-.proj-name { display:block; }
-.proj-path { display:block; color:var(--muted); font-size:10px; line-height:1.5; }
-/* same name/path pair as the projects table, but inline for the one-line live bar */
-.live-proj { color:var(--ink); font-weight:600; }
-.live-path { color:var(--muted); font-size:10px; margin-left:5px; }
-.nowrap { white-space:nowrap; }
-.spacer { flex:1 1 auto; }
-/* tag, not pill: square-ish, filled, borderless until it carries a state */
-.chip {
-  display:inline-flex; align-items:center; gap:6px; padding:3px 8px;
-  border:1px solid transparent; border-radius:2px;
-  background:var(--panel-hover); color:var(--muted); font-size:11px; white-space:nowrap;
-}
-/* cost-confidence chip states (wave D): exact = OTEL covered the window,
-   mixed = some days exact and some still a floor. */
-.chip.exact { color:var(--ink); border-color:var(--up); }
-.chip.mixed { color:var(--ink); border-color:var(--gold); }
-button.link {
-  background:none; border:none; color:var(--gold-ink); cursor:pointer;
-  font:inherit; font-size:12px; padding:0; text-decoration:none;
-}
-button.link:hover { color:var(--gold-hover); text-decoration:underline; text-underline-offset:3px; }
-button.ghost {
-  background:none; border:none; border-radius:2px;
-  color:var(--gold-ink); cursor:pointer; font:inherit; font-size:12px; padding:4px 8px;
-  transition:background 80ms ease, color 80ms ease;
-}
-button.ghost:hover { background:var(--panel-hover); color:var(--gold-hover); }
-
-section { margin-bottom:16px; }
-/* flat panel: hairline, 4px radius, no shadow. Elevation is not a thing here —
-   the near-black canvas does the separating. */
-.card { background:var(--surface); border:1px solid var(--hair); border-radius:4px; }
-.card-head {
-  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-  padding:12px 16px; border-bottom:1px solid var(--hair);
-}
-.card-title { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:0; }
-.card-body { padding:16px; }
-
-/* live tiles — one panel divided by hairlines, not four floating boxes */
-.tiles {
-  display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
-  background:var(--hair); border:1px solid var(--hair); border-radius:4px;
-}
-.tile { background:var(--surface); padding:12px 16px; min-height:70px; }
-.tile .label { font-size:11px; font-weight:500; color:var(--muted); }
-.tile .value { font-size:20px; font-weight:600; letter-spacing:-.02em; margin-top:2px; }
-.tile .sub { font-size:11px; color:var(--muted); }
-.tile.unknown .value { color:var(--muted); font-weight:500; }
-.live-bar { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.dot { width:8px; height:8px; border-radius:50%; background:var(--up); flex:0 0 auto; }
-.dot.off { background:var(--muted); }
-.warn {
-  margin-top:10px; padding:9px 12px; border-radius:2px;
-  border:1px solid var(--down); color:var(--ink); background:var(--surface); font-size:12px;
-}
-.warn b { color:var(--down-ink); }
-
-/* charts */
-.chart { position:relative; width:100%; }
-.chart svg { display:block; width:100%; }
-.grid-line { stroke:var(--hair); stroke-width:1; shape-rendering:crispEdges; }
-.axis-line { stroke:var(--hair-strong); stroke-width:1; shape-rendering:crispEdges; }
-.axis-text { fill:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; }
-/* spend: the headline series wears the chrome gold — one line, one 12% fill.
-   The estimated-output band is NOT a category, it is an uncertainty range, so
-   it gets its own series hue at low opacity plus a dashed edge, never a solid
-   fill that could be mistaken for measured money. */
-.seq-fill { fill:var(--gold-fill); }
-.seq-line { stroke:var(--gold); stroke-width:2; fill:none; }
-.band-fill { fill:var(--s2); opacity:.16; }
-.band-line { stroke:var(--s2); stroke-width:1; fill:none; opacity:.6; stroke-dasharray:3 3; }
-.cross { stroke:var(--muted); stroke-width:1; opacity:.6; shape-rendering:crispEdges; }
-.dot-mark { fill:var(--gold); }
-.f1 { fill:var(--s1); } .f2 { fill:var(--s2); } .f3 { fill:var(--s3); } .f4 { fill:var(--s4); }
-.tip {
-  position:absolute; pointer-events:none; z-index:5; min-width:150px;
-  background:var(--surface); border:1px solid var(--hair-strong); border-radius:4px;
-  box-shadow:var(--shadow); padding:8px 10px; font-size:11px; display:none;
-}
-.tip .t-date { color:var(--muted); font-size:11px; margin-bottom:3px; }
-.tip .row { display:flex; justify-content:space-between; gap:14px; }
-
-/* one help mechanism for the whole page: a small "?" badge next to any label,
-   hover OR click/tap (tap-friendly) shows ONE shared tooltip node. Native
-   title= is not discoverable, so nothing on this page relies on it. */
-.qmark {
-  display:inline-flex; align-items:center; justify-content:center;
-  width:13px; height:13px; margin-left:4px; flex:0 0 auto; vertical-align:middle;
-  border:1px solid var(--hair-strong); border-radius:50%; background:var(--panel-hover);
-  color:var(--muted); font-size:9px; font-weight:700; line-height:1;
-  letter-spacing:0; text-transform:none; text-decoration:none;
-  cursor:help; user-select:none; -webkit-user-select:none;
-  transition:color 80ms ease, border-color 80ms ease;
-}
-.qmark:hover, .qmark:focus { color:var(--gold-ink); border-color:var(--gold); outline:none; }
-.helptip {
-  position:absolute; display:none; z-index:50; max-width:280px;
-  background:var(--surface); border:1px solid var(--hair-strong); border-radius:4px;
-  box-shadow:var(--shadow); padding:8px 10px; pointer-events:none;
-  color:var(--ink); font-size:12px; font-weight:400; line-height:1.45;
-  letter-spacing:normal; text-transform:none; white-space:normal; text-align:left;
-}
-
-/* usage card: segmented period picker, share bars, two-column body.
-   Both sub-blocks run on ONE contract: 11px caps label, a header rule at the
-   same height, rows on the same 9px/10px padding, and a share bar whose fill
-   is always share% of a full-width track. Only the hue differs, and it differs
-   for a reason (see modelColor / the repo block in the script). */
-/* period picker = tabs, not buttons: text only, the active one is ink with a
-   2px gold underline. Nothing here is a box. */
-.seg { display:inline-flex; align-items:flex-end; gap:18px; }
-.seg button {
-  background:none; border:none; border-bottom:2px solid transparent; border-radius:0;
-  color:var(--muted); cursor:pointer; font:inherit; font-size:12px;
-  padding:2px 0 5px; transition:color 80ms ease, border-color 80ms ease;
-}
-.seg button:hover { color:var(--ink); }
-.seg button.on { color:var(--ink); font-weight:600; border-bottom-color:var(--gold); background:none; }
-.sub-title { font-size:11px; font-weight:500; color:var(--muted); margin:16px 0 9px; }
-.usage-cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
-@media (max-width:760px) { .usage-cols { grid-template-columns:1fr; } }
-/* the repo block has no <thead>, so it borrows the exact th metrics — that is
-   what puts the two blocks' first row on the same baseline */
-.sub-head {
-  display:flex; justify-content:space-between; gap:10px;
-  font-size:11px; color:var(--muted); font-weight:500; padding:0 12px 8px;
-  border-bottom:1px solid var(--hair);
-}
-/* five columns in half a card is tight: pull the inner gutters in, keep the
-   outer ones at 10px so the block still lines up with .sub-head next door */
-#usage-model-table th, #usage-model-table td { padding-left:6px; padding-right:6px; }
-#usage-model-table th:first-child, #usage-model-table td:first-child { padding-left:12px; }
-#usage-model-table th:last-child, #usage-model-table td:last-child { padding-right:12px; }
-.chart-note, .foot-note { color:var(--muted); font-size:11px; }
-.chart-note { margin-top:6px; }
-.foot-note { margin-top:9px; padding:0 12px; }
-.foot-note:empty { display:none; }
-/* 4px track, hairline bed, fill = share% of the full width. Same contract in
-   both blocks, so a bar length means the same thing wherever it appears. */
-.sbar { height:4px; border-radius:2px; background:var(--hair); overflow:hidden; }
-.sbar i { display:block; height:100%; border-radius:2px; min-width:2px; }
-/* the bar always sits clear of the small path line above it — at 4px tall it
-   otherwise crowds the descenders */
-td .sbar, .urow .sbar, .repo-row .sbar { margin-top:6px; }
-.repo-row { margin-bottom:11px; }
-.repo-row:last-child { margin-bottom:0; }
-/* one repo inside "who used it" — same row rhythm as a table row above it */
-.urow { padding:8px 12px; border-bottom:1px solid var(--hair); }
-.urow:last-child { border-bottom:none; }
-.repo-head { display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
-.repo-head .val { margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:13px; }
-
-/* legend */
-.legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:12px; }
-.legend .item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
-.swatch { width:8px; height:8px; border-radius:1px; flex:0 0 auto; }
-.legend .val { color:var(--ink); font-variant-numeric:tabular-nums; }
-
-/* tables: 12px body, ~34px rows, hairline separators only — no zebra, no
-   vertical rules. Numerics right-aligned and tabular so digits line up. */
-table { width:100%; border-collapse:collapse; font-size:12px; }
-th {
-  text-align:left; font-size:11px; letter-spacing:0; color:var(--muted);
-  font-weight:500; padding:0 12px 8px; border-bottom:1px solid var(--hair);
-  white-space:nowrap;
-}
-td { padding:8px 12px; border-bottom:1px solid var(--hair); vertical-align:top; }
-tbody tr:last-child td { border-bottom:none; }
-th.r, td.r { text-align:right; }
-td.r, th.r, .num { font-variant-numeric:tabular-nums; }
-tr.clickable { cursor:pointer; }
-tr.clickable td { transition:background 80ms ease; }
-tr.clickable:hover td { background:var(--panel-hover); }
-.rank { color:var(--muted); font-variant-numeric:tabular-nums; }
-.leak-name { font-weight:600; font-size:13px; }
-.fixline { color:var(--muted); font-size:11px; margin-top:3px; white-space:pre-wrap; word-break:break-word; }
-/* effort = a tag, and the word in it is the label — colour is never the only
-   cue. paste is the cheap end (up-green), restructure the dear end (down-red). */
-.effort {
-  display:inline-block; padding:2px 6px; border-radius:2px; font-size:11px;
-  background:var(--panel-hover); border:none;
-}
-.effort.paste { color:var(--up-ink); }
-.effort.habit { color:var(--gold-ink); }
-.effort.restructure { color:var(--down-ink); }
-button.copy {
-  background:none; border:none; border-radius:2px;
-  color:var(--gold-ink); cursor:pointer; font:inherit; font-size:12px;
-  padding:3px 8px; white-space:nowrap; transition:background 80ms ease, color 80ms ease;
-}
-button.copy:hover { background:var(--panel-hover); color:var(--gold-hover); }
-button.copy.done { color:var(--up-ink); background:var(--panel-hover); }
-.muted { color:var(--muted); }
-/* leaks grouped by project (global view only): a header row per project */
-tr.leak-group { cursor:pointer; }
-tr.leak-group td { background:var(--panel-hover); transition:background 80ms ease; }
-tr.leak-group:hover td { background:var(--hair); }
-.grp-sum { color:var(--muted); font-weight:400; font-size:11px; margin-left:8px; }
-/* expanded children of the grouped "test & scratch runs" row */
-tr.eph-child td { color:var(--muted); }
-tr.eph-child td:first-child { padding-left:28px; }
-.empty { color:var(--muted); padding:8px 12px; }
-footer {
-  color:var(--muted); font-size:11px; margin-top:20px; padding-top:12px;
-  border-top:1px solid var(--hair); display:flex; gap:14px; flex-wrap:wrap;
-}
-/* the other two surfaces (console report, the two opt-in hooks) are invisible
-   to a first-time user, so they get one quiet line instead of a README */
-code {
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:11px; background:var(--panel-hover); border:none;
-  border-radius:2px; padding:2px 6px; white-space:nowrap; color:var(--ink);
-}
-.surfaces { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 16px; }
-.hint { color:var(--muted); font-size:12px; line-height:2.1; margin:0 0 16px; }
-/* direction, not sentiment: this column is money, so MORE of it is the red
-   one. Green here means the bill went down. (Said in the column's help too.) */
-.delta.up { color:var(--down-ink); } .delta.down { color:var(--up-ink); }
-.bignum { font-size:24px; font-weight:600; letter-spacing:-.02em; }
-.spend-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.cc-ribbon{display:flex;align-items:center;gap:10px;border:2px solid var(--line);background:var(--surf);padding:11px 13px;color:var(--dim)}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div style="min-height:100vh;background:var(--bg);color:var(--ink);font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;padding:28px 32px 56px;image-rendering:pixelated">
 
-<header>
-  <span class="brand"><svg class="brand-mark" width="40" height="28" viewBox="0 0 40 28" aria-hidden="true" focusable="false"><g class="bm-bar"><rect x="0" y="15" width="4" height="5" rx="1"/><rect x="6" y="12" width="4" height="8" rx="1"/><rect x="12" y="7" width="4" height="13" rx="1"/><rect x="24" y="7" width="4" height="13" rx="1"/><rect x="30" y="5" width="4" height="15" rx="1"/><rect x="36" y="0" width="4" height="20" rx="1"/></g><g class="bm-hot"><rect x="18" y="2" width="4" height="18" rx="1"/><path d="M20 21.2c1.3 1.8 2.2 2.9 2.2 3.9a2.2 2.2 0 1 1-4.4 0c0-1 .9-2.1 2.2-3.9z"/></g></svg><span class="brand-cc">cc</span>metrics</span>
-  <span class="scope" id="scope-label">all projects · last 30 days</span>
-  <button class="link" id="back" style="display:none">&larr; back to all projects</button>
-  <span class="spacer"></span>
-  <span class="chip" id="otel-chip" data-help="Optional: `ccmetrics otel` runs a small local listener that records Anthropic's own per-request costs, upgrading every figure from 'at least' to exact. It is off right now."><span class="dot off" id="otel-dot"></span><span id="otel-label"> exact costs: off</span></span>
-  <span class="chip" id="confidence" data-help="What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee."><span id="confidence-label">at least this much &middot; from session files</span></span>
-  <button class="ghost" id="theme">theme</button>
-</header>
-<div class="surfaces">also:
-  <span data-help="run `ccmetrics` inside any repo and it prints these same figures as a console report, then exits — no server, no browser, nothing to leave running">
-    <code>ccmetrics</code> in a repo &rarr; console report</span> &middot;
-  <span data-help="`ccmetrics otel --setup` prints one settings block to paste. After that a small listener on this machine records Anthropic's own per-request costs, and every figure here turns from 'at least' into exact.">
-    <code>ccmetrics otel --setup</code> &rarr; exact costs</span> &middot;
-  <span data-help="`ccmetrics statusline --setup` prints one settings block to paste. Claude Code then feeds this machine your real plan percentages — the only honest source for them, because plan limits are not in any local file.">
-    <code>ccmetrics statusline --setup</code> &rarr; your real plan %</span>
+  <div id="cc-header"></div>
+
+  <div id="cc-ribbon"></div>
+  <div id="cc-hero"></div>
+  <div id="cc-recoverable"></div>
+  <div id="cc-week"></div>
+  <div id="cc-live"></div>
+  <div id="cc-horizon"></div>
+  <div id="cc-projects"></div>
+  <div id="cc-dollars"></div>
+  <div id="cc-footer"></div>
 </div>
-
-
-<!-- LIVE tiles (PRD R7) -->
-<section>
-  <div class="live-bar">
-    <span class="dot off" id="live-dot"></span>
-    <span class="card-title" data-help="your running session right now — burn speed, context fill, cache use; empty when nothing is running">Live session</span>
-    <span class="scope" id="live-meta">connecting&hellip;</span>
-  </div>
-  <div class="tiles" id="tiles">
-    <div class="tile" id="tile-burn">
-      <div class="label" data-help="how fast this session is spending right now — dollars per hour at API prices, worked out from the turns in the last few minutes">burn rate</div>
-      <div class="value num" id="tile-burn-value">&mdash;</div>
-      <div class="sub num" id="tile-burn-sub">&nbsp;</div>
-    </div>
-    <div class="tile" id="tile-ctx">
-      <div class="label" data-help="how full the model's memory window is; when it fills up the session is squashed and the whole context has to be rebuilt">context</div>
-      <div class="value num" id="tile-ctx-value">&mdash;</div>
-      <div class="sub num" id="tile-ctx-sub">&nbsp;</div>
-    </div>
-    <div class="tile" id="tile-cache">
-      <div class="label" data-help="share of this session's context served from memory instead of being paid for again at full price — higher is better">cache-hit</div>
-      <div class="value num" id="tile-cache-value">&mdash;</div>
-      <div class="sub num" id="tile-cache-sub">&nbsp;</div>
-    </div>
-    <div class="tile" id="tile-spend">
-      <div class="label" data-help="what this session has used so far, valued at API prices — a proven minimum, not a bill">session cost</div>
-      <div class="value num" id="tile-spend-value">&mdash;</div>
-      <div class="sub num" id="tile-spend-sub">&nbsp;</div>
-    </div>
-  </div>
-  <div class="warn" id="live-warning" style="display:none"></div>
-</section>
-
-<!-- plan limits — only ever present when `ccmetrics statusline` feeds them -->
-<section class="card" id="plan-card" style="display:none">
-  <div class="card-head">
-    <span class="card-title" data-help="your real plan usage, read from Claude Code's own statusline feed — it shows up only if you turned it on with `ccmetrics statusline --setup`. These are shares of your plan, straight from Anthropic; ccmetrics cannot see them without that hook, and never estimates one.">Plan</span>
-    <span class="spacer"></span>
-    <span class="scope" id="plan-source">&nbsp;</span>
-  </div>
-  <div class="card-body">
-    <div id="plan-rows"></div>
-  </div>
-</section>
-<!-- ...and the one-line nudge that stands in for it until then -->
-<div class="hint" id="plan-hint" style="display:none" data-help="ccmetrics cannot see your plan limits — they live on Anthropic's servers and are in no local file. Claude Code can hand them over through its status line: `ccmetrics statusline --setup` prints the one settings block to paste. Nothing leaves this machine.">plan %: <code>ccmetrics statusline --setup</code> &mdash; one line of setup and your real weekly / 5-hour plan usage appears here, straight from Claude Code</div>
-
-<!-- 30d spend -->
-<section class="card">
-  <div class="card-head">
-    <span class="card-title" data-help="day-by-day value of your usage at API prices — the 'at least' line plus a separate output estimate, never added together">Spend &middot; 30 days</span>
-    <span class="spacer"></span>
-    <span class="scope" id="spend-headline">&nbsp;</span>
-  </div>
-  <div class="card-body">
-    <div class="chart" id="chart-spend"><div class="tip" id="tip-spend"></div></div>
-    <div class="legend" id="legend-spend"></div>
-  </div>
-</section>
-
-<!-- token mix -->
-<section class="card">
-  <div class="card-head">
-    <span class="card-title" data-help="where the token volume goes; cache reads dominate and are the cheap kind, so a big blue bar is normal">Token mix &middot; 30 days</span>
-    <span class="spacer"></span>
-    <span class="scope" id="mix-headline">&nbsp;</span>
-  </div>
-  <div class="card-body">
-    <div class="chart" id="chart-mix"><div class="tip" id="tip-mix"></div></div>
-    <div class="legend" id="legend-mix"></div>
-  </div>
-</section>
-
-<!-- usage: per period, per model, per repo -->
-<section class="card">
-  <div class="card-head">
-    <span class="card-title" data-help="how much you used, by model and by repo — these are shares of YOUR OWN usage, never a share of your plan's limit; plan limits live on Anthropic's servers and are in no local file, so this page will not guess one">Usage</span>
-    <span class="scope" id="usage-headline">&nbsp;</span>
-    <span class="spacer"></span>
-    <span class="seg" id="usage-seg">
-      <button data-period="day">day</button>
-      <button class="on" data-period="week">week</button>
-      <button data-period="month">month</button>
-    </span>
-  </div>
-  <div class="card-body">
-    <div class="chart" id="chart-usage"><div class="tip" id="tip-usage"></div></div>
-    <div class="chart-note" id="usage-note">&nbsp;</div>
-    <div class="sub-title" id="usage-rhythm-title" data-help="which hours of the day your turns land in, over the last 7 days, on this machine's clock — useful for pacing 5-hour plan windows around your own rhythm. Measured from per-turn timestamps; nothing here reads or guesses your plan.">when you work · last 7 days · local time</div>
-    <div class="chart" id="chart-rhythm" style="min-height:46px"><div class="tip" id="tip-rhythm"></div></div>
-    <div class="usage-cols">
-      <div>
-        <div class="sub-title" data-help="which models did the work, measured in tokens' worth of input cost. The colour marks the model family, so a model keeps the same colour when you switch day / week / month. The split comes from the per-turn records, which are kept for 30 days only."><span id="usage-model-title">per model</span></div>
-        <table id="usage-model-table">
-          <thead>
-            <tr>
-              <th data-help="the model that answered those turns, shortened — the badge on each name gives the full model id">model</th>
-              <th class="r nowrap" style="width:68px" data-help="tokens' worth of input cost, cache writes and reads folded in at their real rates">tokens</th>
-              <th class="r nowrap" style="width:54px" data-help="how many replies this model produced">turns</th>
-              <th class="r nowrap" style="width:52px" data-help="this model's share of your own usage in this window — not a share of any plan limit">share</th>
-              <th style="width:26%"></th>
-            </tr>
-          </thead>
-          <tbody id="usage-model-body"><tr><td colspan="5" class="empty">loading&hellip;</td></tr></tbody>
-        </table>
-        <div class="foot-note" id="usage-model-note"></div>
-      </div>
-      <div id="usage-repo-block">
-        <div class="sub-title" data-help="which repos the usage went to in the period you picked — shares of your own total, biggest first. Every bar is one colour here: the length is the share, and the repo's name is already on the row."><span id="usage-repo-title">who used it</span></div>
-        <div class="sub-head"><span>repo</span><span>share &middot; tokens</span></div>
-        <div id="usage-repos"></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- top leaks -->
-<section class="card">
-  <div class="card-head">
-    <span class="card-title" data-help="wasteful patterns found in your own sessions, biggest win first, each with a ready-made fix you can copy">Top leaks</span>
-    <span class="scope">ranked by tokens saved vs how hard the fix is</span>
-    <span class="spacer"></span>
-    <button class="link" id="all-leaks">show all</button>
-  </div>
-  <div class="card-body">
-    <table id="leaks-table">
-      <thead>
-        <tr>
-          <th style="width:22px"></th>
-          <th data-help="a wasteful pattern found in your sessions, with the fix under it">leak</th>
-          <th class="r" style="width:110px" data-help="tokens you would stop wasting if you applied the fix — an upper estimate">saves</th>
-          <th class="r" style="width:100px" data-help="what those tokens are worth at API prices — a proven minimum">at least $</th>
-          <th style="width:110px" data-help="how hard the fix is: paste = copy a line, habit = change how you work, restructure = reorganize sessions">effort</th>
-          <th class="r" style="width:80px" data-help="copies the ready-made fix text">fix</th>
-        </tr>
-      </thead>
-      <tbody id="leaks-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
-    </table>
-  </div>
-</section>
-
-<!-- per-project -->
-<section class="card" id="projects-card">
-  <div class="card-head">
-    <span class="card-title" data-help="every repo this machine used Claude Code in, most spend first">Projects</span>
-    <span class="scope">click a row to scope everything above to that project</span>
-  </div>
-  <div class="card-body">
-    <table id="projects-table">
-      <thead>
-        <tr>
-          <th data-help="the repo Claude Code was run in; click the row to scope every card above to it">project</th>
-          <th class="r nowrap" style="width:100px" data-help="what this project's usage is worth at API prices — a proven minimum, not a bill">at least $</th>
-          <th class="r nowrap" style="width:110px" data-help="tokens' worth of cost in the window">tokens</th>
-          <th class="r nowrap" style="width:100px" data-help="share of context served from cache instead of being paid for again — higher is better">cache-hit</th>
-          <th class="r nowrap" style="width:110px" data-help="spend change compared with the 30 days before this window. This column is money, so the colours follow the bill, not a mood: red means you spent MORE than before, green means you spent less.">vs prior 30d</th>
-          <th style="width:230px" data-help="the single biggest saving found for this project">top leak</th>
-        </tr>
-      </thead>
-      <tbody id="projects-body"><tr><td colspan="6" class="empty">loading&hellip;</td></tr></tbody>
-    </table>
-  </div>
-</section>
-
-<footer>
-  <span id="foot-meta">&nbsp;</span>
-  <span class="spacer"></span>
-  <span>read-only &middot; metadata only &middot; localhost only</span>
-</footer>
-
-
-</div>
-
 <script>
 (function () {
 "use strict";
 
-var state = { scope: null, allLeaks: false, summary: null, findings: [],
-              projects: null, live: null, ephOpen: false, leakGroups: {},
-              usage: null, usagePeriod: "week" };
+/* ==== PLAN-dash-v2 6.1: renderVals()'s presentation maths, ported verbatim
+   where it is presentation (LVL/lvlOf/fillColor/inkOn/leftColor), except the
+   verdict copy (decision 6) and dry-logic when caps are unknown (6.3). ==== */
 
-// ---------- formatting ----------
-function fmtUsd(v) {
-  if (v === null || v === undefined) return "unknown";
-  if (v === 0) return "$0.00";
-  if (v < 0.01) return "<$0.01";
-  if (v < 1000) return "$" + v.toFixed(2);
-  return "$" + Math.round(v).toLocaleString("en-US");
+var LVL = ["var(--lvl-0)", "var(--lvl-1)", "var(--lvl-2)", "var(--lvl-3)", "var(--lvl-4)"];
+function lvlOf(p) {
+  if (p === null || p === undefined) return 0;
+  return p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0;
 }
-function fmtUsdRange(r) {
-  if (!r) return "unknown";
-  return fmtUsd(r[0]) + "–" + fmtUsd(r[1]);
+function fillColor(p) { return LVL[lvlOf(p)]; }
+function inkOn(p) { var l = lvlOf(p); return (l === 2 || l === 3) ? "var(--color-bg)" : "var(--color-neutral-100)"; }
+function leftColor(pctLeft) {
+  if (pctLeft === null || pctLeft === undefined) return "var(--color-neutral-500)";
+  return pctLeft <= 10 ? LVL[4] : pctLeft <= 25 ? LVL[3] : pctLeft <= 55 ? LVL[2] : LVL[1];
+}
+/* ==== PLAN-fill-and-clock: the week grid and 30-day strip score each
+   window's equiv_tokens against the WEEKLY cap (pct_of_week), not the
+   5-hour cap lvlOf above was built for. A single window is a small slice
+   of a week by nature -- on the live store the worst window of the month
+   never topped 24% -- so lvlOf's 45/75/95 edges would leave every one of
+   these cells in the lowest band forever. WEEK_LVL_EDGES were read off that
+   same live distribution: most ordinary windows sit under 6% of the week,
+   6-12% is a genuinely heavy one, 12-20% a very heavy one, and only the
+   single worst window of the month cleared 20%. Never applied to dry --
+   that stays lvlOf/_score's 5-hour-cap claim. ==== */
+var WEEK_LVL_EDGES = [6, 12, 20];
+/* windows.WEEK_DAYS (7) x two half-day cells/day -- the account-wide week
+   span the horizon strip's "THIS WEEK" marker highlights (PLAN-cap-and-chrome
+   Part 2 #4), the same span the hero and week grid already use. */
+var WEEK_HALVES = 14;
+function lvlOfWeek(p) {
+  if (p === null || p === undefined) return 0;
+  return p >= WEEK_LVL_EDGES[2] ? 4 : p >= WEEK_LVL_EDGES[1] ? 3 : p >= WEEK_LVL_EDGES[0] ? 2 : p > 0 ? 1 : 0;
+}
+function fillColorWeek(p) { return LVL[lvlOfWeek(p)]; }
+function inkOnWeek(p) { var l = lvlOfWeek(p); return (l === 2 || l === 3) ? "var(--color-bg)" : "var(--color-neutral-100)"; }
+/* LVL[4]/"ran dry" is a claim about a real 5-hour block hitting its OWN cap
+   (_score's `dry`, untouched by this rescale). A week-share cell can land in
+   the same top colour band without any block having run dry -- reusing the
+   "ran dry" label for it would assert a dryness claim the plan forbids, so
+   the week-basis legend names that band by what it actually is instead. */
+var WEEK_LVL_LEGEND = [
+  { color: LVL[1], text: "quiet" }, { color: LVL[2], text: "busy" },
+  { color: LVL[3], text: "heavy" }, { color: LVL[4], text: "heaviest of the month" }
+];
+
+function shortModel(id) {
+  if (!id) return null;
+  var s = String(id).toLowerCase();
+  if (s.indexOf("opus-4-8") >= 0) return "opus48";
+  if (s.indexOf("opus") >= 0) return "opus";
+  if (s.indexOf("fable") >= 0) return "fable";
+  if (s.indexOf("sonnet") >= 0) return "sonnet";
+  if (s.indexOf("haiku") >= 0) return "haiku";
+  return s;
+}
+var MODEL_COLOR = {
+  opus: "var(--m-opus)", fable: "var(--m-fable)", sonnet: "var(--m-sonnet)",
+  haiku: "var(--m-haiku)", opus48: "var(--m-opus48)"
+};
+function modelColor(shortName) { return MODEL_COLOR[shortName] || "var(--color-neutral-500)"; }
+
+var PX_LVL = ["var(--l0)", "var(--l1)", "var(--l2)", "var(--l3)", "var(--l4)"];
+function pxLvl(p) { return p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0; }
+function pxLeftLvl(pl) { return pl <= 10 ? 4 : pl <= 25 ? 3 : pl <= 55 ? 2 : 1; }
+function pxMeter(pct, n, on, off, cellStyle) {
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var bg = (i / n) * 100 < pct ? on : (off || "var(--l0)");
+    out.push('<div style="flex:1;height:12px;background:' + bg + (cellStyle ? ";" + cellStyle : "") + '"></div>');
+  }
+  return out.join("");
+}
+
+/* ==== formatting ==== */
+/* PLAN-dash-v2 6.4g #4: the payload carries `cwd` (a real absolute path)
+   beside the sanitized store key (`-Users-raptor-Dev-clauaid`) -- the mock
+   shows the folder's own basename as the name and a ~-abbreviated path
+   beneath it, never the raw key. */
+var _HOME_RE = /^\/(Users|home)\/[^/]+(\/.*)?$/;
+function homeAbbrev(p) {
+  if (!p) return p;
+  var m = _HOME_RE.exec(p);
+  return m ? ("~" + (m[2] || "")) : p;
+}
+function baseName(p) {
+  if (!p) return null;
+  var parts = String(p).replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || p;
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 function fmtTok(n) {
-  if (n === null || n === undefined) return "unknown";
+  if (n === null || n === undefined) return "\u2014";
   var a = Math.abs(n);
   if (a >= 1e9) return (n / 1e9).toFixed(1) + "B";
   if (a >= 1e6) return (n / 1e6).toFixed(1) + "M";
   if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";
   return String(Math.round(n));
 }
-function fmtPct(x, digits) {
-  if (x === null || x === undefined) return "unknown";
-  return (x * 100).toFixed(digits === undefined ? 0 : digits) + "%";
+function fmtPct(p, digits) {
+  if (p === null || p === undefined) return "\u2014";
+  return p.toFixed(digits === undefined ? 0 : digits) + "%";
 }
-var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-function fmtDate(iso) {
-  var p = String(iso).split("-");
-  return MONTHS[parseInt(p[1], 10) - 1] + " " + parseInt(p[2], 10);
+function fmtUsd(n) {
+  if (n === null || n === undefined) return "\u2014";
+  var neg = n < 0, a = Math.abs(n);
+  var s = a >= 1000 ? "$" + Math.round(a).toLocaleString("en-US") : "$" + a.toFixed(2);
+  return neg ? "-" + s : s;
 }
-function el(id) { return document.getElementById(id); }
-function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
-function mk(tag, cls, text) {
-  var n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text !== undefined && text !== null) n.textContent = text;
-  return n;
+/* 6.4g #5: the mock shows one short sentence, not the ~500-char structured
+   fix_text (which stays behind the Copy-fix button, where it belongs). The
+   detector's own `help` text is the closest single-sentence-ish field the
+   payload carries; capped hard in case a future detector's help text runs
+   long. */
+function oneSentence(help) {
+  if (!help) return "";
+  var s = String(help);
+  var dot = s.indexOf(". ");
+  if (dot > 0 && dot < 160) s = s.slice(0, dot + 1);
+  else if (s.length > 160) s = s.slice(0, 157) + "\u2026";
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
-var SVGNS = "http://www.w3.org/2000/svg";
-function svg(tag, attrs) {
-  var n = document.createElementNS(SVGNS, tag);
-  for (var k in attrs) if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]);
-  return n;
+/* getDay() order, shared by the clock formatter and the fuse day ticks. */
+var DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/* How close (in percent of the fuse) a day tick may come to the clock marker
+   before it is dropped: two vertical rules 4% apart read as one smudge with an
+   unattached day name floating between them. */
+var FUSE_TICK_CLEARANCE = 4;
+function fmtClock(iso) {
+  if (!iso) return null;
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  var days = DAY_NAMES;
+  var hh
+  var hh = String(d.getHours()).padStart(2, "0"), mm = String(d.getMinutes()).padStart(2, "0");
+  return days[d.getDay()] + " " + hh + ":" + mm;
 }
-
-// ---------- help badges ----------
-// ONE shared tooltip node and ONE document listener for the whole page. A badge
-// shows on hover and pins on click, so it works on a touch screen too.
-var helpTip = null, helpPinned = null;
-
-function helpNode() {
-  if (!helpTip) {
-    helpTip = mk("div", "helptip");
-    document.body.appendChild(helpTip);
-  }
-  return helpTip;
-}
-
-function hideHelp() {
-  var t = helpNode();
-  t.style.display = "none";
-}
-
-function showHelp(q) {
-  var t = helpNode();
-  // a re-render can drop the badge that was pinned; forget it rather than
-  // measuring a node that is no longer on the page
-  if (!document.body.contains(q)) { helpPinned = null; hideHelp(); return; }
-  t.textContent = q.helpText || "";
-  t.style.left = "0px";
-  t.style.top = "0px";
-  t.style.display = "block";
-  var r = q.getBoundingClientRect();
-  var tw = t.offsetWidth, th = t.offsetHeight;
-  var vw = document.documentElement.clientWidth;
-  var vh = document.documentElement.clientHeight;
-  var sx = window.pageXOffset, sy = window.pageYOffset;
-  // clamp to the viewport, flip above the badge when the space below is short
-  var left = r.left + sx;
-  if (left + tw > sx + vw - 8) left = sx + vw - tw - 8;
-  if (left < sx + 8) left = sx + 8;
-  var top = r.bottom + sy + 6;
-  if (r.bottom + 6 + th > vh && r.top - 6 - th > 0) top = r.top + sy - th - 6;
-  t.style.left = left + "px";
-  t.style.top = top + "px";
+function agoText(iso) {
+  if (!iso) return null;
+  var ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 0) return "just now";
+  var s = Math.floor(ms / 1000);
+  if (s < 60) return "just now";
+  var m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  var h = Math.floor(m / 60);
+  return h + "h ago";
 }
 
-// Appends (or updates) a "?" badge on `host`. Safe to call again with new text.
-function attachHelp(host, text) {
-  if (!host || !text) return null;
-  var q = host.qmarkNode;
-  if (!q) {
-    q = mk("span", "qmark", "?");
-    q.setAttribute("role", "button");
-    q.setAttribute("tabindex", "0");
-    q.setAttribute("aria-label", "what this means");
-    host.appendChild(q);
-    host.qmarkNode = q;
-    q.addEventListener("mouseenter", function () { if (helpPinned !== q) showHelp(q); });
-    q.addEventListener("mouseleave", function () { if (helpPinned !== q) hideHelp(); });
-    q.addEventListener("click", function (ev) {
-      // never let the badge trigger the row / card behind it
-      ev.stopPropagation();
-      ev.preventDefault();
-      if (helpPinned === q) { helpPinned = null; hideHelp(); }
-      else { helpPinned = q; showHelp(q); }
-    });
-    q.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); q.click(); }
-    });
-  }
-  q.helpText = text;
-  if (helpPinned === q) showHelp(q);
-  return q;
-}
+/* ==== state + fetch ==== */
+var state = {
+  scope: null,
+  range: "day",
+  copied: null,
+  hover: null,
+  hz: null,
+  weekHover: null,
+  windows: null, projects: null, findings: null, summary: null, usage: null, live: null, meta: null
+};
 
-function attachStaticHelp(root) {
-  var nodes = (root || document).querySelectorAll("[data-help]");
-  for (var i = 0; i < nodes.length; i++) {
-    attachHelp(nodes[i], nodes[i].getAttribute("data-help"));
-  }
-}
-
-document.addEventListener("click", function () {
-  if (helpPinned) { helpPinned = null; hideHelp(); }
-});
-window.addEventListener("scroll", function () {
-  if (helpPinned) showHelp(helpPinned);
-});
-
-// ---------- data ----------
 function get(url) {
-  return fetch(url, { headers: { "Accept": "application/json" } }).then(function (r) {
-    if (!r.ok) throw new Error(url + " -> " + r.status);
+  return fetch(url, { credentials: "same-origin" }).then(function (r) {
+    if (!r.ok) throw new Error(url + " " + r.status);
     return r.json();
   });
 }
-
-function load() {
-  var scope = state.scope;
-  var sumUrl = scope ? "/api/project/" + encodeURIComponent(scope) : "/api/summary";
-  var findUrl = "/api/findings" + (scope ? "?project=" + encodeURIComponent(scope) : "");
-  var useUrl = "/api/usage" + (scope ? "?project=" + encodeURIComponent(scope) : "");
-  get(sumUrl).then(function (d) { state.summary = d; renderSummary(); }).catch(showErr);
-  get(findUrl).then(function (d) { state.findings = d.findings || []; renderLeaks(); }).catch(showErr);
-  get(useUrl).then(function (d) { state.usage = d; renderUsage(); }).catch(function () {});
-  if (!state.projects) {
-    get("/api/projects").then(function (d) { state.projects = d; renderProjects(); }).catch(showErr);
-  } else { renderProjects(); }
-  get("/api/meta").then(function (m) {
-    el("foot-meta").textContent =
-      "ccmetrics " + m.version + " · state db " + ((m.db_bytes || 0) / 1e6).toFixed(1) +
-      " MB · " + (m.corpus_files || "?") + " session files · last ingest " +
-      (m.last_ingest || "never");
-    renderReceiver(m.otel);
-  }).catch(function () {});
+function scopedUrl(base, projectBase) {
+  if (!state.scope) return base;
+  return (projectBase || base) + (base.indexOf("?") >= 0 ? "&" : "?") + "project=" + encodeURIComponent(state.scope);
 }
 
-function showErr(e) {
-  var b = el("leaks-body");
-  clear(b);
-  var tr = mk("tr"); var td = mk("td", "empty", String(e.message || e));
-  td.setAttribute("colspan", "6"); tr.appendChild(td); b.appendChild(tr);
+/* ==== header ==== */
+function renderHeader() {
+  var host = document.getElementById("cc-header");
+  var tier = state.windows && state.windows.tier;
+  var tierLabel = tier ? tier.label : null;
+  var scopeLabel = state.scope ? state.scope : "all projects";
+  var now = new Date();
+  var hh = String(now.getHours()).padStart(2, "0"), mm = String(now.getMinutes()).padStart(2, "0");
+  host.innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;padding-bottom:14px;border-bottom:2px solid var(--line)">' +
+    '<div style="display:flex;align-items:flex-end;gap:2px;height:14px">' +
+    '<div style="width:4px;height:6px;background:var(--haiku)"></div>' +
+    '<div style="width:4px;height:10px;background:var(--sonnet)"></div>' +
+    '<div style="width:4px;height:14px;background:var(--opus)"></div>' +
+    '<div style="width:4px;height:8px;background:var(--fable)"></div>' +
+    '</div>' +
+    '<span style="letter-spacing:0.14em;text-transform:uppercase">ccmetrics</span>' +
+    '<span style="color:var(--dim)">' + (tierLabel ? esc(tierLabel.toLowerCase()) + " · " + esc(scopeLabel.toLowerCase()) : esc(scopeLabel.toLowerCase())) + '</span>' +
+    '<span style="flex:1"></span>' +
+    '<span style="color:var(--dim)">' + hh + ":" + mm + " · " + '<span id="cc-updated">updated just now</span><span style="animation:ccblink 1s steps(1,end) infinite"> _</span></span>';
 }
 
-function setScope(key) {
-  state.scope = key;
-  el("scope-label").textContent = (key ? (cwdOf(key) || key) : "all projects") + " · last 30 days";
-  el("back").style.display = key ? "" : "none";
-  el("projects-card").style.display = key ? "none" : "";
-  window.scrollTo(0, 0);
-  load();
-  pollLive();
+/* ==== caps-unknown ribbon (6.3): not dismissible, tells the user how to
+   unlock cap-relative mechanics. Absent once a cap exists. ==== */
+function renderRibbon() {
+  var host = document.getElementById("cc-ribbon");
+  var w = state.windows;
+  if (!w || w.caps_known) { host.innerHTML = ""; return; }
+  var msg = w.hook_ran
+    ? "Collecting \u2014 not enough usage yet to estimate a cap."
+    : "Caps are unknown until Claude Code\u2019s /usage panel has been opened (or the statusline hook is installed). Until then, fill and reset times show; percentages and \u201cran dry\u201d do not.";
+  host.innerHTML =
+    '<div class="cc-ribbon" style="margin-top:14px">' +
+    '<span style="width:7px;height:7px;border-radius:4px;background:var(--color-accent-500);flex:0 0 auto"></span>' +
+    '<span>' + esc(msg) + '</span>' +
+    '</div>';
 }
 
-// ---------- OTEL receiver + cost confidence (wave D) ----------
-// The server does the loopback probe of :4318 for us (a fetch from this page to
-// another port would be cross-origin, and the CSP here is connect-src 'self').
-function renderReceiver(o) {
-  var dot = el("otel-dot"), chip = el("otel-chip"), lab = el("otel-label");
-  if (!dot || !chip || !lab) return;
-  var live = !!(o && o.receiver_live);
-  dot.className = live ? "dot" : "dot off";
-  lab.textContent = live ? " exact costs: on" : " exact costs: off";
-  attachHelp(chip, live
-    ? "The exact-cost listener is running on 127.0.0.1:" + (o.port || 4318) + " — " +
-      (o.events || 0) + " cost record(s) received, " + (o.days_exact_covered || 0) +
-      " day(s) fully priced with Anthropic's own numbers."
-    : "Optional: `ccmetrics otel` runs a small local listener that records Anthropic's " +
-      "own per-request costs, upgrading every figure from 'at least' to exact. " +
-      "It is off right now.");
-}
-
-// The chip states what the numbers on this page actually are, per data:
-// exact (OTEL) when telemetry covered the window, mixed when only some days.
-function renderConfidence(s) {
-  var chip = el("confidence"), lab = el("confidence-label");
-  if (!chip || !lab) return;
-  var label = s.confidence_label || "at least this much · from session files";
-  var ex = s.exact || {};
-  lab.textContent = label;
-  chip.className = "chip" + (s.confidence === "exact" ? " exact"
-    : s.confidence === "mixed" ? " mixed" : "");
-  attachHelp(chip, s.confidence === "approximate"
-    ? "What this usage would cost at Anthropic's API prices, worked out from your session files — a proven minimum, not a bill. On a subscription your real bill is the flat fee."
-    : "exact = Anthropic's own per-request cost, on days where the listener "
-      + "covered at least " + Math.round((ex.coverage_min || 0.95) * 100) + "% of turns ("
-      + (ex.days_covered || 0) + " day(s)). Other days only show the proven minimum; "
-      + "the two are never added together.");
-}
-
-// ---------- summary + charts ----------
-function renderSummary() {
-  var d = state.summary;
-  if (!d) return;
-  var s = d.spend, t = d.tokens;
-  var head = "at least " + fmtUsd(s.floor_usd);
-  if (!s.floor_priced) head += " + unknown";
-  head += "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
-  var ex = s.exact || {};
-  if (ex.available && ex.days_covered) {
-    head = fmtUsd(ex.exact_usd) + " exact (OTEL)"
-      + (ex.mode === "mixed"
-          ? " on " + ex.days_covered + "d  ·  at least " + fmtUsd(ex.floor_usd_uncovered)
-            + " on the other " + ex.days_uncovered + "d"
-          : "  ·  without it we could only say at least " + fmtUsd(ex.floor_usd_covered)
-            + ", same days")
-      + "  ·  + est. output " + fmtUsdRange(s.est_output_usd);
+/* ==== hero: the fuse + three-limits headroom ====
+   6.3 caps-unknown: fuse fills on share-of-week-so-far instead of used_pct;
+   verdict swaps to the two defined sentences; wick/runs-out become em dash. */
+function heroFuse() {
+  var w = state.windows, hero = w.hero, capsKnown = w.caps_known;
+  var usedPct, clockPct, source;
+  var clockKnown = hero.clock_pct !== null && hero.clock_pct !== undefined;
+  if (capsKnown && hero.used_pct !== null && hero.clock_pct !== null) {
+    usedPct = hero.used_pct; clockPct = hero.clock_pct; source = "cap";
+  } else if (hero.clock_pct !== null) {
+    /* off: fill on share-of-week-so-far, not a cap-relative percentage */
+    usedPct = hero.clock_pct; clockPct = hero.clock_pct; source = "clock";
+  } else {
+    usedPct = 0; clockPct = 0; source = "none";
   }
-  renderConfidence(s);
-  el("spend-headline").textContent = head;
-  el("mix-headline").textContent =
-    fmtTok(t.billable_equiv) + " tokens' worth of input cost · cache-hit " +
-    fmtPct(t.cache_hit) + " · " + d.totals.turns.toLocaleString("en-US") + " turns · " +
-    d.totals.sessions.toLocaleString("en-US") + " sessions";
-  drawSpend(d.series);
-  drawMix(t);
+  var behind = capsKnown ? hero.behind : null;
+  /* How much of the WEEKLY CAP is left, not the clock. Percent of the cap
+     used, never percent of the week elapsed -- the clock is irrelevant to
+     whether the cap itself is nearly spent. Deliberately NOT the local
+     `usedPct` above: usedPct falls back to clockPct when no cap is known
+     (lines 378-385), so branching on it would scream "week nearly gone"
+     every time caps are unknown, cap or no cap. Both the face and the
+     verdict below gate on `capsKnown && hero.used_pct` directly instead. */
+  var pctLeft = (capsKnown && hero.used_pct !== null && hero.used_pct !== undefined)
+    ? (100 - hero.used_pct) : null;
+  /* Verdict severity scale (PLAN-cap-and-chrome Part 2 #3): three stops, not
+     two -- single-digit percentages read as urgent on their own, not folded
+     into the same mild "getting tight" wording as the teens. <=15% left is
+     worth a glance; under 10% ("single digits") is worth acting on; <=5% is
+     the strongest wording, effectively out. */
+  var nearlyGone = pctLeft !== null && pctLeft <= 5;    /* under ~5% of the cap left */
+  var singleDigits = pctLeft !== null && pctLeft < 10;  /* under 10% -- urgent, not just tight */
+  var gettingTight = pctLeft !== null && pctLeft <= 15; /* under ~15% left */
+  /* Calm -> alarmed emoji, gated the same way as the verdict below (cap
+     percent, not the clock-fallback usedPct) so a capless Sunday never
+     shows an alarmed face it hasn't earned. 5 stops read as a gradient
+     rather than a binary flip, mirrored off the same pctLeft thresholds:
+       unknown        relaxed        -- nothing to read into it yet
+       >15% left      mildly aware   -- still fine, just no longer empty
+       <=15% left     watching it    -- worth a glance, not yet urgent
+       <=10% left     stressed       -- the cap is nearly spent
+       <=5%  left     alarmed (🥵) -- effectively out; requested for the hot end */
+  var face = "😌";
+  if (pctLeft !== null) {
+    if (pctLeft <= 5) {
+      face = "🥵";
+    } else if (pctLeft <= 10) {
+      face = "😰";
+    } else if (pctLeft <= 15) {
+      face = "😐";
+    } else {
+      face = "🙂";
+    }
+  }
+  var verdict, verdictSub;
+  /* The percentage only moves when /usage is opened. Once the reading is
+     hours old the week has burned on without it, so a confident verdict off
+     that number would be a guess wearing a fact's clothes: say the age and
+     let the figures below stand as "as of then". */
+  var readAge = hero.reading_age_hours;
+  var stale = readAge !== null && readAge !== undefined && readAge >= 6;
+  /* Absolute exhaustion is checked before any clock-relative branch: being
+     "ahead of" or "behind" the clock is meaningless once the cap itself is
+     nearly spent -- 2% left is a crisis at any pace, including a slow one.
+     It still yields to `stale`: usage only ever rises inside a window, so
+     a stale 98% reading is a floor worth naming, but the reading's age is
+     the more important fact to lead with when both are true at once. */
+  if (stale) {
+    verdict = "This reading is " + Math.round(readAge) + " hours old.";
+    verdictSub = "The week kept burning since. Open /usage in Claude Code for a fresh one — everything below is as of then.";
+  } else if (!capsKnown) {
+    verdict = w.hook_ran ? "Collecting — not enough usage yet" : "Caps are unknown until Claude Code’s /usage panel has been opened.";
+    verdictSub = "Once a cap survives, the fuse, wick and runs-out time light up here with no other change.";
+  } else if (nearlyGone) {
+    verdict = "The week is almost gone.";
+    verdictSub = "Only " + pctLeft.toFixed(0) + "% of the week is left, no matter the pace.";
+  } else if (singleDigits) {
+    verdict = "Single digits left — the week is nearly spent.";
+    verdictSub = "Only " + pctLeft.toFixed(0) + "% of the week is left. Not the week to relax the pace.";
+  } else if (gettingTight) {
+    verdict = "Getting tight — most of the week is spent.";
+    verdictSub = pctLeft.toFixed(0) + "% of the week is left.";
+  } else if (behind !== null && behind > 6) {
+    verdict = "Burning faster than the week refills.";
+    verdictSub = "The flame is " + Math.round(behind) + " points ahead of the clock.";
+  } else if (behind !== null && behind > 0) {
+    verdict = "A little ahead of the clock.";
+    verdictSub = behind.toFixed(0) + " points ahead \u2014 comfortable, worth a glance.";
+  } else if (behind !== null) {
+    verdict = "Comfortably inside the week.";
+    verdictSub = "The flame is " + Math.abs(Math.round(behind)) + " points behind the clock.";
+  } else {
+    verdict = "Tracking the week.";
+    verdictSub = "No reset time on the weekly reading yet, so there is no clock to compare against.";
+  }
+  var burnt = capsKnown ? hero.burnt_equiv : null;
+  var left = capsKnown ? hero.left_equiv : null;
+  var wick = (left === null || left === undefined) ? "\u2014" : fmtTok(left);
+  var burntLine = (burnt === null || burnt === undefined)
+    ? fmtTok(null)
+    : fmtTok(burnt) + ' <span style="font-size:11px;color:var(--color-neutral-600)">' + fmtPct(usedPct) + '</span>';
+  /* 6.4g #2: runs_out_at can land after resets_at -- the week holds at the
+     current burn rate. The backend already keeps early_hours strictly
+     positive for that case (null instead), so the frontend need only pick
+     the right copy, never invent a "late" figure of its own. */
+  var runsOut, earlyBadge = "";
+  if (!capsKnown) {
+    runsOut = "\u2014";
+  } else if (hero.runs_out_at && hero.early_hours !== null && hero.early_hours !== undefined) {
+    runsOut = fmtClock(hero.runs_out_at);
+    var eh = Math.round(hero.early_hours);
+    earlyBadge = ' <span style="font-size:11px;color:var(--color-neutral-600)">' + eh + "h early</span>";
+  } else if (hero.resets_at) {
+    runsOut = "Holds";
+  } else {
+    runsOut = "\u2014";
+  }
+  var resets = hero.resets_at ? fmtClock(hero.resets_at) : "\u2014";
+  var burnPerHr = hero.burn_equiv_per_hour;
+  var burnUsd = hero.burn_usd_per_hour;
+  /* 6.4g #3: the mock's value is bare -- "of a block per hour" already says
+     the rate is hourly, so no second "/hr" suffix. */
+  var pctPerHr = capsKnown && hero.pct_of_block_per_hour !== null ? fmtPct(hero.pct_of_block_per_hour) : "\u2014";
+
+  /* The week does not start at Monday midnight -- it starts wherever the
+     reading's reset instant lands, seven days back (here: Mon 17:30 local).
+     Seven equal slots labelled Mon..Sun therefore put every day name up to a
+     day away from the stretch of bar it names, which reads as the wrong
+     weekday under the clock marker. Each tick is placed at its own local
+     midnight inside the window instead. With no reset instant there is no
+     window to divide, so the strip is left empty rather than guessed. */
+  var fuseDays = "";
+  if (hero.resets_at) {
+    var wkEnd = new Date(hero.resets_at).getTime();
+    var wkSpan = 7 * 24 * 3600 * 1000;
+    var wkStart = wkEnd - wkSpan;
+    var midnight = new Date(wkStart);
+    midnight.setHours(24, 0, 0, 0); /* first local midnight after the start */
+    var ticks = [];
+    while (midnight.getTime() < wkEnd) {
+      var at = (midnight.getTime() - wkStart) / wkSpan * 100;
+      /* The clock marker is a vertical rule too. A day tick landing a couple
+         of percent from it draws two near-identical lines with one day name
+         floating between them, and nothing says which line the name belongs
+         to. The clock wins -- it is the live fact, and it now carries the
+         accent colour so the two kinds of rule cannot be confused -- and the
+         day tick that crowds it is dropped rather than nudged, since a moved
+         tick would no longer mark its own midnight. */
+      if (!(clockKnown && Math.abs(at - clockPct) < FUSE_TICK_CLEARANCE)) {
+        ticks.push('<div style="position:absolute;left:' + at + '%;top:0;border-left:1px solid var(--color-neutral-800);padding-left:6px;font-size:10px;color:var(--color-neutral-500);line-height:12px">' + DAY_NAMES[midnight.getDay()] + "</div>");
+      }
+      midnight = new Date(midnight.getTime());
+      midnight.setDate(midnight.getDate() + 1);
+    }
+    fuseDays = ticks.join("");
+  }
+
+  var fillCss = capsKnown
+    ? "linear-gradient(90deg, #4f7a58 0 14%, #6d8551 14% 30%, #9aa04a 30% 46%, #b8933f 46% 62%, #c8873c 62% 76%, #c06a3a 76% 88%, #bd4a3a 88% 100%)"
+    : "var(--color-neutral-700)";
+
+  return '<div style="position:relative;padding:26px 30px 24px">' +
+    '<div style="position:absolute;top:0;left:0;width:3px;height:100%;background:linear-gradient(180deg,var(--color-accent),transparent)"></div>' +
+    '<div style="display:flex;align-items:center;gap:16px">' +
+    /* The face is now a single emoji, not ASCII art: the monospace font
+       and line-height:1 at 20px were tuned for the old glyph run and clip
+       an emoji's ascender. An explicit emoji font stack gives it room.
+       PLAN-cap-and-chrome Part 2 #2: the badge box (background/border) is
+       gone -- the emoji stands alone, sized up to fill roughly the space
+       the box used to occupy, so it reads at a glance instead of as a small
+       badge lost in a large frame. */
+    '<div style="font-family:\"Apple Color Emoji\",\"Segoe UI Emoji\",sans-serif;font-size:48px;line-height:1;white-space:nowrap">' + face + "</div>" +
+    "<div>" +
+    '<div style="font-family:var(--font-heading);font-size:20px;letter-spacing:-0.015em;color:var(--color-neutral-100)">' + esc(verdict) + "</div>" +
+    '<div style="margin-top:5px;font-size:13px;color:var(--color-neutral-500)">' + esc(verdictSub) + "</div>" +
+    "</div></div>" +
+    /* PLAN-cap-and-chrome Part 2 #1: the caption ("the clock is here") and
+       its arrow are gone -- the vertical rule below is the only marker now,
+       carrying its own accent colour and day-tick clearance as before. */
+    '<div class="cc-flame" style="position:relative;margin-top:64px">' +
+    '<div style="position:absolute;left:' + clockPct + '%;top:-40px;margin-left:-1px;width:2px;height:68px;background:var(--color-accent-500);z-index:6"></div>' +
+    '<div style="position:relative;height:22px;border-radius:11px;background:var(--color-neutral-900);overflow:hidden">' +
+    '<div style="position:absolute;left:0;top:0;bottom:0;width:' + usedPct + '%;background:' + fillCss + '"></div>' +
+    "</div>" +
+    '<div style="position:absolute;left:' + usedPct + '%;top:22px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">' +
+    '<div style="position:absolute;left:-11px;bottom:-8px;width:36px;height:50px;background:radial-gradient(ellipse at 50% 72%, #f07f2c 0%, transparent 66%);opacity:0.3;filter:blur(8px)"></div>' +
+    '<div style="position:absolute;left:0;bottom:0;width:14px;height:20px;transform:scale(2.6);transform-origin:bottom center">' +
+    '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;animation:ccpix 0.42s steps(1,end) infinite"></div>' +
+    '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:8px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,8px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,0px 12px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,12px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix2 0.42s steps(1,end) infinite"></div>' +
+    '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,4px 2px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,2px 6px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix3 0.42s steps(1,end) infinite"></div>' +
+    "</div>" +
+    "</div>" +
+    '<div style="position:relative;height:12px;margin-top:16px">' + fuseDays + "</div>" +
+    "</div>" +
+    '<div style="display:flex;gap:30px;margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider);flex-wrap:wrap">' +
+    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Burnt this week</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">' + burntLine + "</div></div>" +
+    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Wick left</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px;color:var(--lvl-3)">' + wick + "</div></div>" +
+    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Runs out</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">' + runsOut + earlyBadge + "</div></div>" +
+    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Resets</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">' + resets + "</div></div>" +
+    '<div style="padding-left:30px;border-left:1px solid var(--color-divider)"><div style="font-size:11px;color:var(--color-neutral-600)">Burning right now</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px;color:var(--color-accent-200);white-space:nowrap">' +
+    (burnPerHr ? fmtTok(burnPerHr) + "/hr" : "\u2014") +
+    (burnUsd !== null && burnUsd !== undefined ? ' <span style="font-size:11px;color:var(--color-neutral-600)">\u00b7 ' + fmtUsd(burnUsd) + "/hr</span>" : "") +
+    '</div><div style="margin-top:2px;font-size:11px;color:var(--color-neutral-600);white-space:nowrap">' +
+    (capsKnown ? pctPerHr + " of a block per hour" : "\u2014") + "</div></div>" +
+    "</div></div>";
 }
 
-function drawSpend(series) {
-  var host = el("chart-spend");
-  var tip = el("tip-spend");
-  var old = host.querySelector("svg");
-  if (old) host.removeChild(old);
-  var W = Math.max(320, host.clientWidth || 640), H = 210;
-  var padL = 46, padR = 12, padT = 12, padB = 22;
-  var iw = W - padL - padR, ih = H - padT - padB;
-  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
-                       "aria-label": "daily spend, at least this much, with the estimated output range, last 30 days" });
+function heroHeadroom() {
+  var w = state.windows, capsKnown = w.caps_known;
+  var rows = (w.headroom || []).map(function (hr) {
+    var dot = hr.model ? modelColor(shortModel(hr.model)) : "var(--color-neutral-500)";
+    var left = capsKnown && hr.left_pct !== null && hr.left_pct !== undefined ? fmtPct(hr.left_pct) : "\u2014";
+    var color = capsKnown ? leftColor(hr.left_pct) : "var(--color-neutral-500)";
+    var usedW = hr.used_pct !== null && hr.used_pct !== undefined ? hr.used_pct : 0;
+    var leftW = 100 - usedW;
+    var barColor = capsKnown ? color : "var(--color-neutral-700)";
+    return '<div>' +
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">' +
+      '<span style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-neutral-400)"><span style="width:6px;height:6px;border-radius:2px;background:' + dot + '"></span>' + esc(hr.short_label || hr.label) + "</span>" +
+      '<span style="font-family:var(--font-heading);font-size:18px;color:' + color + '">' + left + "</span>" +
+      "</div>" +
+      '<div style="display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--color-neutral-900)">' +
+      '<div style="width:' + usedW + '%;background:var(--color-neutral-800)"></div>' +
+      '<div style="width:' + leftW + '%;background:' + barColor + '"></div>' +
+      "</div>" +
+      '<div style="margin-top:5px;font-size:11px;color:var(--color-neutral-600)">' + esc(hr.note) + "</div>" +
+      "</div>";
+  }).join("");
+  return '<div style="padding:26px 28px 24px;border-left:1px solid var(--color-divider);background:color-mix(in srgb, var(--color-bg) 45%, transparent)">' +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">Three limits, what is left</div>' +
+    '<div style="display:flex;flex-direction:column;gap:15px;margin-top:16px">' + (rows || '<div style="font-size:12.5px;color:var(--color-neutral-600)">No usage windows reported yet.</div>') + "</div>" +
+    "</div>";
+}
 
-  var n = series.length;
-  var maxV = 0;
-  series.forEach(function (p) {
-    var f = p.floor_usd || 0;
-    maxV = Math.max(maxV, f + (p.est_hi || 0));
+function renderHero() {
+  var host = document.getElementById("cc-hero");
+  host.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 330px;gap:0;margin-top:32px;background:linear-gradient(150deg, var(--color-accent-900) 0%, var(--color-surface) 58%);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden">' +
+    heroFuse() + heroHeadroom() + "</div>";
+}
+
+/* ==== live strip ====
+   6.2: idle is /api/live returning {status: "no live session", ...} with
+   none of the tile fields -- dashes in every tile, "no session" in the label
+   slot. */
+function renderLive() {
+  var host = document.getElementById("cc-live");
+  var live = state.live;
+  var w = state.windows;
+  var cur = w && w.current_block;
+  var isLive = live && live.status === "live";
+
+  function tile(label, value, sub) {
+    return '<div style="padding:0 22px">' +
+      '<div style="font-size:11px;color:var(--color-neutral-600)">' + esc(label) + "</div>" +
+      '<div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">' + value +
+      (sub ? ' <span style="font-size:11px;color:var(--color-neutral-600)">' + sub + "</span>" : "") +
+      "</div></div>";
+  }
+  var divider = '<div style="width:1px;height:38px;background:var(--color-divider)"></div>';
+
+  var labelText, sublabel, burnRate, burnSub, quotaRate, quotaSub, blockVal, blockSub, ctxVal, ctxSub, cacheVal, sessVal;
+  if (isLive) {
+    labelText = live.project || "session";
+    sublabel = (shortModel(live.model) || "?") + " \u00b7 " + (live.turns || 0) + " turns \u00b7 " + agoText(live.last_turn_at);
+    var burn = live.burn || {};
+    burnRate = burn.equiv_tokens_per_hour ? fmtTok(burn.equiv_tokens_per_hour) + " tok/hr" : "\u2014";
+    burnSub = burn.floor_usd_per_hour !== null && burn.floor_usd_per_hour !== undefined ? "\u00b7 " + fmtUsd(burn.floor_usd_per_hour) + "/hr" : "";
+    var cap5 = w && w.caps_known ? (w.caps["session"] || w.caps["five_hour"] || {}).cap_equiv : null;
+    if (w.caps_known && cap5 && burn.equiv_tokens_per_hour) {
+      quotaRate = fmtPct(burn.equiv_tokens_per_hour / cap5 * 100) + "/hr";
+      quotaSub = cur && cur.lands_at_pct !== null ? "\u00b7 block lands at " + fmtPct(cur.lands_at_pct) : "";
+    } else { quotaRate = "\u2014"; quotaSub = ""; }
+    blockVal = cur ? fmtTok(cur.equiv_tokens) : "\u2014";
+    blockSub = cur && cap5 ? "of \u2248" + fmtTok(cap5) + " \u00b7 " + cur.turns + " turns" : (cur ? cur.turns + " turns" : "");
+    var ctx = live.context || {};
+    ctxVal = ctx.pct !== null && ctx.pct !== undefined ? fmtPct(ctx.pct) : "\u2014";
+    ctxSub = ctx.window ? "of " + fmtTok(ctx.window) : "";
+    cacheVal = live.cache_hit !== null && live.cache_hit !== undefined ? fmtPct(live.cache_hit * 100) : "\u2014";
+    sessVal = live.floor_priced && live.floor_usd !== null ? fmtUsd(live.floor_usd) : "\u2014";
+  } else {
+    labelText = "no session";
+    sublabel = (live && live.reason) ? live.reason : "";
+    burnRate = quotaRate = blockVal = ctxVal = cacheVal = sessVal = "\u2014";
+    burnSub = quotaSub = blockSub = ctxSub = "";
+  }
+
+  host.innerHTML =
+    '<div style="display:flex;align-items:center;gap:0;margin-top:14px;padding:14px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);flex-wrap:wrap">' +
+    '<div style="display:flex;align-items:center;gap:9px;padding-right:22px">' +
+    '<span class="cc-live-dot" style="width:7px;height:7px;border-radius:4px;background:' + (isLive ? "var(--color-accent)" : "var(--color-neutral-700)") + ';' + (isLive ? "animation:ccpulse 1.8s ease-in-out infinite" : "") + '"></span>' +
+    '<span style="font-family:var(--font-heading);font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-accent-300)">Live</span>' +
+    '<span style="font-size:12.5px;color:var(--color-neutral-300)">' + esc(labelText) + "</span>" +
+    '<span style="font-size:12px;color:var(--color-neutral-600)">' + esc(sublabel) + "</span>" +
+    "</div>" + divider +
+    tile("Burn rate", burnRate, burnSub) + divider +
+    tile("Same rate, in quota", quotaRate, quotaSub) + divider +
+    tile("This block", blockVal, blockSub) + divider +
+    tile("Context", ctxVal, ctxSub) + divider +
+    tile("From cache", cacheVal, "") + divider +
+    '<div style="padding:0 0 0 22px"><div style="font-size:11px;color:var(--color-neutral-600)">Session so far</div><div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">' + sessVal + "</div></div>" +
+    "</div>";
+}
+
+/* ==== 30-day horizon, 60 half-day cells (windows.horizon_cells: 2 x 30 = 60,
+   matching the mock\u2019s own actual cell count, PLAN-dash-v2 6.2). 6.3:
+   caps unknown -- fill on equiv_tokens scaled to the largest cell in range,
+   dry forced false, legend/caption swap to a no-dry-claim variant. ==== */
+function renderHorizon() {
+  var host = document.getElementById("cc-horizon");
+  var w = state.windows;
+  if (!w) { host.innerHTML = ""; return; }
+  var cells = w.horizon || [];
+  var capsKnown = w.caps_known;
+  var maxTok = 0, weekCapKnown = false;
+  cells.forEach(function (c) {
+    if (c.equiv_tokens > maxTok) maxTok = c.equiv_tokens;
+    if (c.pct_of_week !== null && c.pct_of_week !== undefined) weekCapKnown = true;
   });
-  if (maxV <= 0) maxV = 1;
-  maxV = maxV * 1.08;
-  var x = function (i) { return padL + (n <= 1 ? iw / 2 : iw * i / (n - 1)); };
-  var y = function (v) { return padT + ih - (ih * v / maxV); };
+  /* PLAN-fill-and-clock: fill here is each window's share of the WEEKLY cap
+     (pct_of_week), not the 5-hour cap -- a single window is a small slice of
+     a week by nature, so the old "is the visible range spread out enough"
+     guard (needed only because a 5-hour denominator drowned real variation
+     in one flat band) is dropped along with it. Relative shading now fires
+     only for the genuine no-cap case: caps are unknown outright, or this
+     store has no weekly cap estimate yet. The cap itself is left alone:
+     nothing here invents, clamps or stretches one. */
+  var hzRelative = !capsKnown || !weekCapKnown;
 
-  // grid + y labels
-  for (var g = 0; g <= 4; g++) {
-    var v = maxV * g / 4, yy = Math.round(y(v)) + 0.5;
-    s.appendChild(svg("line", { class: g === 0 ? "axis-line" : "grid-line",
-                                x1: padL, x2: W - padR, y1: yy, y2: yy }));
-    var lab = svg("text", { class: "axis-text", x: padL - 6, y: yy + 3, "text-anchor": "end" });
-    lab.textContent = g === 0 ? "$0" : "$" + (v >= 10 ? Math.round(v) : v.toFixed(1));
-    s.appendChild(lab);
+  var dryCount = capsKnown ? w.dry_count_month : null;
+  var hzDryLabel = capsKnown ? (dryCount || 0) + " ran dry this month" : "cap unknown \u2014 no dry count";
+
+  var sel = state.hz !== null ? cells[state.hz] : null;
+  var hzLabel = sel ? (sel.label || sel.date) : "Hover a window";
+  var hzColor = sel && !hzRelative ? fillColorWeek(sel.pct_of_week) : "var(--color-neutral-400)";
+  var hzDetail;
+  if (sel) {
+    if (!hzRelative) {
+      hzDetail = fmtPct(sel.pct_of_week) + " of the week\u2019s cap" + (sel.leader ? " \u00b7 led by " + esc(shortModel(sel.leader)) : "");
+    } else {
+      hzDetail = fmtTok(sel.equiv_tokens) + " tokens" + (sel.leader ? " \u00b7 led by " + esc(shortModel(sel.leader)) : "");
+    }
+  } else {
+    hzDetail = cells.length + " half-day windows · the last " + WEEK_HALVES + " are this week";
   }
 
-  // est-output band (floor .. floor+est_hi), drawn above the floor, never summed in
-  var top = [], bottom = [];
-  series.forEach(function (p, i) {
-    var f = p.floor_usd || 0;
-    top.push(x(i) + "," + y(f + (p.est_hi || 0)));
-    bottom.push(x(i) + "," + y(f + (p.est_lo || 0)));
-  });
-  s.appendChild(svg("polygon", { class: "band-fill",
-                                 points: top.join(" ") + " " + bottom.reverse().join(" ") }));
-  s.appendChild(svg("polyline", { class: "band-line", points: top.join(" ") }));
+  var cellsHtml = cells.map(function (c, i) {
+    var bg, op;
+    if (!hzRelative) {
+      bg = fillColorWeek(c.pct_of_week);
+    } else {
+      var frac = maxTok > 0 ? c.equiv_tokens / maxTok : 0;
+      bg = "color-mix(in srgb, var(--color-accent-500) " + Math.round(frac * 100) + "%, var(--color-neutral-900))";
+    }
+    op = (state.hz === null || state.hz === i) ? "1" : "0.55";
+    return '<div data-i="' + i + '" class="cc-hz-cell" style="flex:1;height:48px;border-radius:1px;background:' + bg + ";opacity:" + op + ';transition:opacity 100ms;cursor:default"></div>';
+  }).join("");
 
-  // floor area + line
-  var line = [];
-  series.forEach(function (p, i) { line.push(x(i) + "," + y(p.floor_usd || 0)); });
-  s.appendChild(svg("polygon", { class: "seq-fill",
-      points: x(0) + "," + y(0) + " " + line.join(" ") + " " + x(n - 1) + "," + y(0) }));
-  s.appendChild(svg("polyline", { class: "seq-line", points: line.join(" ") }));
-
-  // x labels
-  var step = Math.max(1, Math.round(n / 6));
-  for (var i = 0; i < n; i += step) {
-    var tx = svg("text", { class: "axis-text", x: x(i), y: H - 6, "text-anchor": "middle" });
-    tx.textContent = fmtDate(series[i].date);
-    s.appendChild(tx);
-  }
-
-  // crosshair
-  var cross = svg("line", { class: "cross", x1: 0, x2: 0, y1: padT, y2: padT + ih, opacity: 0 });
-  var mark = svg("circle", { class: "dot-mark", r: 3, cx: 0, cy: 0, opacity: 0 });
-  s.appendChild(cross); s.appendChild(mark);
-  var hit = svg("rect", { x: padL, y: padT, width: iw, height: ih, fill: "transparent" });
-  s.appendChild(hit);
-
-  function move(ev) {
-    var r = s.getBoundingClientRect();
-    var px = (ev.clientX - r.left) * (W / r.width);
-    var i = Math.round((px - padL) / (n <= 1 ? 1 : iw / (n - 1)));
-    i = Math.max(0, Math.min(n - 1, i));
-    var p = series[i];
-    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
-    mark.setAttribute("cx", x(i)); mark.setAttribute("cy", y(p.floor_usd || 0));
-    mark.setAttribute("opacity", 1);
-    clear(tip);
-    tip.appendChild(mk("div", "t-date", fmtDate(p.date) + " · " + p.turns + " turns"));
-    tip.appendChild(row("at least", p.floor_usd === null ? "unknown" : fmtUsd(p.floor_usd)));
-    tip.appendChild(row("est. output", fmtUsdRange([p.est_lo, p.est_hi])));
-    tip.appendChild(row("tokens", fmtTok(p.equiv)));
-    tip.appendChild(row("cache read", fmtTok(p.cread)));
-    tip.style.display = "block";
-    var hostRect = host.getBoundingClientRect();
-    var left = (x(i) / W) * hostRect.width + 12;
-    if (left + 175 > hostRect.width) left -= 195;
-    tip.style.left = Math.max(0, left) + "px";
-    tip.style.top = "8px";
-  }
-  function row(k, v) {
-    var d = mk("div", "row");
-    d.appendChild(mk("span", "muted", k));
-    d.appendChild(mk("span", "num", v));
-    return d;
-  }
-  hit.addEventListener("mousemove", move);
-  hit.addEventListener("mouseleave", function () {
-    tip.style.display = "none";
-    cross.setAttribute("opacity", 0); mark.setAttribute("opacity", 0);
-  });
-  host.appendChild(s);
-
-  clear(el("legend-spend"));
-  legendItem(el("legend-spend"), "var(--gold)", "usage worth at least (at API prices)",
-             fmtUsd(sum(series, "floor_usd")),
-             "what this usage would cost at Anthropic's API list prices — a proven minimum. " +
-             "On a subscription plan your real bill is the flat fee; this measures how much you used, not what you were billed.");
-  legendItem(el("legend-spend"), "var(--s2)", "estimated output (a range, never added in)",
-             fmtUsdRange([sum(series, "est_lo"), sum(series, "est_hi")]),
-             "the replies the model typed — the logs undercount these tokens, so their cost can only be estimated from size, " +
-             "and it is shown as its own range instead of being mixed into the minimum.");
-}
-
-function sum(rows, key) {
-  var t = 0;
-  rows.forEach(function (r) { t += (r[key] || 0); });
-  return t;
-}
-
-function drawMix(t) {
-  var host = el("chart-mix");
-  var tip = el("tip-mix");
-  var old = host.querySelector("svg");
-  if (old) host.removeChild(old);
-  var W = Math.max(320, host.clientWidth || 640), H = 58;
-  var segs = [
-    { key: "cache read", val: t.cread, cls: "f1", swatch: "var(--s1)",
-      help: "your conversation replayed from memory each turn — charged at only 10% of normal price, so high volume here is normal and cheap" },
-    { key: "cache write 5m", val: t.cw5m, cls: "f2", swatch: "var(--s2)",
-      help: "context freshly saved to the 5-minute memory — costs 1.25× normal price the moment it is saved" },
-    { key: "cache write 1h", val: t.cw1h, cls: "f3", swatch: "var(--s3)",
-      help: "context freshly saved to the 1-hour memory — costs 2× normal price the moment it is saved" },
-    { key: "output (est.)", val: (t.out_tokens_est ? (t.out_tokens_est[0] + t.out_tokens_est[1]) / 2 : 0),
-      cls: "f4", swatch: "var(--s4)",
-      help: "the replies the model typed — size estimated from bytes because the logs undercount these tokens" }
-  ];
-  var total = 0;
-  segs.forEach(function (g) { total += g.val || 0; });
-  if (total <= 0) total = 1;
-  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
-                       "aria-label": "token mix by cache class" });
-  // A 2px gap of bare surface between segments (the data-viz mark spec): the
-  // segments stay on one linear scale — the gap is taken out of the drawn
-  // width, never out of the position — but two touching hues never blend into
-  // one another, which is what the CVD floor assumes.
-  var xoff = 0, barH = 24, barY = 8, GAP = 2;
-  var lastDrawn = -1;
-  segs.forEach(function (g, i) { if ((g.val || 0) > 0) lastDrawn = i; });
-  segs.forEach(function (g, i) {
-    var w = Math.max(0, (W * (g.val || 0)) / total);
-    var drawn = i === lastDrawn ? w : Math.max(0, w - GAP);
-    var r = svg("rect", { class: g.cls, x: xoff, y: barY, width: drawn, height: barH });
-    r.addEventListener("mousemove", function (ev) {
-      var hostRect = host.getBoundingClientRect();
-      clear(tip);
-      tip.appendChild(mk("div", "t-date", g.key));
-      var d = mk("div", "row");
-      d.appendChild(mk("span", "muted", "tokens"));
-      d.appendChild(mk("span", "num", fmtTok(g.val)));
-      tip.appendChild(d);
-      var p = mk("div", "row");
-      p.appendChild(mk("span", "muted", "share"));
-      p.appendChild(mk("span", "num", ((100 * (g.val || 0)) / total).toFixed(1) + "%"));
-      tip.appendChild(p);
-      tip.style.display = "block";
-      var left = ev.clientX - hostRect.left + 10;
-      if (left + 165 > hostRect.width) left -= 185;
-      tip.style.left = Math.max(0, left) + "px";
-      tip.style.top = "2px";
-    });
-    r.addEventListener("mouseleave", function () { tip.style.display = "none"; });
-    s.appendChild(r);
-    xoff += w;
-  });
-  s.appendChild(svg("line", { class: "axis-line", x1: 0, x2: W, y1: barY + barH + 0.5,
-                              y2: barY + barH + 0.5 }));
-  host.appendChild(s);
-
-  var lg = el("legend-mix");
-  clear(lg);
-  segs.forEach(function (g) {
-    legendItem(lg, g.swatch, g.key, fmtTok(g.val) + " · " +
-               ((100 * (g.val || 0)) / total).toFixed(0) + "%", g.help);
-  });
-}
-
-function legendItem(host, color, label, value, help) {
-  var i = mk("div", "item");
-  var sw = mk("span", "swatch");
-  sw.style.background = color;
-  i.appendChild(sw);
-  var lab = mk("span", null, label);
-  i.appendChild(lab);
-  if (help) attachHelp(lab, help);
-  i.appendChild(mk("span", "val", value));
-  host.appendChild(i);
-}
-
-// ---------- usage (per period, per model, per repo) ----------
-// Every share on this card is a share of the user's OWN usage. A share of the
-// plan's limit is not computable here — that number lives on Anthropic's
-// servers and is in no local file — so it is never shown or implied.
-var PERIOD_NOW = { day: "today", week: "this week", month: "this month" };
-var PERIOD_WORD = { day: "day", week: "week", month: "month" };
-
-// Colour follows the model FAMILY, never the row's position: switching
-// day / week / month changes which models are in the table, and a colour keyed
-// on rank would repaint the rows that survived. Four families, four fixed
-// palette slots, in this order; anything else stays neutral rather than
-// inventing a fifth hue nobody validated. The model name and its share are
-// printed on every row, so the colour is never the only way to read the table.
-var MODEL_FAMILIES = ["opus", "sonnet", "haiku", "fable"];
-var MODEL_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
-
-function modelFamily(id) {
-  var s = String(id || "").toLowerCase();
-  for (var i = 0; i < MODEL_FAMILIES.length; i++) {
-    if (s.indexOf(MODEL_FAMILIES[i]) !== -1) return i;
-  }
-  return -1;
-}
-function modelColor(id) {
-  var i = modelFamily(id);
-  return i === -1 ? "var(--muted)" : MODEL_COLORS[i];
-}
-
-// "claude-haiku-4-5-20251001" -> "haiku 4.5". The full id never wraps a column
-// in half; it lives in the row's help badge instead.
-function shortModel(id) {
-  var raw = String(id || "");
-  var s = raw.toLowerCase();
-  var i = modelFamily(s);
-  if (i === -1) return raw.replace(/-\d{8}$/, "");
-  var fam = MODEL_FAMILIES[i];
-  // older ids put the version BEFORE the family ("claude-3-5-sonnet-20241022"),
-  // newer ones after it ("claude-haiku-4-5-20251001") — try the old shape first,
-  // then reject a trailing date stamp masquerading as a version number.
-  var m = s.match(new RegExp("(\\d+)(?:-(\\d+))?-" + fam));
-  if (!m) {
-    m = (s.split(fam)[1] || "").match(/^-(\d+)(?:-(\d+))?/);
-    if (m && m[1].length >= 6) m = null;
-  }
-  if (!m) return fam;
-  return fam + " " + m[1] + (m[2] ? "." + m[2] : "");
-}
-
-function shareBar(pct, color) {
-  var bar = mk("div", "sbar");
-  var fill = mk("i");
-  fill.style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
-  fill.style.background = color;
-  bar.appendChild(fill);
-  return bar;
-}
-
-function renderUsage() {
-  var d = state.usage;
-  if (!d) return;
-  var per = state.usagePeriod;
-  var segs = el("usage-seg").getElementsByTagName("button");
-  for (var i = 0; i < segs.length; i++) {
-    segs[i].className = (segs[i].getAttribute("data-period") === per ? "on" : "");
-  }
-  // Day and week can be split by model because the per-turn rows still exist
-  // for them; month cannot (those rows are aged out), and an older payload has
-  // neither — both fall back to the plain single-hue series, unchanged.
-  var stackSrc = per === "day" ? d.per_model_daily
-               : per === "week" ? d.per_model_weekly : null;
-  var stacked = (stackSrc && stackSrc.length) ? stackBuckets(stackSrc) : null;
-  var series = stacked || (d.periods && d.periods[per]) || [];
-  drawUsageSeries(series);
-  // the rhythm strip covers the same 7 days whichever period button is on, so
-  // it is drawn from the payload, not from the picker
-  drawRhythm(d.rhythm);
-  var cur = series.length ? series[series.length - 1] : null;
-  el("usage-headline").textContent = cur
-    ? PERIOD_NOW[per] + " so far: " + fmtTok(cur.equiv_tokens) + " tokens · " +
-      cur.turns.toLocaleString("en-US") + " turns"
-    : "no usage recorded";
-  el("usage-note").textContent = !series.length ? ""
-    : (stacked
-        ? "each bar is one " + PERIOD_WORD[per] + ", split by model — per-turn " +
-          "records go back 30 days, so the weekly view sees at most ~4 weeks. "
-        : "") +
-      "the last bar is " + PERIOD_NOW[per] + " so far — a part-finished " +
-      PERIOD_WORD[per] + " is drawn lighter, not a drop in usage";
-
-  // The per-turn rows carry the model name and are kept 30 days, so the split
-  // only comes in two windows. Map the picker onto them and say which one it is.
-  var key = per === "month" ? "30d" : "7d";
-  var label = (d.per_model_labels || {})[key] || key;
-  el("usage-model-title").textContent = "per model · " + label;
-  var body = el("usage-model-body");
-  clear(body);
-  // A row with no tokens at all is not a model you chose — it is Claude Code's
-  // own synthetic/internal reply. As a table row it reads "0.0% · 0" and wastes
-  // a line, so its turns are folded into one muted line under the table.
-  var models = [], foldedTurns = 0;
-  ((d.per_model || {})[key] || []).forEach(function (m) {
-    if ((m.equiv_tokens || 0) > 0) models.push(m);
-    else foldedTurns += (m.turns || 0);
-  });
-  if (!models.length) {
-    var tr = mk("tr"), td = mk("td", "empty", "no turns recorded in " + label + ".");
-    td.setAttribute("colspan", "5"); tr.appendChild(td); body.appendChild(tr);
-  }
-  models.forEach(function (m) {
-    var r = mk("tr");
-    var nameCell = mk("td", "nowrap");
-    var nameSpan = mk("span", null, shortModel(m.model));
-    nameCell.appendChild(nameSpan);
-    attachHelp(nameSpan, "full model id: " + m.model);
-    r.appendChild(nameCell);
-    r.appendChild(mk("td", "r num", fmtTok(m.equiv_tokens)));
-    r.appendChild(mk("td", "r num", m.turns.toLocaleString("en-US")));
-    r.appendChild(mk("td", "r num",
-      m.share_pct === null || m.share_pct === undefined ? "—" : m.share_pct.toFixed(1) + "%"));
-    var cell = mk("td");
-    cell.appendChild(shareBar(m.share_pct, modelColor(m.model)));
-    r.appendChild(cell);
-    body.appendChild(r);
-  });
-  el("usage-model-note").textContent = foldedTurns
-    ? "+ " + foldedTurns.toLocaleString("en-US") +
-      " turns from synthetic / internal responses (no tokens billed)"
+  /* PLAN-cap-and-chrome Part 2 #4: a "THIS WEEK" marker under the run of
+     cells belonging to the account-wide week (the same WEEK_HALVES span the
+     hero/week grid use), like the reference mock's own marker. */
+  var weekMarkerHtml = cells.length > WEEK_HALVES
+    ? '<div style="display:flex;gap:2px;margin-top:3px">' +
+        cells.map(function (c, i) {
+          var inWeek = i >= cells.length - WEEK_HALVES;
+          return '<div style="flex:1;height:2px;border-radius:1px;background:' + (inWeek ? "var(--color-accent-500)" : "transparent") + '"></div>';
+        }).join("") +
+      "</div>" +
+      '<div style="display:flex"><div style="flex:' + (cells.length - WEEK_HALVES) + '"></div><div style="flex:' + WEEK_HALVES + ';text-align:center;margin-top:3px;font-size:9.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-accent-300)">This week</div></div>'
     : "";
 
-  // "who used it" only means something across repos, so it is global-view only.
-  var block = el("usage-repo-block");
-  var share = (d.repo_share || {})[per];
-  block.style.display = (state.scope || !share) ? "none" : "";
-  if (state.scope || !share) return;
-  el("usage-repo-title").textContent = "who used it · " + PERIOD_NOW[per];
-  var host = el("usage-repos");
-  clear(host);
-  // a repo that used nothing in this period is not news — it is a 0.0% row
-  var repos = (share.rows || []).filter(function (r) { return (r.equiv_tokens || 0) > 0; });
-  if (!repos.length) {
-    host.appendChild(mk("div", "empty", "no usage in " + PERIOD_NOW[per] + "."));
-    return;
-  }
-  repos.forEach(function (r) {
-    var row = mk("div", "urow");
-    var head = mk("div", "repo-head");
-    head.appendChild(mk("span", "proj-name", r.ephemeral ? r.name : projName(r)));
-    head.appendChild(mk("span", "val num",
-      (r.share_pct === null ? "—" : r.share_pct.toFixed(1) + "%") +
-      " · " + fmtTok(r.equiv_tokens)));
-    row.appendChild(head);
-    row.appendChild(mk("div", "proj-path", r.ephemeral
-      ? r.eph_count + " throwaway temp folder(s) — grouped, not a real repo"
-      : projPath(r)));
-    // one hue for every repo: the bar's length is the share, and the repo's
-    // own name is already on the row, so a per-repo colour would only be
-    // re-encoding what the bar already says (and repos have no fixed count).
-    // It is slot 2, not slot 1: slot 1 is gold, and a column of gold bars
-    // beside the gold-barred model rows would falsely link the two blocks.
-    row.appendChild(shareBar(r.share_pct, "var(--s2)"));
-    host.appendChild(row);
-  });
-}
-
-// Round a max up to a readable tick, so the axis label is a number a person
-// would say out loud. The ladder is fine-grained on purpose: a coarse one
-// (1 / 2 / 5) can leave the tallest bar at 40% of the plot and read as a slump.
-var NICE_STEPS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
-function niceMax(v) {
-  if (!(v > 0)) return 1;
-  var e = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
-  var n = v / e;
-  for (var i = 0; i < NICE_STEPS.length; i++) {
-    if (n <= NICE_STEPS[i]) return NICE_STEPS[i] * e;
-  }
-  return 10 * e;
-}
-
-// a column with a rounded cap and a square foot on the baseline
-function colPath(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h);
-  return "M" + x + "," + (y + h) + "V" + (y + r) +
-         "a" + r + "," + r + " 0 0 1 " + r + ",-" + r +
-         "h" + (w - 2 * r) +
-         "a" + r + "," + r + " 0 0 1 " + r + "," + r +
-         "V" + (y + h) + "Z";
-}
-
-// A day/week bucket arrives already split by model. Folding its own total up
-// front lets the headline, the axis and the tooltip read one single shape,
-// whichever source the bars came from.
-function stackBuckets(buckets) {
-  return buckets.map(function (b) {
-    var models = (b.models || []).slice(), tok = 0, turns = 0;
-    models.forEach(function (m) {
-      tok += m.equiv_tokens || 0;
-      turns += m.turns || 0;
-    });
-    return { label: b.label, start: b.start, end: b.end, models: models,
-             equiv_tokens: tok, turns: turns };
-  });
-}
-
-// ONE stacking order for every bar: models ranked by their total across the
-// whole window, biggest at the bottom. Ranking each bar on its own would let a
-// colour change altitude from bar to bar, and the eye reads that as movement.
-function modelStackOrder(series) {
-  var tot = {}, names = [], any = false, own = Object.prototype.hasOwnProperty;
-  series.forEach(function (p) {
-    (p.models || []).forEach(function (m) {
-      any = true;
-      if (!own.call(tot, m.model)) { tot[m.model] = 0; names.push(m.model); }
-      tot[m.model] += m.equiv_tokens || 0;
-    });
-  });
-  if (!any) return null;
-  // ties break on the name, so one window always stacks the same way twice
-  names.sort(function (a, b) {
-    return (tot[b] - tot[a]) || (a < b ? -1 : a > b ? 1 : 0);
-  });
-  return names;
-}
-
-// this bucket's models in that order, with the ones that used nothing dropped:
-// a zero segment is not a thin sliver — it is absent.
-function stackSegments(p, order) {
-  if (!order || !p || !p.models) return null;
-  var by = {}, out = [];
-  p.models.forEach(function (m) { by[m.model] = m; });
-  order.forEach(function (name) {
-    var m = by[name];
-    if (m && (m.equiv_tokens || 0) > 0) out.push(m);
-  });
-  return out;
-}
-
-// One bar per period, oldest left, heights strictly linear against one axis.
-// A period with no usage gets no bar at all — a 1px hairline would read as
-// "a little", and none of it is true. The newest bar is the period still
-// running, so it is drawn lighter: a half-finished week is not a drop.
-function drawUsageSeries(series) {
-  var host = el("chart-usage"), tip = el("tip-usage");
-  var old = host.querySelector("svg");
-  if (old) host.removeChild(old);
-  var n = series.length;
-  if (!n) return;
-  // same left gutter as the spend chart above it, so both plots start at one x
-  var W = Math.max(320, host.clientWidth || 640), H = 108;
-  var padL = 46, padR = 12, padT = 10, padB = 20;
-  var iw = W - padL - padR, ih = H - padT - padB;
-  var peak = 0;
-  series.forEach(function (p) { peak = Math.max(peak, p.equiv_tokens || 0); });
-  var maxV = niceMax(peak);
-  var band = iw / n;
-  var bw = Math.min(24, Math.max(3, band - (n > 10 ? 4 : 8)));  // cap the mark, keep air
-  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
-                       "aria-label": "tokens' worth of usage per period" });
-
-  // hairline grid at 0 / half / full, labelled — the values no bar is labelled with
-  for (var g = 0; g <= 2; g++) {
-    var v = maxV * g / 2, yy = Math.round(padT + ih - ih * g / 2) + 0.5;
-    s.appendChild(svg("line", { class: g === 0 ? "axis-line" : "grid-line",
-                                x1: padL, x2: W - padR, y1: yy, y2: yy }));
-    var lab = svg("text", { class: "axis-text", x: padL - 6, y: yy + 3, "text-anchor": "end" });
-    lab.textContent = g === 0 ? "0" : fmtTok(v);
-    s.appendChild(lab);
-  }
-
-  var order = modelStackOrder(series);
-  var step = Math.max(1, Math.round(n / 7));
-  series.forEach(function (p, i) {
-    var bx = padL + band * i + (band - bw) / 2;
-    var val = p.equiv_tokens || 0;
-    if (val > 0) {
-      var segs = stackSegments(p, order);
-      if (segs && segs.length) {
-        // one mark per model, stacked from the baseline up — only the topmost
-        // gets the rounded cap, so the stack keeps a plain bar's silhouette
-        var grp = svg("g", {});
-        if (i === n - 1) grp.setAttribute("opacity", ".55");
-        var base = padT + ih;
-        segs.forEach(function (m, k) {
-          var sh = ih * (m.equiv_tokens || 0) / maxV;
-          var y = base - sh;
-          var node = k === segs.length - 1
-            ? svg("path", { d: colPath(bx, y, bw, sh, 4) })
-            : svg("rect", { x: bx, y: y, width: bw, height: sh });
-          node.style.fill = modelColor(m.model);
-          grp.appendChild(node);
-          base = y;
-        });
-        s.appendChild(grp);
-      } else {
-        var h = Math.max(2, ih * val / maxV);
-        var r = svg("path", { class: "f1", d: colPath(bx, padT + ih - h, bw, h, 4) });
-        if (i === n - 1) r.setAttribute("opacity", ".55");
-        s.appendChild(r);
-      }
-    }
-    if (n <= 8 || i % step === 0 || i === n - 1) {
-      var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 5,
-                             "text-anchor": "middle" });
-      tx.textContent = p.label;
-      s.appendChild(tx);
-    }
-  });
-
-  // hover targets are the whole band, full height — a 3px bar is not a target
-  series.forEach(function (p, i) {
-    var hit = svg("rect", { x: padL + band * i, y: padT, width: band, height: ih,
-                            fill: "transparent" });
-    hit.addEventListener("mousemove", function (ev) {
-      var hostRect = host.getBoundingClientRect();
-      clear(tip);
-      tip.appendChild(mk("div", "t-date",
-        p.label + (i === n - 1 ? " · so far" : "") + " · " + p.start +
-        (p.end !== p.start ? " → " + p.end : "")));
-      var a = mk("div", "row");
-      a.appendChild(mk("span", "muted", "tokens"));
-      a.appendChild(mk("span", "num", fmtTok(p.equiv_tokens)));
-      tip.appendChild(a);
-      var b = mk("div", "row");
-      b.appendChild(mk("span", "muted", "turns"));
-      b.appendChild(mk("span", "num", String(p.turns)));
-      tip.appendChild(b);
-      // the split behind the stack, in the stack's own order. Past five models
-      // the rows stop being readable, so the tail folds into one muted line.
-      var rows = stackSegments(p, order) || [];
-      var restTok = 0, restN = 0;
-      rows.slice(5).forEach(function (m) { restTok += m.equiv_tokens || 0; restN++; });
-      rows.slice(0, 5).forEach(function (m) {
-        var mr = mk("div", "row"), lab = mk("span", "muted");
-        var chip = mk("span", "swatch");
-        chip.style.display = "inline-block";
-        chip.style.marginRight = "6px";
-        chip.style.verticalAlign = "middle";
-        chip.style.background = modelColor(m.model);
-        lab.appendChild(chip);
-        lab.appendChild(document.createTextNode(shortModel(m.model)));
-        mr.appendChild(lab);
-        mr.appendChild(mk("span", "num", fmtTok(m.equiv_tokens)));
-        tip.appendChild(mr);
-      });
-      if (restN) {
-        var other = mk("div", "row");
-        other.appendChild(mk("span", "muted", "+ " + restN + " other models"));
-        other.appendChild(mk("span", "num", fmtTok(restTok)));
-        tip.appendChild(other);
-      }
-      tip.style.display = "block";
-      var left = ev.clientX - hostRect.left + 10;
-      if (left + 180 > hostRect.width) left -= 200;
-      tip.style.left = Math.max(0, left) + "px";
-      tip.style.top = "2px";
-    });
-    hit.addEventListener("mouseleave", function () { tip.style.display = "none"; });
-    s.appendChild(hit);
-  });
-  host.appendChild(s);
-}
-
-// Twenty-four columns, one per hour of THIS machine's clock, over the last 7
-// days. It is a shape, not a table: a quiet hour gets no mark at all, and the
-// numbers live in the tooltip instead of a y-axis nobody would read.
-function drawRhythm(rhythm) {
-  var host = el("chart-rhythm"), tip = el("tip-rhythm"), title = el("usage-rhythm-title");
-  if (!host) return;
-  var old = host.querySelector("svg");
-  if (old) host.removeChild(old);
-  var hours = (rhythm && rhythm.hours) || [];
-  var on = hours.length === 24;
-  host.style.display = on ? "" : "none";
-  if (title) title.style.display = on ? "" : "none";
-  if (!on) return;
-  // same gutters as the bars above, so both plots share one left edge
-  var W = Math.max(320, host.clientWidth || 640), H = 46;
-  var padL = 46, padR = 12, padT = 6, padB = 14;
-  var iw = W - padL - padR, ih = H - padT - padB;
-  var peak = 0;
-  hours.forEach(function (p) { peak = Math.max(peak, p.equiv_tokens || 0); });
-  var band = iw / 24;
-  var bw = Math.min(24, Math.max(3, band - 4));
-  var s = svg("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img",
-                       "aria-label": "usage by hour of the day, last 7 days" });
-  var base = Math.round(padT + ih) + 0.5;
-  s.appendChild(svg("line", { class: "axis-line", x1: padL, x2: W - padR,
-                              y1: base, y2: base }));
-  hours.forEach(function (p, i) {
-    var bx = padL + band * i + (band - bw) / 2;
-    var val = p.equiv_tokens || 0;
-    // the busiest hour sets the scale; a quiet one gets no mark at all
-    if (val > 0 && peak > 0) {
-      var h = Math.max(2, ih * val / peak);
-      s.appendChild(svg("path", { class: "f1", d: colPath(bx, padT + ih - h, bw, h, 3) }));
-    }
-    if (i % 6 === 0) {
-      var tx = svg("text", { class: "axis-text", x: bx + bw / 2, y: H - 3,
-                             "text-anchor": "middle" });
-      tx.textContent = (i < 10 ? "0" : "") + i;
-      s.appendChild(tx);
-    }
-  });
-  hours.forEach(function (p, i) {
-    var hit = svg("rect", { x: padL + band * i, y: padT, width: band, height: ih,
-                            fill: "transparent" });
-    hit.addEventListener("mousemove", function (ev) {
-      var hostRect = host.getBoundingClientRect();
-      var nxt = (i + 1) % 24;
-      clear(tip);
-      tip.appendChild(mk("div", "t-date",
-        (i < 10 ? "0" : "") + i + ":00–" + (nxt < 10 ? "0" : "") + nxt + ":00"));
-      var a = mk("div", "row");
-      a.appendChild(mk("span", "muted", "tokens"));
-      a.appendChild(mk("span", "num", fmtTok(p.equiv_tokens)));
-      tip.appendChild(a);
-      var b = mk("div", "row");
-      b.appendChild(mk("span", "muted", "turns"));
-      b.appendChild(mk("span", "num", String(p.turns || 0)));
-      tip.appendChild(b);
-      tip.style.display = "block";
-      // flip the tooltip to the left when it would run past the right edge
-      var left = ev.clientX - hostRect.left + 10;
-      if (left + 180 > hostRect.width) left -= 200;
-      tip.style.left = Math.max(0, left) + "px";
-      tip.style.top = "2px";
-    });
-    hit.addEventListener("mouseleave", function () { tip.style.display = "none"; });
-    s.appendChild(hit);
-  });
-  host.appendChild(s);
-}
-
-// ---------- leaks ----------
-// Global view: findings are grouped under the project they came from, biggest
-// saveable first. Scoped view: one flat list, the project is already the scope.
-function renderLeaks() {
-  var body = el("leaks-body");
-  clear(body);
-  var rows = state.allLeaks ? state.findings : state.findings.slice(0, 3);
-  el("all-leaks").textContent = state.allLeaks
-    ? "show top 3" : "show all (" + state.findings.length + ")";
-  if (!rows.length) {
-    var tr = mk("tr"), td = mk("td", "empty", "nothing worth flagging in this window.");
-    td.setAttribute("colspan", "6"); tr.appendChild(td); body.appendChild(tr);
-    return;
-  }
-  if (state.scope) {
-    rows.forEach(function (f, i) { body.appendChild(leakRow(f, i + 1)); });
-    return;
-  }
-  groupFindings(rows).forEach(function (g, gi) {
-    var open = state.leakGroups.hasOwnProperty(g.key) ? state.leakGroups[g.key] : gi === 0;
-    body.appendChild(leakGroupRow(g, open));
-    if (open) {
-      g.rows.forEach(function (r) { body.appendChild(leakRow(r.f, r.rank)); });
-    }
-  });
-}
-
-// rank stays the global ranking position, so a leak keeps its number wherever
-// its project ends up in the list.
-function groupFindings(rows) {
-  var order = [], byKey = {};
-  rows.forEach(function (f, i) {
-    var key = f.project || "";
-    var g = byKey[key];
-    if (!g) {
-      g = byKey[key] = { key: key, project: key, cwd: f.cwd,
-                         rows: [], usd: 0, priced: 0, unpriced: 0 };
-      order.push(g);
-    }
-    g.rows.push({ f: f, rank: i + 1 });
-    if (f.usd_saved === null || f.usd_saved === undefined) g.unpriced++;
-    else { g.usd += f.usd_saved; g.priced++; }
-  });
-  // most money on the table first; a group we could not price at all sinks last
-  order.sort(function (a, b) {
-    if (!!a.priced !== !!b.priced) return a.priced ? -1 : 1;
-    return b.usd - a.usd;
-  });
-  return order;
-}
-
-function leakGroupRow(g, open) {
-  var tr = mk("tr", "leak-group");
-  var td = mk("td");
-  td.setAttribute("colspan", "6");
-  var name = mk("span", "proj-name",
-    (open ? "▾ " : "▸ ") + (projName(g) || "unknown project"));
-  var n = g.rows.length;
-  var money = g.priced
-    ? fmtUsd(g.usd) + (g.unpriced ? "+" : "")
-    : "unknown";
-  name.appendChild(mk("span", "grp-sum",
-    n + " leak" + (n === 1 ? "" : "s") + " · at least " + money + " saveable"));
-  td.appendChild(name);
-  if (projPath(g)) td.appendChild(mk("span", "proj-path", projPath(g)));
-  tr.appendChild(td);
-  tr.addEventListener("click", function () {
-    state.leakGroups[g.key] = !open;
-    renderLeaks();
-  });
-  return tr;
-}
-
-function leakRow(f, rank) {
-  var tr = mk("tr");
-  tr.appendChild(mk("td", "rank num", String(rank)));
-
-  var nameCell = mk("td");
-  var nameDiv = mk("div", "leak-name", f.name);
-  nameCell.appendChild(nameDiv);
-  attachHelp(nameDiv, f.help);
-  // the group header (or the scope) owns the project, so never repeat it here
-  if (f.period) nameCell.appendChild(mk("div", "fixline", f.period));
-  if (f.fix_text) {
-    nameCell.appendChild(mk("div", "fixline",
-      f.fix_text.split("\n").slice(0, 2).join("\n")));
-  }
-  tr.appendChild(nameCell);
-
-  tr.appendChild(mk("td", "r num", "~" + fmtTok(f.tokens_saved) + " tok"));
-  tr.appendChild(mk("td", "r num", f.usd_saved === null ? "unknown" : fmtUsd(f.usd_saved)));
-
-  var eff = mk("td");
-  eff.appendChild(mk("span", "effort " + f.effort_label, f.effort_label));
-  tr.appendChild(eff);
-
-  var act = mk("td", "r");
-  var btn = mk("button", "copy", "copy");
-  btn.addEventListener("click", function (ev) {
-    ev.stopPropagation();
-    copyText(f.fix_text || "", btn);
-  });
-  act.appendChild(btn);
-  tr.appendChild(act);
-  return tr;
-}
-
-function copyText(text, btn) {
-  function done() {
-    var was = btn.textContent;
-    btn.textContent = "copied";
-    btn.classList.add("done");
-    setTimeout(function () { btn.textContent = was; btn.classList.remove("done"); }, 1400);
-  }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
-  } else { fallback(text, done); }
-}
-function fallback(text, done) {
-  var ta = document.createElement("textarea");
-  ta.value = text;
-  ta.setAttribute("readonly", "");
-  ta.style.position = "fixed"; ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand("copy"); done(); } catch (e) { /* clipboard blocked */ }
-  document.body.removeChild(ta);
-}
-
-// ---------- projects ----------
-// Prefer the real path recorded from the transcripts (r.cwd); the sanitized
-// key is a lossy fallback ('/', '-', '_' all collapse to '-').
-function projName(r) {
-  if (r.cwd) { var parts = r.cwd.split("/"); return parts[parts.length - 1] || r.cwd; }
-  var i = r.project.lastIndexOf("-");
-  return i === -1 ? r.project : r.project.slice(i + 1);
-}
-function projPath(r) {
-  return r.cwd || r.project;
-}
-function cwdOf(key) {
-  if (!state.projects) return null;
-  for (var i = 0; i < state.projects.rows.length; i++)
-    if (state.projects.rows[i].project === key) return state.projects.rows[i].cwd;
-  return null;
-}
-function renderProjects() {
-  var d = state.projects;
-  var body = el("projects-body");
-  clear(body);
-  if (!d || !d.rows.length) {
-    var tr = mk("tr"), td = mk("td", "empty", "no projects in the window.");
-    td.setAttribute("colspan", "6"); tr.appendChild(td); body.appendChild(tr);
-    return;
-  }
-  d.rows.forEach(function (r) {
-    var tr;
-    var projCell = mk("td");
-    if (r.ephemeral) {
-      // grouped row: click anywhere on it to list the individual temp folders
-      tr = mk("tr", "clickable");
-      tr.addEventListener("click", function () {
-        state.ephOpen = !state.ephOpen;
-        renderProjects();
-      });
-      var ephName = mk("span", "proj-name",
-        (state.ephOpen ? "▾ " : "▸ ") + "test & scratch runs");
-      projCell.appendChild(ephName);
-      attachHelp(ephName,
-        "Claude Code sessions that ran inside throwaway system temp folders " +
-        "(pytest scratch dirs, /tmp). The logs carry no pointer to the repo that " +
-        "created them, so they are grouped here instead of being guessed into a " +
-        "repo. Click the row to list them.");
-      projCell.appendChild(mk("span", "proj-path",
-        r.eph_count + " throwaway temp folder(s) — grouped, not a real repo"));
-    } else {
-      tr = mk("tr", "clickable");
-      tr.addEventListener("click", function () { setScope(r.project); });
-      projCell.appendChild(mk("span", "proj-name", projName(r)));
-      projCell.appendChild(mk("span", "proj-path", projPath(r)));
-    }
-    tr.appendChild(projCell);
-    tr.appendChild(mk("td", "r num", r.floor_usd === null ? "unknown" : fmtUsd(r.floor_usd)));
-    tr.appendChild(mk("td", "r num", fmtTok(r.equiv)));
-    tr.appendChild(mk("td", "r num", fmtPct(r.cache_hit)));
-    var dcell = mk("td", "r num");
-    if (r.delta_pct === null || r.delta_pct === undefined) {
-      dcell.textContent = "—";
-      dcell.className += " muted";
-    } else {
-      var up = r.delta_pct >= 0;
-      dcell.textContent = (up ? "+" : "") + r.delta_pct.toFixed(0) + "%";
-      dcell.className += up ? " delta up" : " delta down";
-    }
-    tr.appendChild(dcell);
-    var leak = mk("td");
-    if (r.top_leak) {
-      var leakName = mk("div", null, r.top_leak.name);
-      leak.appendChild(leakName);
-      attachHelp(leakName, r.top_leak.help);
-      leak.appendChild(mk("div", "fixline", "~" + fmtTok(r.top_leak.tokens_saved) + " tok saveable"));
-    } else {
-      leak.appendChild(mk("span", "muted", "—"));
-    }
-    tr.appendChild(leak);
-    body.appendChild(tr);
-    if (r.ephemeral && state.ephOpen && r.children) {
-      r.children.forEach(function (c) { body.appendChild(ephChildRow(c)); });
-    }
-  });
-}
-
-// one temp folder inside the grouped row: muted, indented, not clickable.
-// Only the figures that mean anything for a throwaway folder are filled in.
-function ephChildRow(c) {
-  var tr = mk("tr", "eph-child");
-  var cell = mk("td");
-  cell.appendChild(mk("span", "proj-name", projName(c)));
-  cell.appendChild(mk("span", "proj-path",
-    projPath(c) + " · " + (c.turns || 0) + " turns"));
-  tr.appendChild(cell);
-  tr.appendChild(mk("td", "r num", c.floor_usd === null || c.floor_usd === undefined
-    ? "unknown" : fmtUsd(c.floor_usd)));
-  tr.appendChild(mk("td", "r num", fmtTok(c.equiv)));
-  tr.appendChild(mk("td", "r muted", "—"));
-  tr.appendChild(mk("td", "r muted", "—"));
-  tr.appendChild(mk("td", "muted", "—"));
-  return tr;
-}
-
-// ---------- plan limits (statusline feed) ----------
-// Every number on this card arrived from Anthropic through Claude Code's own
-// statusline JSON. There is no fallback and no estimate: without the hook the
-// whole card stays hidden, because a plan % cannot be computed from anything
-// on this machine.
-function fmtAge(sec) {
-  if (sec === null || sec === undefined) return "unknown age";
-  if (sec < 90) return "just now";
-  if (sec < 5400) return Math.round(sec / 60) + " min ago";
-  if (sec < 172800) return Math.round(sec / 3600) + " h ago";
-  return Math.round(sec / 86400) + " d ago";
-}
-var DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-function fmtReset(iso) {
-  if (!iso) return "";
-  var d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  var hh = String(d.getHours()).padStart(2, "0");
-  var mm = String(d.getMinutes()).padStart(2, "0");
-  return DAYS[d.getDay()] + " " + hh + ":" + mm;
-}
-// A plan meter is a utilisation reading, not a verdict, so the low end stays a
-// plain series hue. Only the top of the range earns the reserved colours:
-// gold = getting close, red = nearly out.
-function planColor(pct) {
-  if (pct === null || pct === undefined) return "var(--muted)";
-  if (pct >= 90) return "var(--down)";
-  if (pct >= 75) return "var(--gold)";
-  return "var(--s2)";
-}
-
-function renderPlan(d) {
-  var card = el("plan-card"), hint = el("plan-hint");
-  if (!card) return;
-  // no snapshots yet: the card cannot honestly show anything, so it is replaced
-  // by the one line that says how to turn the feed on. It goes away by itself.
-  var ok = !!(d && d.available && d.windows && d.windows.length);
-  card.style.display = ok ? "" : "none";
-  if (hint) hint.style.display = ok ? "none" : "";
-  if (!ok) return;
-  el("plan-source").textContent = "from Claude Code's own statusline feed";
-  var host = el("plan-rows");
-  clear(host);
-  d.windows.forEach(function (w) {
-    var row = mk("div", "repo-row");
-    var head = mk("div", "repo-head");
-    var name = mk("span", "proj-name", w.label);
-    attachHelp(name, "how much of your " + w.label +
-      " plan window Anthropic says you have used" +
-      (w.resets_at ? ", and when that window starts again" : "") +
-      ". Read from Claude Code, never worked out here.");
-    head.appendChild(name);
-    head.appendChild(mk("span", "val num",
-      (w.used_pct === null || w.used_pct === undefined ? "—" : w.used_pct.toFixed(0) + "%") +
-      (w.resets_at ? " · resets " + fmtReset(w.resets_at) : "")));
-    row.appendChild(head);
-    row.appendChild(mk("div", "proj-path",
-      "read " + fmtAge(w.age_seconds) + (w.stale ? " · stale, your live figure has moved on" : "")));
-    row.appendChild(shareBar(w.used_pct, w.stale ? "var(--muted)" : planColor(w.used_pct)));
-    // Every reading the hook happened to store, replayed as-is. The scale is
-    // pinned 0–100 because a plan % has a true axis: autoscaling it would turn
-    // a three-point wobble into a cliff. One reading is not a trend, so it
-    // draws nothing at all.
-    // a reading Anthropic put no number in is not a zero, it is absent — it is
-    // left out of the line rather than drawn along the floor
-    var pts = [];
-    ((d.trend && d.trend[w.window]) || []).forEach(function (pt) {
-      if (pt.used_pct !== null && pt.used_pct !== undefined) pts.push(pt);
-    });
-    if (pts.length >= 2) {
-      // 0 bottom, 100 top, one pixel of air so a flat 0 or 100 still draws
-      var sw = 100, sh = 22, pad = 1, xs = sw / (pts.length - 1), coords = [];
-      pts.forEach(function (pt, i) {
-        var v = Math.max(0, Math.min(100, pt.used_pct));
-        coords.push((i * xs).toFixed(2) + "," +
-                    (pad + (sh - 2 * pad) * (1 - v / 100)).toFixed(2));
-      });
-      var spark = svg("svg", { viewBox: "0 0 " + sw + " " + sh, height: sh,
-                               preserveAspectRatio: "none", role: "img",
-                               "aria-label": w.label + " plan usage trend" });
-      spark.style.width = "100%";
-      spark.style.display = "block";
-      var line = svg("polyline", { points: coords.join(" "), fill: "none",
-                                   "stroke-width": "1.5", "stroke-linejoin": "round",
-                                   "stroke-linecap": "round",
-                                   "vector-effect": "non-scaling-stroke" });
-      line.style.stroke = w.stale ? "var(--muted)" : planColor(w.used_pct);
-      spark.appendChild(line);
-      row.appendChild(spark);
-      var tl = mk("div", "proj-path",
-                  "trend · last 7 days · " + pts.length + " readings");
-      attachHelp(tl, "every reading the statusline hook stored in the last 7 days, " +
-        "replayed as-is — measured by Anthropic, never computed here; points are " +
-        "snapshot-spaced, not clock-spaced");
-      row.appendChild(tl);
-    }
-    host.appendChild(row);
-  });
-}
-
-// ---------- live tiles (R7) ----------
-function setTile(id, value, sub, unknown) {
-  el(id + "-value").textContent = value;
-  el(id + "-sub").textContent = sub || " ";
-  el(id).classList.toggle("unknown", !!unknown);
-}
-
-function renderLive(d) {
-  state.live = d;
-  var dot = el("live-dot");
-  if (!d || d.status !== "live") {
-    dot.className = "dot off";
-    el("live-meta").textContent = (d && d.status) ? d.status : "no live session";
-    setTile("tile-burn", "—", "no session in the last 5 min", true);
-    setTile("tile-ctx", "—", "", true);
-    setTile("tile-cache", "—", "", true);
-    setTile("tile-spend", "—", "", true);
-    el("live-warning").style.display = "none";
-    return;
-  }
-  dot.className = "dot";
-  // the sanitized key ("-Users-me-Dev-thing") is unreadable; show the folder
-  // name from the recorded cwd, with the real path next to it.
-  var meta = el("live-meta");
-  clear(meta);
-  meta.appendChild(mk("span", "live-proj",
-    projName({ cwd: d.cwd, project: d.project || "" }) || "this session"));
-  if (d.cwd) meta.appendChild(mk("span", "live-path", d.cwd));
-  meta.appendChild(document.createTextNode(
-    " · " + (d.model || "unknown model") + " · " + d.turns +
-    " turns · last turn " + d.age_seconds + "s ago"));
-
-  var b = d.burn;
-  setTile("tile-burn",
-    b.floor_usd_per_hour !== null ? fmtUsd(b.floor_usd_per_hour) + "/hr" : fmtTok(b.equiv_tokens_per_hour) + " tok/hr",
-    fmtTok(b.equiv_tokens_per_hour) + " tok/hr · " + b.turns + " turns",
-    b.equiv_tokens_per_hour === null);
-
-  var c = d.context;
-  setTile("tile-ctx",
-    c.pct !== null && c.pct !== undefined ? c.pct.toFixed(0) + "%" : "unknown",
-    c.pct !== null && c.pct !== undefined
-      ? fmtTok(c.tokens) + " of " + fmtTok(c.window)
-      : (c.reason || ""),
-    c.pct === null || c.pct === undefined);
-
-  setTile("tile-cache", fmtPct(d.cache_hit),
-    fmtTok(d.tokens.cread) + " read · " + fmtTok(d.tokens.cw5m + d.tokens.cw1h) + " written",
-    d.cache_hit === null);
-
-  setTile("tile-spend", fmtUsd(d.floor_usd),
-    d.est_output_usd
-      ? "at least · + est. output " + fmtUsdRange(d.est_output_usd)
-      : "at least this much",
-    d.floor_usd === null);
-
-  var w = el("live-warning");
-  if (d.warning) {
-    clear(w);
-    var strong = mk("b", null, "runaway warning — ");
-    w.appendChild(strong);
-    w.appendChild(document.createTextNode(
-      "this turn cost more than almost every turn before it in this session (" +
-      fmtTok(d.warning.equiv_tokens) + " vs the usual max " +
-      fmtTok(d.warning.p90_equiv_tokens) + ", over " +
-      d.warning.preceding_turns + " earlier turns)."));
-    // the audit detail stays available, out of the headline sentence
-    w.title = "detector 11 · " + d.warning.equiv_tokens + " vs p90 " +
-      d.warning.p90_equiv_tokens + " billable-equivalent tokens (" +
-      d.warning.over_by + "×) over the " + d.warning.preceding_turns +
-      " preceding turns of this session";
-    w.style.display = "";
+  var caption;
+  if (!capsKnown) {
+    caption = "Fill here is relative to the heaviest window in range, not a cap \u2014 caps are unknown until a reading exists.";
+  } else if (hzRelative) {
+    caption = "The weekly cap is not known yet \u2014 fill here is relative to the heaviest window in range. Hover any window for its tokens.";
   } else {
-    w.style.display = "none";
+    caption = "Fill is how much of the week\u2019s cap this window alone went through. Windows at the right edge are this week, in detail at the foot of the page.";
   }
+
+  host.innerHTML =
+    '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
+    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">' +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">Every window \u00b7 ' + (w.horizon_days || 30) + ' days</div>' +
+    '<div style="font-size:12px;color:var(--color-neutral-500)">' + esc(hzDryLabel) + "</div>" +
+    "</div>" +
+    '<div style="display:flex;align-items:baseline;gap:10px;height:20px;margin-top:12px;font-size:12.5px">' +
+    '<span style="font-family:var(--font-heading);color:' + hzColor + '">' + esc(hzLabel) + "</span>" +
+    '<span style="color:var(--color-neutral-500)">' + esc(hzDetail) + "</span>" +
+    "</div>" +
+    '<div style="position:relative;display:flex;gap:2px;margin-top:6px">' + cellsHtml + "</div>" +
+    weekMarkerHtml +
+    '<div style="margin-top:16px;font-size:12.5px;color:var(--color-neutral-400);max-width:820px">' + esc(caption) + "</div>" +
+    "</div>";
+
+  Array.prototype.forEach.call(host.querySelectorAll(".cc-hz-cell"), function (el) {
+    el.addEventListener("mouseenter", function () { state.hz = parseInt(el.getAttribute("data-i"), 10); renderHorizon(); });
+    el.addEventListener("mouseleave", function () { state.hz = null; renderHorizon(); });
+  });
 }
 
-function pollLive() {
-  var url = "/api/live" + (state.scope ? "?project=" + encodeURIComponent(state.scope) : "");
-  get(url).then(renderLive).catch(function () { renderLive(null); });
-  // same cadence for the receiver dot: a receiver can be started or stopped
-  // while the page is open.
-  get("/api/meta").then(function (m) { renderReceiver(m.otel); }).catch(function () {});
-  // and for the plan card: the statusline hook writes a fresh snapshot every
-  // few seconds while a session is running, or never at all.
-  get("/api/plan").then(renderPlan).catch(function () {});
+/* ==== Recoverable ledger (6.4b: ship exactly the mock\u2019s ledger -- three
+   leak rows with a payoff bar; the waterfall/treemap/payoff-scatter
+   alternatives are DECIDED not built this pass). ==== */
+var ACTION_STYLE = {
+  paste: { border: "var(--color-accent-700)", color: "var(--color-accent-300)", text: "Paste a line" },
+  habit: { border: "var(--color-neutral-700)", color: "var(--color-neutral-400)", text: "Change a habit" },
+  restructure: { border: "var(--color-neutral-700)", color: "var(--color-neutral-400)", text: "Restructure" }
+};
+function actionFor(effortLabel) { return ACTION_STYLE[effortLabel] || ACTION_STYLE.habit; }
+
+function renderRecoverable() {
+  var host = document.getElementById("cc-recoverable");
+  var f = state.findings;
+  var w = state.windows;
+  var all = (f && f.findings) || [];
+  if (!all.length) {
+    host.innerHTML = '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);font-size:12.5px;color:var(--color-neutral-500)">No recoverable findings yet.</div>';
+    return;
+  }
+  var total = all.reduce(function (a, x) { return a + (x.tokens_saved || 0); }, 0);
+  var capsKnown = w && w.caps_known;
+  var weeklyCap = capsKnown ? ((w.caps["weekly_all"] || w.caps["seven_day"] || {}).cap_equiv) : null;
+  var windowsWord = weeklyCap ? (total / weeklyCap).toFixed(1) + " weekly windows" : "\u2014 weekly windows (cap unknown)";
+
+  var top = all.slice(0, 3);
+  /* 6.4g #5: the habit count must match what is on screen -- the mock's own
+     three rows are three distinct habits, never a total over findings the
+     page never shows. */
+  var habits = {};
+  top.forEach(function (x) { habits[x.name] = 1; });
+  var habitCount = Object.keys(habits).length;
+  var rows = top.map(function (item, i) {
+    var pct = total > 0 ? Math.round((item.tokens_saved || 0) / total * 100) : 0;
+    var act = actionFor(item.effort_label);
+    var perWindow = weeklyCap ? ((item.tokens_saved || 0) / weeklyCap).toFixed(2) + " weekly windows" : "\u2014";
+    var copyId = "cc-copy-" + i;
+    return '<div style="display:grid;grid-template-columns:1fr 152px 108px 92px;gap:20px;align-items:center;padding:18px 20px;background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-neutral-900)" class="cc-hover-leak">' +
+      "<div>" +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">' +
+      '<span style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">' + String(i + 1).padStart(2, "0") + "</span>" +
+      '<span style="font-family:var(--font-heading);font-size:17px;letter-spacing:-0.01em">' + esc(item.name) + "</span>" +
+      (item.project ? '<span style="padding:2px 7px;border-radius:3px;background:var(--color-neutral-900);font-size:10.5px;color:var(--color-neutral-400)">' + esc(baseName(item.cwd) || item.project) + "</span>" : "") +
+      "</div>" +
+      '<div style="font-size:12.5px;color:var(--color-neutral-400)">' + esc(oneSentence(item.help)) + "</div>" +
+      "</div>" +
+      "<div>" +
+      '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-size:18px;color:var(--color-accent-200)">' + fmtTok(item.tokens_saved) + '</span><span style="font-size:11px;color:var(--color-neutral-600)">' + pct + "%</span></div>" +
+      '<div style="height:3px;border-radius:2px;background:var(--color-neutral-900);margin-top:6px"><div style="width:' + pct + '%;height:3px;border-radius:2px;background:' + fillColor(pct) + '"></div></div>' +
+      '<div style="font-size:11px;color:var(--color-neutral-600);margin-top:5px">' + perWindow + "</div>" +
+      "</div>" +
+      '<div><span style="padding:3px 9px;border:1px solid ' + act.border + ';border-radius:3px;font-size:11px;color:' + act.color + '">' + act.text + "</span></div>" +
+      '<div id="' + copyId + '" data-fix="' + esc(item.fix_text || "") + '" class="cc-hover-copy" style="text-align:center;padding:8px 0;border:1px solid var(--color-neutral-700);border-radius:var(--radius-sm);font-family:var(--font-heading);font-size:12px;color:var(--color-neutral-200);cursor:pointer">Copy fix</div>' +
+      "</div>";
+  }).join("");
+
+  host.innerHTML =
+    '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
+    '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px">' +
+    "<div>" +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Recoverable</div>' +
+    '<div style="display:flex;align-items:baseline;gap:12px">' +
+    '<span style="font-family:var(--font-heading);font-weight:500;font-size:34px;letter-spacing:-0.03em;color:var(--color-accent-200)">' + fmtTok(total) + ' tokens</span>' +
+    '<span style="font-size:13px;color:var(--color-neutral-500)">' + windowsWord + ", in " + habitCount + " habit" + (habitCount === 1 ? "" : "s") + "</span>" +
+    "</div></div>" +
+    '<div style="display:flex;align-items:center;gap:14px;font-size:12px;color:var(--color-neutral-500)"><span>' + all.length + " findings</span>" +
+    '<a href="/api/findings" target="_blank" rel="noopener" class="cc-hover-seeall" style="padding:6px 12px;border:1px solid var(--color-neutral-800);border-radius:var(--radius-sm);color:var(--color-neutral-300)">See all</a>' + "</div>" +
+    "</div>" +
+    '<div style="display:flex;flex-direction:column;gap:10px">' + rows + "</div>" +
+    "</div>";
+
+  top.forEach(function (item, i) {
+    var el = document.getElementById("cc-copy-" + i);
+    if (!el) return;
+    el.addEventListener("click", function () {
+      var text = el.getAttribute("data-fix") || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function () {});
+      el.textContent = "Copied";
+      setTimeout(function () { el.textContent = "Copy fix"; }, 1600);
+    });
+  });
 }
 
-// ---------- wiring ----------
-el("back").addEventListener("click", function () { setScope(null); });
-el("all-leaks").addEventListener("click", function () {
-  state.allLeaks = !state.allLeaks;
-  renderLeaks();
-});
-el("usage-seg").addEventListener("click", function (ev) {
-  var p = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-period");
-  if (!p || p === state.usagePeriod) return;
-  state.usagePeriod = p;
-  renderUsage();
-});
-el("theme").addEventListener("click", function () {
-  var cur = document.documentElement.getAttribute("data-theme");
-  var next = cur === "dark" ? "light" : (cur === "light" ? "auto" : "dark");
-  document.documentElement.setAttribute("data-theme", next);
-  el("theme").textContent = "theme: " + next;
-  if (state.summary) renderSummary();
-});
-var rt;
-window.addEventListener("resize", function () {
-  clearTimeout(rt);
-  rt = setTimeout(function () {
-    if (state.summary) renderSummary();
-    if (state.usage) renderUsage();
-  }, 150);
-});
+/* ==== Projects: "which projects drain the window" ====
+   6.4: guard the empty-store crash (mock does projects[0] unconditionally). */
+function renderProjects() {
+  var host = document.getElementById("cc-projects");
+  var p = state.projects;
+  var rows = (p && p.rows) || [];
+  if (!rows.length) {
+    host.innerHTML = '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);font-size:12.5px;color:var(--color-neutral-500)">No projects ingested yet.</div>';
+    return;
+  }
+  var total = rows.reduce(function (a, r) { return a + (r.equiv || 0); }, 0);
+  var lead = rows[0];
+  var leadShare = total > 0 ? Math.round((lead.equiv || 0) / total * 100) : 0;
+  var fractionWord = leadShare >= 70 ? "nearly three quarters" : leadShare >= 62 ? "two thirds" : leadShare >= 45 ? "about half" : leadShare + "%";
+  var leadLabel = lead.ephemeral ? "test \u0026 scratch runs" : (lead.project || "?");
+  var projLead = rows.length > 1
+    ? esc(leadLabel) + " alone is " + fractionWord + " of the window \u2014 every other project together fits in the rest."
+    : "";
 
-document.documentElement.setAttribute("data-theme", "auto");
-attachStaticHelp();
-load();
-pollLive();
-setInterval(pollLive, 5000);
+  var rowsHtml = rows.map(function (r, i) {
+    var sharePct = total > 0 ? Math.round((r.equiv || 0) / total * 100) : 0;
+    var barPct = Math.max(2, sharePct);
+    var name = r.ephemeral ? "everything else" : (baseName(r.cwd) || r.project || "?");
+    var pathLabel = r.ephemeral ? (r.eph_count + " temp folders") : (homeAbbrev(r.cwd) || r.project || "");
+    var leak = r.top_leak;
+    var leakHtml;
+    if (leak) {
+      /* mock 6.4c: delta_pct is None for a project with no previous window
+         to compare against -- that renders as the mock\u2019s own dash, never
+         "\u25b2 None". A non-positive delta (flat or down) reads the same way:
+         the mock only ever draws an up-arrow or a dash. */
+      var deltaText, deltaColor;
+      if (r.delta_pct === null || r.delta_pct === undefined || r.delta_pct <= 0) {
+        deltaText = "\u2014"; deltaColor = "var(--color-neutral-600)";
+      } else if (r.delta_pct >= 500) {
+        // 6.4g #6: a real +12951% is not a meaningful number to a reader --
+        // the mock's own copy for this case drops the digits entirely.
+        deltaText = "\u25b2 much higher"; deltaColor = "var(--lvl-3)";
+      } else {
+        deltaText = "\u25b2 +" + Math.round(r.delta_pct) + "%"; deltaColor = "var(--lvl-3)";
+      }
+      leakHtml = '<div style="font-size:12.5px;color:var(--color-neutral-300)">' + esc(leak.name) + "</div>" +
+        '<div style="font-size:10.5px;color:' + deltaColor + '">' + fmtTok(leak.tokens_saved) + " saveable \u00b7 " + deltaText + "</div>";
+    } else {
+      leakHtml = '<div style="font-size:12.5px;color:var(--color-neutral-600)">\u2014</div>';
+    }
+    var clickable = !r.ephemeral && r.project;
+    return '<div data-project="' + esc(r.project || "") + '" class="cc-hover-projrow cc-proj-row" style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:11px 12px;border-radius:var(--radius-sm);border-bottom:1px solid var(--color-neutral-900);cursor:' + (clickable ? "pointer" : "default") + '">' +
+      '<div style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">' + String(i + 1).padStart(2, "0") + "</div>" +
+      "<div>" +
+      '<div style="font-size:13.5px;color:var(--color-neutral-200)">' + esc(name) + "</div>" +
+      '<div class="cc-mono" style="font-size:10.5px;color:var(--color-neutral-600)">' + esc(pathLabel) + "</div>" +
+      "</div>" +
+      '<div style="display:flex;align-items:center;gap:12px">' +
+      '<span style="width:34px;font-family:var(--font-heading);font-size:14px;color:' + (sharePct >= 45 ? fillColor(sharePct) : "var(--color-neutral-300)") + '">' + sharePct + "%</span>" +
+      '<span style="flex:1;height:7px;border-radius:4px;background:var(--color-neutral-900);display:block"><span style="display:block;height:7px;border-radius:4px;width:' + barPct + '%;background:' + fillColor(sharePct) + '"></span></span>' +
+      "</div>" +
+      '<div style="text-align:right;font-size:13px;color:var(--color-neutral-300)">' + fmtTok(r.equiv) + "</div>" +
+      '<div style="text-align:right;font-size:12.5px;color:var(--color-neutral-500)">' + (r.cache_hit !== null && r.cache_hit !== undefined ? fmtPct(r.cache_hit * 100) : "\u2014") + "</div>" +
+      "<div>" + leakHtml + "</div>" +
+      "</div>";
+  }).join("");
+
+  host.innerHTML =
+    '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
+    '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px;flex-wrap:wrap">' +
+    "<div>" +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:6px">Which projects drain the window</div>' +
+    '<div style="font-size:12.5px;color:var(--color-neutral-500)">' + (p.window_days || 30) + " days \u00b7 " + fmtTok(total) + " tokens. Click a row to scope the whole page to it.</div>" +
+    "</div>" +
+    '<div style="font-size:12.5px;color:var(--color-neutral-400);text-align:right;max-width:420px">' + projLead + "</div>" +
+    "</div>" +
+    '<div style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:0 12px 8px;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider)">' +
+    '<div></div><div>Project</div><div>Share of the month</div><div style="text-align:right">Tokens</div><div style="text-align:right">Cache</div><div>Biggest leak</div></div>' +
+    '<div style="display:flex;flex-direction:column">' + rowsHtml + "</div>" +
+    "</div>";
+
+  Array.prototype.forEach.call(host.querySelectorAll(".cc-proj-row"), function (el) {
+    var key = el.getAttribute("data-project");
+    if (!key) return;
+    el.addEventListener("click", function () {
+      state.scope = (state.scope === key) ? null : key;
+      boot();
+    });
+  });
+}
+
+/* ==== Value the plan absorbed (day/week/total) + What the quota counted.
+   Decision 8: money is a band -- midpoint big, [lo,hi] in the caption, "not
+   a bill" prominent. The line/area colour uses the same fillColor scale the
+   mock\u2019s own code (not its comment) applies, simplified to one colour
+   per series (its average level) rather than a per-point gradient. ==== */
+function dayValue(d) {
+  var lo = (d.floor_usd || 0) + (d.est_lo || 0);
+  var hi = (d.floor_usd || 0) + (d.est_hi || 0);
+  return { mid: (lo + hi) / 2, lo: lo, hi: hi };
+}
+
+function dollarSeries(daily) {
+  if (state.range === "week") {
+    var out = [];
+    for (var i = 0; i < daily.length; i += 6) {
+      var chunk = daily.slice(i, i + 6);
+      var mid = 0, lo = 0, hi = 0;
+      chunk.forEach(function (d) { var v = dayValue(d); mid += v.mid; lo += v.lo; hi += v.hi; });
+      var label = chunk.length > 1 ? chunk[0].date.slice(5) + "\u2013" + chunk[chunk.length - 1].date.slice(5) : chunk[0].date;
+      out.push({ label: label, v: mid, lo: lo, hi: hi, sub: chunk.length + " days" });
+    }
+    return out;
+  }
+  if (state.range === "total") {
+    var run = 0, runLo = 0, runHi = 0;
+    return daily.map(function (d) {
+      var v = dayValue(d); run += v.mid; runLo += v.lo; runHi += v.hi;
+      return { label: d.date, v: run, lo: runLo, hi: runHi, sub: "running total" };
+    });
+  }
+  return daily.map(function (d) {
+    var v = dayValue(d);
+    return { label: d.date, v: v.mid, lo: v.lo, hi: v.hi, sub: fmtTok(d.equiv || 0) + " tokens" };
+  });
+}
+
+function renderDollars() {
+  var host = document.getElementById("cc-dollars");
+  var s = state.summary;
+  if (!s) { host.innerHTML = ""; return; }
+  var daily = s.series || [];
+  var series = dollarSeries(daily);
+  var n = series.length;
+  var peak = 0;
+  series.forEach(function (x) { if (x.v > peak) peak = x.v; });
+  var step = peak > 3000 ? 1000 : peak > 900 ? 500 : 100;
+  var axisMax = Math.max(step, Math.ceil(peak / step) * step);
+  var VW = 1000, VH = 110;
+  function px(i) { return n <= 1 ? VW / 2 : (i / (n - 1)) * VW; }
+  function py(v) { return VH - (v / axisMax) * (VH - 5); }
+  var linePts = series.map(function (x, i) { return px(i).toFixed(1) + "," + py(x.v).toFixed(1); }).join(" ");
+  var areaPts = "0," + VH + " " + linePts + " " + VW + "," + VH;
+  /* mock 6.2/6.4c: per-point heat gradient, not one flat colour -- each day's
+     own stop is fillColor(that day's share of the axis). */
+  var lineStops = series.map(function (x, i) {
+    var o = (n === 1 ? 50 : (i / (n - 1)) * 100).toFixed(2) + "%";
+    return { o: o, c: fillColor(axisMax > 0 ? Math.round(x.v / axisMax * 100) : 0) };
+  });
+  var heatStops = lineStops.map(function (st) { return '<stop offset="' + st.o + '" stop-color="' + st.c + '"></stop>'; }).join("");
+  var fillStops = lineStops.map(function (st) { return '<stop offset="' + st.o + '" stop-color="' + st.c + '" stop-opacity="0.16"></stop>'; }).join("");
+  /* "spike" days: no fixed demo threshold survives real data, so a day is
+     marked when it clears 1.5x the series mean -- same spirit as the mock\u2019s
+     per-range constant, applied to whatever range is on screen. */
+  var seriesMean = n > 0 ? series.reduce(function (a, x) { return a + x.v; }, 0) / n : 0;
+  var spike = seriesMean > 0 ? seriesMean * 1.5 : Infinity;
+  var marks = series
+    .map(function (x, i) { return { x: x, i: i }; })
+    .filter(function (o) { return o.x.v >= spike; })
+    .slice(0, 6)
+    .map(function (o) {
+      return { x: px(o.i).toFixed(1), y: py(o.x.v).toFixed(1), color: fillColor(axisMax > 0 ? Math.round(o.x.v / axisMax * 100) : 0) };
+    });
+  var marksHtml = marks.map(function (m) {
+    return '<circle cx="' + m.x + '" cy="' + m.y + '" r="3" fill="var(--color-bg)" stroke="' + m.color + '" stroke-width="1.6" vector-effect="non-scaling-stroke"></circle>';
+  }).join("");
+
+  var nTicks = Math.max(1, Math.round(axisMax / step));
+  var ticksHtml = "";
+  for (var t = nTicks; t >= 0; t--) {
+    var top = (100 - (t / nTicks) * 100) + "%";
+    ticksHtml += '<div style="position:absolute;left:46px;right:0;top:' + top + ';height:1px;background:' + (t === 0 ? "var(--color-neutral-800)" : "var(--color-neutral-900)") + '"></div>';
+    ticksHtml += '<div style="position:absolute;left:0;width:38px;top:' + top + ';margin-top:-8px;text-align:right;font-size:10.5px;color:var(--color-neutral-600)">' + (t === 0 ? "$0" : fmtUsd(t * step)) + "</div>";
+  }
+  var barsAxis = series.map(function (x, i) {
+    var label = state.range === "day" ? (i % 5 === 0 ? String(i + 1) : "") : x.label;
+    return '<div data-i="' + i + '" class="cc-dollar-bar" style="flex:1;text-align:center;font-size:10px;color:var(--color-neutral-600);white-space:nowrap;cursor:default">' + esc(label) + "</div>";
+  }).join("");
+  var hv = state.hover;
+  var h = (hv !== null && series[hv]) ? series[hv] : null;
+  var readoutLabel = h ? esc(h.label) + " \u00b7 " + fmtUsd(h.v) : (state.range === "total" && n ? fmtUsd(series[n - 1].v) + " total" : "Hover a day");
+  var readoutDetail = h ? esc(h.sub) : "";
+
+  var segBtn = function (key, text) {
+    var active = state.range === key;
+    return '<div data-range="' + key + '" class="cc-range-btn" style="padding:5px 12px;border-radius:3px;font-size:11.5px;cursor:pointer;color:' +
+      (active ? "var(--color-accent-200)" : "var(--color-neutral-500)") + ";background:" + (active ? "var(--color-accent-900)" : "transparent") + '">' + text + "</div>";
+  };
+
+  var total = daily.reduce(function (a, d) { return a + dayValue(d).mid; }, 0);
+  var totalLo = daily.reduce(function (a, d) { return a + dayValue(d).lo; }, 0);
+  var totalHi = daily.reduce(function (a, d) { return a + dayValue(d).hi; }, 0);
+
+  var t = state.summary.tokens || {};
+  var billable = t.billable_equiv || 0;
+  var rawTotal = (t.cread || 0) + (t.cw5m || 0) + (t.cw1h || 0);
+  var quotaPct = rawTotal > 0 ? Math.min(100, billable / rawTotal * 100) : 0;
+
+  /* "That 3%, magnified" (mock 436-448): the quota-counted slice broken into
+     its own three components -- cache write 1h, cache write 5m, output. */
+  var magOut = t.out_tokens_est ? (t.out_tokens_est[0] + t.out_tokens_est[1]) / 2 : 0;
+  var mag1h = t.cw1h || 0, mag5m = t.cw5m || 0;
+  var magTotal = mag1h + mag5m + magOut;
+  var mag1hPct = magTotal > 0 ? mag1h / magTotal * 100 : 0;
+  var mag5mPct = magTotal > 0 ? mag5m / magTotal * 100 : 0;
+  var magOutPct = magTotal > 0 ? magOut / magTotal * 100 : 0;
+
+  /* mock 419: "the four tallest days" caption, always over daily granularity
+     regardless of the day/week/total toggle on screen. */
+  var dayVals = daily.map(function (d) { return dayValue(d).mid; }).sort(function (a, b) { return b - a; });
+  var top4Sum = dayVals.slice(0, 4).reduce(function (a, v) { return a + v; }, 0);
+  var top4Pct = total > 0 ? Math.round(top4Sum / total * 100) : 0;
+
+  host.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 300px;gap:28px;margin-top:20px;padding:24px 28px 26px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
+    "<div>" +
+    '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:18px;flex-wrap:wrap">' +
+    "<div>" +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Value the plan absorbed \u00b7 ' + (s.window_days || 30) + ' days</div>' +
+    '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">' +
+    '<span style="font-family:var(--font-heading);font-weight:500;font-size:23px;letter-spacing:-0.02em;color:var(--color-neutral-200)">' + fmtUsd(total) + "</span>" +
+    '<span style="font-size:13px;color:var(--color-neutral-500)">[' + fmtUsd(totalLo) + "\u2013" + fmtUsd(totalHi) + '] at API prices \u2014 not a bill, and not what your quota counts</span>' +
+    "</div></div>" +
+    '<div style="display:flex;gap:2px;padding:3px;background:var(--color-bg);border-radius:var(--radius-sm)">' +
+    segBtn("day", "Per day") + segBtn("week", "Per week") + segBtn("total", "Running total") +
+    "</div></div>" +
+    '<div style="display:flex;align-items:baseline;gap:10px;height:22px;margin-bottom:10px;font-size:12.5px">' +
+    '<span style="font-family:var(--font-heading);color:var(--color-neutral-200)">' + readoutLabel + "</span>" +
+    '<span style="color:var(--color-neutral-500)">' + readoutDetail + "</span></div>" +
+    '<div style="position:relative;padding-left:46px">' + ticksHtml +
+    '<div style="position:relative;height:110px">' +
+    '<svg viewBox="0 0 1000 110" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:110px;display:block;overflow:visible">' +
+    "<defs>" +
+    '<linearGradient id="ccheat" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1000" y2="0">' + heatStops + "</linearGradient>" +
+    '<linearGradient id="ccvalfill" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1000" y2="0">' + fillStops + "</linearGradient>" +
+    "</defs>" +
+    '<polygon fill="url(#ccvalfill)" points="' + areaPts + '"></polygon>' +
+    '<polyline fill="none" stroke="url(#ccheat)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="' + linePts + '"></polyline>' +
+    marksHtml +
+    "</svg>" +
+    '<div style="position:absolute;inset:0;display:flex;z-index:4">' +
+    series.map(function (x, i) { return '<div data-i="' + i + '" class="cc-dollar-hover" style="flex:1;height:100%;cursor:default"></div>'; }).join("") +
+    "</div></div>" +
+    '<div style="display:flex;margin-top:8px">' + barsAxis + "</div>" +
+    '<div style="margin-top:18px;font-size:12.5px;color:var(--color-neutral-400);max-width:620px">The four tallest days are ' + fmtUsd(top4Sum) + " \u2014 " + top4Pct + "% of the month.</div>" +
+    "</div></div>" +
+    '<div style="padding-left:28px;border-left:1px solid var(--color-divider)">' +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:14px">What the quota counted</div>' +
+    '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-weight:500;font-size:23px;letter-spacing:-0.02em;color:var(--color-neutral-200)">' + fmtPct(quotaPct) + '</span><span style="font-size:12.5px;color:var(--color-neutral-500)">of ' + fmtTok(rawTotal) + " raw tokens</span></div>" +
+    '<div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px;margin-bottom:16px">Cache reads count at a fraction of full weight, so the quota-counted share is smaller than the raw total.</div>' +
+    '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden">' +
+    '<div style="width:' + (100 - quotaPct) + '%;background:var(--lvl-1)"></div>' +
+    '<div style="width:' + quotaPct + '%;background:var(--lvl-4);border-left:1px solid var(--color-surface)"></div>' +
+    "</div>" +
+    '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10.5px;color:var(--color-neutral-600)">' +
+    '<span style="color:var(--lvl-1)">cheap from cache \u00b7 ' + fmtTok(rawTotal) + '</span><span style="color:var(--lvl-4)">quota-weighted \u00b7 ' + fmtTok(billable) + "</span></div>" +
+    '<div style="position:relative;margin-top:14px;padding:14px 14px 12px;background:var(--color-bg);border:1px solid var(--color-neutral-900);border-radius:var(--radius-md)">' +
+    '<div style="font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">That ' + fmtPct(quotaPct) + ', magnified</div>' +
+    '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="width:' + mag1hPct + '%;background:var(--lvl-4)"></div>' +
+    '<div style="width:' + mag5mPct + '%;background:var(--lvl-3);border-left:1px solid var(--color-bg)"></div>' +
+    '<div style="width:' + magOutPct + '%;background:var(--lvl-1);border-left:1px solid var(--color-bg)"></div>' +
+    "</div>" +
+    '<div style="display:flex;flex-direction:column;gap:9px">' +
+    '<div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-4)"></span><span style="flex:1;color:var(--color-neutral-400)">Cache write 1h</span><span style="color:var(--color-neutral-300)">' + fmtTok(mag1h) + "</span></div>" +
+    '<div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-3)"></span><span style="flex:1;color:var(--color-neutral-400)">Cache write 5m</span><span style="color:var(--color-neutral-300)">' + fmtTok(mag5m) + "</span></div>" +
+    '<div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-1)"></span><span style="flex:1;color:var(--color-neutral-400)">Output</span><span style="color:var(--color-neutral-300)">' + fmtTok(magOut) + "</span></div>" +
+    "</div></div>" +
+    '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:10.5px;color:var(--color-neutral-500)">' +
+    '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-1)"></span>free</span>' +
+    '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-3)"></span>costs a little</span>' +
+    '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-4)"></span>costs the most</span>' +
+    "</div>" +
+    '<div style="margin-top:12px;font-size:12px;color:var(--color-neutral-400)">Writes are the half you can shrink \u2014 and they burn the weekly window fastest.</div>' +
+    "</div></div>";
+
+  document.getElementById("cc-dollars").querySelectorAll(".cc-range-btn").forEach(function (el) {
+    el.addEventListener("click", function () { state.range = el.getAttribute("data-range"); state.hover = null; renderDollars(); });
+  });
+  document.getElementById("cc-dollars").querySelectorAll(".cc-dollar-hover, .cc-dollar-bar").forEach(function (el) {
+    el.addEventListener("mouseenter", function () { state.hover = parseInt(el.getAttribute("data-i"), 10); renderDollars(); });
+    el.addEventListener("mouseleave", function () { state.hover = null; renderDollars(); });
+  });
+}
+
+/* ==== This week\u2019s windows (7x4 grid) + Heaviest windows table ====
+   6.3: dry forced false when caps are unknown; legend/%->tokens swap. */
+function renderWeek() {
+  var host = document.getElementById("cc-week");
+  var w = state.windows;
+  if (!w) { host.innerHTML = ""; return; }
+  var capsKnown = w.caps_known;
+  var grid = w.week || [];
+  /* PLAN-fill-and-clock: this fill is scored against the WEEKLY cap
+     (pct_of_week), like the 30-day strip -- see renderHorizon. Falls back to
+     the token-relative shading only when there is genuinely no weekly cap to
+     shade against, never when it is merely small. */
+  var weekCapKnown = false;
+  grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.pct_of_week !== null && c.pct_of_week !== undefined) weekCapKnown = true; }); });
+  var useWeekCap = capsKnown && weekCapKnown;
+  var maxTok = 0;
+  if (!useWeekCap) grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; }); });
+
+  function cellHtml(c, ri, ci) {
+    if (!c) {
+      return '<div style="flex:1;position:relative;height:48px;border-radius:var(--radius-sm);background:var(--color-neutral-900);border:1px solid var(--color-neutral-900);overflow:hidden"></div>';
+    }
+    var pct = useWeekCap ? c.pct_of_week : (maxTok > 0 ? c.equiv_tokens / maxTok * 100 : 0);
+    var fill = useWeekCap ? fillColorWeek(pct) : fillColor(pct);
+    var dry = capsKnown ? c.dry : false;
+    var dot = c.leader ? modelColor(shortModel(c.leader)) : "transparent";
+    var pctText = useWeekCap ? fmtPct(c.pct_of_week) : fmtTok(c.equiv_tokens);
+    return '<div data-r="' + ri + '" data-c="' + ci + '" class="cc-week-cell" style="flex:1;position:relative;height:48px;border-radius:var(--radius-sm);background:var(--color-neutral-900);border:1px solid ' + (dry ? "var(--lvl-4)" : "transparent") + ';overflow:hidden;cursor:default">' +
+      '<div style="position:absolute;left:0;right:0;bottom:0;height:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:' + fill + '"></div>' +
+      '<div style="position:absolute;left:5px;top:5px;padding:1px 4px;border-radius:3px;background:color-mix(in srgb, var(--color-bg) 88%, transparent);font-size:10.5px;line-height:1.25;color:var(--color-neutral-300)">' + esc(c.time || "") + "</div>" +
+      '<div style="position:absolute;left:7px;bottom:6px;display:flex;align-items:center;gap:5px">' +
+      '<span style="width:6px;height:6px;border-radius:2px;background:' + dot + '"></span>' +
+      '<span style="font-size:10.5px;color:' + (useWeekCap ? inkOnWeek(pct) : inkOn(pct)) + ';white-space:nowrap">' + pctText + "</span></div></div>";
+  }
+  var rowsHtml = grid.map(function (row, ri) {
+    var cells = (row.cells || []).map(function (c, ci) { return cellHtml(c, ri, ci); }).join("");
+    var labelColor = (row.blocks || 0) > 2 ? "var(--color-neutral-300)" : "var(--color-neutral-600)";
+    return '<div style="display:flex;align-items:stretch;gap:8px"><div style="width:30px;padding-top:14px;font-size:11px;color:' + labelColor + '">' + esc(row.day) + "</div>" + cells + "</div>";
+  }).join("");
+
+  /* 6.4g #7: the same hover readout the 30-day horizon already has -- window
+     start, tokens, turns, leading model. */
+  var whCell = null;
+  if (state.weekHover) {
+    var whRow = grid[state.weekHover.r];
+    whCell = whRow ? (whRow.cells || [])[state.weekHover.c] : null;
+  }
+  var whLabel = whCell ? ((whCell.day || "") + " " + (whCell.time || "")).trim() : "Hover a window";
+  var whColor = whCell ? (useWeekCap ? fillColorWeek(whCell.pct_of_week) : "var(--color-neutral-400)") : "var(--color-neutral-400)";
+  var whDetail = whCell
+    ? (fmtTok(whCell.equiv_tokens) + " tokens \u00b7 " + (whCell.turns || 0) + " turns" +
+       (whCell.leader ? " \u00b7 led by " + esc(shortModel(whCell.leader)) : ""))
+    : "";
+
+  var led = w.led_counts || {};
+  var ledLegend = Object.keys(led).map(function (m) {
+    return '<span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:2px;background:' + modelColor(shortModel(m)) + '"></span>' + esc(shortModel(m)) + " led " + led[m] + "</span>";
+  }).join("");
+  var lvlLegend = useWeekCap
+    ? WEEK_LVL_LEGEND.map(function (l) { return '<span style="display:flex;align-items:center;gap:6px"><span style="width:13px;height:9px;border-radius:2px;background:' + l.color + '"></span>' + l.text + "</span>"; }).join("")
+    : '<span style="color:var(--color-neutral-600)">tokens shown, not fill \u2014 cap unknown</span>';
+
+  var fullCount = capsKnown ? (w.dry_count_week || 0) : null;
+  var dryHeader = capsKnown
+    ? '<span style="font-family:var(--font-heading);font-size:15px;color:var(--lvl-4)">' + fullCount + "</span> of " + (w.week_blocks || 0) + " ran dry"
+    : '<span style="color:var(--color-neutral-500)">cap unknown \u2014 no dry count</span>';
+  var fillCaption = useWeekCap
+    ? "Fill is how much of the week\u2019s cap this window alone went through; the dot is the model that led it."
+    : capsKnown
+      ? "The weekly cap is not known yet, so fill is relative to the heaviest window this week; the dot is the model that led it."
+      : "Fill is relative to the heaviest window this week (no cap yet); the dot is the model that led it.";
+
+  var heaviest = w.heaviest || [];
+  var tableRows = heaviest.map(function (h) {
+    var pct = useWeekCap ? h.pct_of_week : (maxTok > 0 ? h.equiv_tokens / maxTok * 100 : 0);
+    var dry = capsKnown && h.dry;
+    var pctText = useWeekCap ? fmtPct(h.pct_of_week) : fmtTok(h.equiv_tokens);
+    return "<tr>" +
+      '<td style="color:' + (dry ? "var(--lvl-4)" : "var(--color-neutral-200)") + '">' + esc(h.name) + "</td>" +
+      "<td>" +
+      '<div style="display:flex;align-items:center;gap:9px">' +
+      '<span style="width:34px;font-family:var(--font-heading);color:' + (dry ? "var(--lvl-4)" : "var(--color-neutral-200)") + '">' + pctText + "</span>" +
+      '<span style="flex:1;height:5px;border-radius:3px;background:var(--color-neutral-900);display:block"><span style="display:block;height:5px;border-radius:3px;width:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:' + (useWeekCap ? fillColorWeek(pct) : fillColor(pct)) + '"></span></span>' +
+      "</div></td>" +
+      '<td><span style="display:flex;align-items:center;gap:7px;color:var(--color-neutral-400)"><span style="width:6px;height:6px;border-radius:2px;background:' + (h.leader ? modelColor(shortModel(h.leader)) : "transparent") + '"></span>' + esc(h.leader ? shortModel(h.leader) : "\u2014") + "</span></td>" +
+      '<td style="text-align:right;color:var(--color-neutral-500)">' + (h.turns || 0) + "</td>" +
+      "</tr>";
+  }).join("");
+
+  host.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 520px;gap:32px;margin-top:20px;padding:26px 28px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
+    "<div>" +
+    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">' +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500)">This week\u2019s windows</div>' +
+    '<div style="font-size:12px;color:var(--color-neutral-500)">' + dryHeader + "</div></div>" +
+    '<div style="font-size:12.5px;color:var(--color-neutral-500);margin-bottom:10px">' + fillCaption + "</div>" +
+    '<div style="display:flex;align-items:baseline;gap:10px;height:20px;margin-bottom:8px;font-size:12.5px">' +
+    '<span style="font-family:var(--font-heading);color:' + whColor + '">' + esc(whLabel) + "</span>" +
+    '<span style="color:var(--color-neutral-500)">' + whDetail + "</span></div>" +
+    '<div style="display:flex;gap:8px;margin-bottom:8px;padding-left:38px">' +
+    (w.slot_labels && w.slot_labels.length ? w.slot_labels : ["morning", "afternoon", "evening", "late"]).map(function (s) { return '<div style="flex:1;font-size:10px;color:var(--color-neutral-600)">' + esc(s) + "</div>"; }).join("") +
+    "</div>" +
+    '<div style="display:flex;flex-direction:column;gap:7px">' + rowsHtml + "</div>" +
+    '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:11px;color:var(--color-neutral-500)">' + ledLegend + '<span style="flex:1"></span>' + lvlLegend + "</div>" +
+    "</div>" +
+    '<div style="padding-left:32px;border-left:1px solid var(--color-divider)">' +
+    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:14px">Heaviest windows, exactly</div>' +
+    '<table class="table" style="width:100%;font-size:12.5px"><thead><tr>' +
+    '<th style="text-align:left">Window</th><th style="text-align:left;width:140px">Used</th><th style="text-align:left">Led by</th><th style="text-align:right">Turns</th>' +
+    "</tr></thead><tbody>" + tableRows + "</tbody></table>" +
+    '<div style="margin-top:12px;font-size:11.5px;color:var(--color-neutral-600)">The ' + heaviest.length + " heaviest of this week\u2019s " + (w.week_blocks || 0) + " windows.</div>" +
+    "</div></div>";
+
+  Array.prototype.forEach.call(host.querySelectorAll(".cc-week-cell"), function (el) {
+    el.addEventListener("mouseenter", function () {
+      state.weekHover = { r: parseInt(el.getAttribute("data-r"), 10), c: parseInt(el.getAttribute("data-c"), 10) };
+      renderWeek();
+    });
+    el.addEventListener("mouseleave", function () { state.weekHover = null; renderWeek(); });
+  });
+}
+
+function renderFooter() {
+  var host = document.getElementById("cc-footer");
+  var m = state.meta;
+  if (!m) { host.innerHTML = ""; return; }
+  var w = state.windows;
+  var quotaSpan = "";
+  if (w && w.source) {
+    var srcLabel = w.source === "statusline_hook" ? "THE STATUSLINE HOOK" :
+      w.source === "usage_cache" ? "THE /USAGE CACHE" : esc(String(w.source).toUpperCase());
+    quotaSpan = "<span>QUOTA FROM " + srcLabel + "</span>";
+  } else if (w && w.setup_cmd) {
+    quotaSpan = "<span>QUOTA OFF · " + esc(w.setup_cmd) + "</span>";
+  }
+  host.innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:22px;padding-top:14px;border-top:2px solid var(--line);color:#6f695f">' +
+    '<span>READ-ONLY · NOTHING LEAVES THIS MACHINE</span>' +
+    quotaSpan +
+    '<span style="flex:1"></span>' +
+    '<span>CCMETRICS ' + esc(m.version) + " · " + esc(m.corpus_files) + " SESSION FILES · LAST INGEST " + esc(m.last_ingest ? fmtClock(m.last_ingest) : "—") + "</span>" +
+    "</div>";
+}
+
+/* ==== boot ==== */
+var _booting = false;
+function boot() {
+  if (_booting) return;
+  _booting = true;
+  var qWindows = scopedUrl("/api/windows");
+  var qSummary = state.scope ? "/api/project/" + encodeURIComponent(state.scope) : "/api/summary";
+  var qFindings = scopedUrl("/api/findings");
+  Promise.all([
+    get("/api/projects"), get(qWindows), get("/api/live" + (state.scope ? "?project=" + encodeURIComponent(state.scope) : "")),
+    get(qFindings), get(qSummary), get("/api/meta")
+  ]).then(function (r) {
+    state.projects = r[0]; state.windows = r[1]; state.live = r[2];
+    state.findings = r[3]; state.summary = r[4]; state.meta = r[5];
+    renderAll();
+    _booting = false;
+  }).catch(function (err) {
+    _booting = false;
+    var host = document.getElementById("cc-header");
+    host.innerHTML = '<div style="color:var(--color-neutral-400);font-size:13px">ccmetrics \u2014 could not reach the dash server (' + esc(err.message || err) + ")</div>";
+  });
+}
+
+function renderAll() {
+  renderHeader();
+  renderRibbon();
+  renderHero();
+  renderLive();
+  renderHorizon();
+  renderRecoverable();
+  renderProjects();
+  renderDollars();
+  renderWeek();
+  renderFooter();
+}
+
+boot();
+var POLL_MS = (state.meta && state.meta.poll_seconds ? state.meta.poll_seconds : 20) * 1000;
+setInterval(function () {
+  get("/api/live" + (state.scope ? "?project=" + encodeURIComponent(state.scope) : "")).then(function (live) {
+    state.live = live; renderLive();
+  }).catch(function () {});
+}, 20000);
+setInterval(boot, 60000);
+
 })();
 </script>
 </body>
