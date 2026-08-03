@@ -186,10 +186,6 @@ function oneSentence(help) {
 }
 /* getDay() order, shared by the clock formatter and the fuse day ticks. */
 var DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-/* How close (in percent of the fuse) a day tick may come to the clock marker
-   before it is dropped: two vertical rules 4% apart read as one smudge with an
-   unattached day name floating between them. */
-var FUSE_TICK_CLEARANCE = 4;
 function fmtClock(iso) {
   if (!iso) return null;
   var d = new Date(iso);
@@ -313,16 +309,16 @@ function heroFuse() {
        <=15% left     watching it    -- worth a glance, not yet urgent
        <=10% left     stressed       -- the cap is nearly spent
        <=5%  left     alarmed (🥵) -- effectively out; requested for the hot end */
-  var face = "😌";
+  var face = "(・_・)";
   if (pctLeft !== null) {
     if (pctLeft <= 5) {
-      face = "🥵";
+      face = "(>_<;)";
     } else if (pctLeft <= 10) {
-      face = "😰";
+      face = "(•_•;)";
     } else if (pctLeft <= 15) {
-      face = "😐";
+      face = "(•_•)";
     } else {
-      face = "🙂";
+      face = "(•‿•)";
     }
   }
   var verdict, verdictSub;
@@ -376,106 +372,100 @@ function heroFuse() {
      current burn rate. The backend already keeps early_hours strictly
      positive for that case (null instead), so the frontend need only pick
      the right copy, never invent a "late" figure of its own. */
+  var DAY_UP = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   var runsOut, earlyBadge = "";
   if (!capsKnown) {
-    runsOut = "\u2014";
+    runsOut = "—";
   } else if (hero.runs_out_at && hero.early_hours !== null && hero.early_hours !== undefined) {
-    runsOut = fmtClock(hero.runs_out_at);
+    var runsOutDate = new Date(hero.runs_out_at);
+    runsOut = DAY_UP[runsOutDate.getDay()] + " " + fmtClock(hero.runs_out_at);
     var eh = Math.round(hero.early_hours);
-    earlyBadge = ' <span style="font-size:11px;color:var(--color-neutral-600)">' + eh + "h early</span>";
+    earlyBadge = ' <span class="px-faint">' + eh + "h early</span>";
   } else if (hero.resets_at) {
     runsOut = "Holds";
   } else {
-    runsOut = "\u2014";
+    runsOut = "—";
   }
-  var resets = hero.resets_at ? fmtClock(hero.resets_at) : "\u2014";
+  var resets = hero.resets_at ? fmtClock(hero.resets_at) : "—";
   var burnPerHr = hero.burn_equiv_per_hour;
   var burnUsd = hero.burn_usd_per_hour;
-  /* 6.4g #3: the mock's value is bare -- "of a block per hour" already says
-     the rate is hourly, so no second "/hr" suffix. */
-  var pctPerHr = capsKnown && hero.pct_of_block_per_hour !== null ? fmtPct(hero.pct_of_block_per_hour) : "\u2014";
+  /* pctPerHr is no longer rendered here -- the LIVE strip owns block rate
+     now (07-pixel-hero item 7) -- but stays computed per the note. */
+  var pctPerHr = capsKnown && hero.pct_of_block_per_hour !== null ? fmtPct(hero.pct_of_block_per_hour) : "—";
 
-  /* The week does not start at Monday midnight -- it starts wherever the
-     reading's reset instant lands, seven days back (here: Mon 17:30 local).
-     Seven equal slots labelled Mon..Sun therefore put every day name up to a
-     day away from the stretch of bar it names, which reads as the wrong
-     weekday under the clock marker. Each tick is placed at its own local
-     midnight inside the window instead. With no reset instant there is no
-     window to divide, so the strip is left empty rather than guessed. */
-  var fuseDays = "";
+  /* The weekly window spans reset-minus-7-days to reset, so column i starts
+     on weekday (resetDay + i) % 7; the row's right edge is the reset
+     instant. With no reset instant there is no window to divide, so the
+     row shows a single dash rather than a guessed weekday. */
+  var fuseDayRow = "";
   if (hero.resets_at) {
-    var wkEnd = new Date(hero.resets_at).getTime();
-    var wkSpan = 7 * 24 * 3600 * 1000;
-    var wkStart = wkEnd - wkSpan;
-    var midnight = new Date(wkStart);
-    midnight.setHours(24, 0, 0, 0); /* first local midnight after the start */
-    var ticks = [];
-    while (midnight.getTime() < wkEnd) {
-      var at = (midnight.getTime() - wkStart) / wkSpan * 100;
-      /* The clock marker is a vertical rule too. A day tick landing a couple
-         of percent from it draws two near-identical lines with one day name
-         floating between them, and nothing says which line the name belongs
-         to. The clock wins -- it is the live fact, and it now carries the
-         accent colour so the two kinds of rule cannot be confused -- and the
-         day tick that crowds it is dropped rather than nudged, since a moved
-         tick would no longer mark its own midnight. */
-      if (!(clockKnown && Math.abs(at - clockPct) < FUSE_TICK_CLEARANCE)) {
-        ticks.push('<div style="position:absolute;left:' + at + '%;top:0;border-left:1px solid var(--color-neutral-800);padding-left:6px;font-size:10px;color:var(--color-neutral-500);line-height:12px">' + DAY_NAMES[midnight.getDay()] + "</div>");
-      }
-      midnight = new Date(midnight.getTime());
-      midnight.setDate(midnight.getDate() + 1);
+    var startDay = new Date(hero.resets_at).getDay();
+    var cols = [];
+    for (var di = 0; di < 7; di++) {
+      cols.push('<div style="flex:1;border-left:2px solid var(--line);padding-left:5px">' + DAY_UP[(startDay + di) % 7] + "</div>");
     }
-    fuseDays = ticks.join("");
+    fuseDayRow = cols.join("");
+  } else {
+    fuseDayRow = '<div style="flex:1;border-left:2px solid var(--line);padding-left:5px">—</div>';
   }
 
-  var fillCss = capsKnown
-    ? "linear-gradient(90deg, #4f7a58 0 14%, #6d8551 14% 30%, #9aa04a 30% 46%, #b8933f 46% 62%, #c8873c 62% 76%, #c06a3a 76% 88%, #bd4a3a 88% 100%)"
-    : "var(--color-neutral-700)";
+  /* 40 discrete cells stepping green -> red as the fill rises; caps-unknown
+     fills token-scaled neutral instead of the ramp, never the colour ramp. */
+  var fuseCells = "";
+  for (var ci = 0; ci < 40; ci++) {
+    var cellAt = (ci / 40) * 100;
+    var cellBg;
+    if (cellAt < usedPct) {
+      cellBg = source === "cap"
+        ? PX_LVL[pxLvl(Math.round((cellAt / Math.max(usedPct, 1)) * 100))]
+        : "var(--line)";
+    } else {
+      cellBg = "var(--l0)";
+    }
+    fuseCells += '<div style="flex:1;height:22px;background:' + cellBg + '"></div>';
+  }
 
-  return '<div style="position:relative;padding:26px 30px 24px">' +
-    '<div style="position:absolute;top:0;left:0;width:3px;height:100%;background:linear-gradient(180deg,var(--color-accent),transparent)"></div>' +
-    '<div style="display:flex;align-items:center;gap:16px">' +
-    /* The face is now a single emoji, not ASCII art: the monospace font
-       and line-height:1 at 20px were tuned for the old glyph run and clip
-       an emoji's ascender. An explicit emoji font stack gives it room.
-       PLAN-cap-and-chrome Part 2 #2: the badge box (background/border) is
-       gone -- the emoji stands alone, sized up to fill roughly the space
-       the box used to occupy, so it reads at a glance instead of as a small
-       badge lost in a large frame. */
-    '<div style="font-family:\"Apple Color Emoji\",\"Segoe UI Emoji\",sans-serif;font-size:48px;line-height:1;white-space:nowrap">' + face + "</div>" +
+  var clockMarker = "";
+  if (clockKnown) {
+    clockMarker =
+      '<div style="position:absolute;left:' + clockPct + '%;top:-30px;margin-left:-6px;transform:translateX(-100%);white-space:nowrap;color:var(--dim);z-index:6">clock &gt;</div>' +
+      '<div style="position:absolute;left:' + clockPct + '%;top:-22px;width:2px;height:56px;background:var(--dim);z-index:6"></div>';
+  }
+
+  /* Flame is only rendered against a known cap -- a capless page has no
+     usedPct worth animating a fuse burn at. */
+  var flame = "";
+  if (source === "cap") {
+    flame =
+      '<div style="position:absolute;left:' + usedPct + '%;top:22px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">' +
+      '<div style="position:absolute;left:0;bottom:0;width:14px;height:20px;transform:scale(2.4);transform-origin:bottom center">' +
+      '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;animation:ccpix 0.42s steps(1,end) infinite"></div>' +
+      '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:8px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,8px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,0px 12px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,12px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix2 0.42s steps(1,end) infinite"></div>' +
+      '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,4px 2px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,2px 6px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix3 0.42s steps(1,end) infinite"></div>' +
+      "</div>" +
+      "</div>";
+  }
+
+  return '<div class="px-panel">' +
+    '<div style="display:flex;align-items:center;gap:14px">' +
+    '<div style="border:2px solid var(--line);padding:8px 12px;font-size:17px;color:#f4c7ad">' + face + "</div>" +
     "<div>" +
-    '<div style="font-family:var(--font-heading);font-size:20px;letter-spacing:-0.015em;color:var(--color-neutral-100)">' + esc(verdict) + "</div>" +
-    '<div style="margin-top:5px;font-size:13px;color:var(--color-neutral-500)">' + esc(verdictSub) + "</div>" +
+    '<div style="font-size:15px;letter-spacing:0.02em;text-transform:uppercase">' + esc(verdict) + "</div>" +
+    '<div style="margin-top:4px;color:var(--dim)">' + esc(verdictSub) + "</div>" +
     "</div></div>" +
-    /* PLAN-cap-and-chrome Part 2 #1: the caption ("the clock is here") and
-       its arrow are gone -- the vertical rule below is the only marker now,
-       carrying its own accent colour and day-tick clearance as before. */
-    '<div class="cc-flame" style="position:relative;margin-top:64px">' +
-    '<div style="position:absolute;left:' + clockPct + '%;top:-40px;margin-left:-1px;width:2px;height:68px;background:var(--color-accent-500);z-index:6"></div>' +
-    '<div style="position:relative;height:22px;border-radius:11px;background:var(--color-neutral-900);overflow:hidden">' +
-    '<div style="position:absolute;left:0;top:0;bottom:0;width:' + usedPct + '%;background:' + fillCss + '"></div>' +
+    '<div style="position:relative;margin-top:44px">' +
+    clockMarker +
+    '<div style="display:flex;gap:2px;height:22px">' + fuseCells + "</div>" +
+    flame +
+    '<div style="display:flex;margin-top:12px;color:var(--dim)">' + fuseDayRow + "</div>" +
     "</div>" +
-    '<div style="position:absolute;left:' + usedPct + '%;top:22px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">' +
-    '<div style="position:absolute;left:-11px;bottom:-8px;width:36px;height:50px;background:radial-gradient(ellipse at 50% 72%, #f07f2c 0%, transparent 66%);opacity:0.3;filter:blur(8px)"></div>' +
-    '<div style="position:absolute;left:0;bottom:0;width:14px;height:20px;transform:scale(2.6);transform-origin:bottom center">' +
-    '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;animation:ccpix 0.42s steps(1,end) infinite"></div>' +
-    '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:8px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,8px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,0px 12px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,12px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix2 0.42s steps(1,end) infinite"></div>' +
-    '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,4px 2px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,2px 6px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix3 0.42s steps(1,end) infinite"></div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:14px 26px;margin-top:22px;padding-top:14px;border-top:2px solid var(--line)">' +
+    '<div><div style="color:var(--dim)">BURNT</div><div style="font-size:15px;margin-top:3px">' + (burnt === null || burnt === undefined ? "—" : fmtTok(burnt) + " / " + fmtPct(usedPct)) + "</div></div>" +
+    '<div><div style="color:var(--dim)">LEFT</div><div style="font-size:15px;margin-top:3px' + (pctLeft !== null ? ";color:" + PX_LVL[pxLeftLvl(pctLeft)] : "") + '">' + wick + "</div></div>" +
+    '<div><div style="color:var(--dim)">EMPTY AT</div><div style="font-size:15px;margin-top:3px">' + runsOut + earlyBadge + "</div></div>" +
+    '<div><div style="color:var(--dim)">RATE</div><div style="font-size:15px;margin-top:3px;color:#f4c7ad">' + (burnPerHr ? fmtTok(burnPerHr) : "—") + "/hr · " + (burnUsd !== null && burnUsd !== undefined ? fmtUsd(burnUsd) : "—") + "/hr</div></div>" +
     "</div>" +
-    "</div>" +
-    '<div style="position:relative;height:12px;margin-top:16px">' + fuseDays + "</div>" +
-    "</div>" +
-    '<div style="display:flex;gap:30px;margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider);flex-wrap:wrap">' +
-    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Burnt this week</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">' + burntLine + "</div></div>" +
-    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Wick left</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px;color:var(--lvl-3)">' + wick + "</div></div>" +
-    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Runs out</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">' + runsOut + earlyBadge + "</div></div>" +
-    '<div><div style="font-size:11px;color:var(--color-neutral-600)">Resets</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px">' + resets + "</div></div>" +
-    '<div style="padding-left:30px;border-left:1px solid var(--color-divider)"><div style="font-size:11px;color:var(--color-neutral-600)">Burning right now</div><div style="font-family:var(--font-heading);font-size:18px;margin-top:3px;color:var(--color-accent-200);white-space:nowrap">' +
-    (burnPerHr ? fmtTok(burnPerHr) + "/hr" : "\u2014") +
-    (burnUsd !== null && burnUsd !== undefined ? ' <span style="font-size:11px;color:var(--color-neutral-600)">\u00b7 ' + fmtUsd(burnUsd) + "/hr</span>" : "") +
-    '</div><div style="margin-top:2px;font-size:11px;color:var(--color-neutral-600);white-space:nowrap">' +
-    (capsKnown ? pctPerHr + " of a block per hour" : "\u2014") + "</div></div>" +
-    "</div></div>";
+    "</div>";
 }
 
 function heroHeadroom() {
@@ -508,7 +498,7 @@ function heroHeadroom() {
 function renderHero() {
   var host = document.getElementById("cc-hero");
   host.innerHTML =
-    '<div style="display:grid;grid-template-columns:1fr 330px;gap:0;margin-top:32px;background:linear-gradient(150deg, var(--color-accent-900) 0%, var(--color-surface) 58%);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden">' +
+    '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,300px);gap:20px;margin-top:20px">' +
     heroFuse() + heroHeadroom() + "</div>";
 }
 

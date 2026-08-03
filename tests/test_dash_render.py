@@ -120,11 +120,11 @@ def test_hero_verdict_single_digits_left_reads_as_urgent(page_text):
     assert "The week is almost gone." in page_text  # unchanged, still the strongest
 
 
-def test_hero_face_is_an_emoji_scale_including_the_hot_end(page_text):
-    """The ASCII-art face became a calm -> alarmed emoji scale; 🥵 is the
+def test_hero_face_is_an_ascii_scale_including_the_hot_end(page_text):
+    """The emoji face became a calm -> alarmed ASCII register; "(>_<;)" is the
     explicitly requested hot-end glyph."""
-    assert "🥵" in page_text
-    assert "😌" in page_text
+    assert "(>_<;)" in page_text
+    assert "(・_・)" in page_text
 
 
 def test_punch_list_2_strings_present(page_text):
@@ -153,7 +153,9 @@ def test_punch_list_3_correctness_and_strings(page_text):
     early_hours tests instead)."""
     # item 3: no duplicated unit -- the old bug concatenated "/hr" onto the
     # value AND the label already said "per hour"
-    assert 'pctPerHr + " of a block per hour"' in page_text
+    # 07-pixel-hero: the LIVE strip owns block rate now, so the RATE stat
+    # drops this line entirely (its own tests pin the new home later).
+    assert "of a block per hour" not in page_text
     assert 'fmtPct(hero.pct_of_block_per_hour) + "/hr"' not in page_text
     assert "Holds" in page_text  # runs_out_at after resets_at: the week holds
 
@@ -243,25 +245,24 @@ def test_week_lvl_edges_are_rescaled_for_a_share_of_the_week(page_text):
     assert lvl_of_week(23.07) == 4
 
 
-def test_fuse_clock_rule_is_accent_coloured_and_crowded_day_ticks_are_dropped(page_text):
-    """Two neutral hairlines a few percent apart with one day name between them
-    is unreadable, so the clock rule takes the accent colour (a different kind
-    of thing) and any midnight tick that crowds it is not drawn. The rule
-    alone is the marker now (PLAN-cap-and-chrome Part 2 #1) -- no caption."""
-    assert "var FUSE_TICK_CLEARANCE = 4;" in page_text
-    assert "Math.abs(at - clockPct) < FUSE_TICK_CLEARANCE" in page_text
-    assert "background:var(--color-accent-500);z-index:6" in page_text
-    assert "background:var(--color-neutral-600);z-index:6" not in page_text
+def test_fuse_day_row_derives_from_resets_at_and_tick_clearance_is_gone(page_text):
+    """The old midnight-tick day strip (and its FUSE_TICK_CLEARANCE crowding
+    guard) is replaced by 7 equal columns keyed off the reset instant; the
+    clock rule is its own dim marker now, with no accent-coloured hairline
+    left to crowd (pixel redesign supersedes PLAN-cap-and-chrome Part 2 #1)."""
+    assert "(startDay + di) % 7" in page_text
+    assert "FUSE_TICK_CLEARANCE" not in page_text
+    assert "background:var(--dim);z-index:6" in page_text
 
 
 def test_clock_caption_is_gone_rule_alone_marks_it(page_text):
     """PLAN-cap-and-chrome Part 2 #1: the "the clock is here" caption and its
-    arrow are removed entirely -- the vertical rule (still accent-coloured,
-    still keeping its day-tick clearance) is the only marker left."""
+    arrow are removed entirely -- the vertical rule (now a dim marker, per
+    the pixel redesign) is the only marker left."""
     assert "the clock is here →" not in page_text
     assert "← the clock is here" not in page_text
     assert "clockCaptionText" not in page_text
     assert "clockCaptionCss" not in page_text
     assert "clockCaptionRight" not in page_text
-    # the rule itself is untouched: still there, still accent-coloured
-    assert "background:var(--color-accent-500);z-index:6" in page_text
+    # the rule itself is untouched in spirit: still there, now dim-coloured
+    assert "background:var(--dim);z-index:6" in page_text
