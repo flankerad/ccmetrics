@@ -200,9 +200,7 @@ function agoText(iso) {
 /* ==== state + fetch ==== */
 var state = {
   scope: null,
-  range: "day",
   copied: null,
-  hover: null,
   windows: null, projects: null, findings: null, summary: null, usage: null, live: null, meta: null
 };
 
@@ -515,56 +513,42 @@ function renderLive() {
   var w = state.windows;
   var cur = w && w.current_block;
   var isLive = live && live.status === "live";
+  var capsKnown = w && w.caps_known;
+  var cap5 = capsKnown ? (w.caps["session"] || w.caps["five_hour"] || {}).cap_equiv : null;
+  var hero = (w && w.hero) || {};
 
-  function tile(label, value, sub) {
-    return '<div style="padding:0 22px">' +
-      '<div style="font-size:11px;color:var(--color-neutral-600)">' + esc(label) + "</div>" +
-      '<div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">' + value +
-      (sub ? ' <span style="font-size:11px;color:var(--color-neutral-600)">' + sub + "</span>" : "") +
-      "</div></div>";
-  }
-  var divider = '<div style="width:1px;height:38px;background:var(--color-divider)"></div>';
+  var dot = '<span style="width:8px;height:8px;background:' + (isLive ? "var(--clay)" : "var(--line)") + ';' + (isLive ? "animation:ccblink 1.4s steps(1,end) infinite" : "") + '"></span>';
+  var label = isLive
+    ? 'LIVE<span style="color:var(--dim)">' + esc(live.project || "session") + " · " + esc(shortModel(live.model) || "?") + " · " + (live.turns || 0) + " turns · " + esc(agoText(live.last_turn_at)) + "</span>"
+    : 'LIVE<span style="color:var(--dim)">no session' + (live && live.reason ? " · " + esc(live.reason) : "") + "</span>";
 
-  var labelText, sublabel, burnRate, burnSub, quotaRate, quotaSub, blockVal, blockSub, ctxVal, ctxSub, cacheVal, sessVal;
-  if (isLive) {
-    labelText = live.project || "session";
-    sublabel = (shortModel(live.model) || "?") + " \u00b7 " + (live.turns || 0) + " turns \u00b7 " + agoText(live.last_turn_at);
-    var burn = live.burn || {};
-    burnRate = burn.equiv_tokens_per_hour ? fmtTok(burn.equiv_tokens_per_hour) + " tok/hr" : "\u2014";
-    burnSub = burn.floor_usd_per_hour !== null && burn.floor_usd_per_hour !== undefined ? "\u00b7 " + fmtUsd(burn.floor_usd_per_hour) + "/hr" : "";
-    var cap5 = w && w.caps_known ? (w.caps["session"] || w.caps["five_hour"] || {}).cap_equiv : null;
-    if (w.caps_known && cap5 && burn.equiv_tokens_per_hour) {
-      quotaRate = fmtPct(burn.equiv_tokens_per_hour / cap5 * 100) + "/hr";
-      quotaSub = cur && cur.lands_at_pct !== null ? "\u00b7 block lands at " + fmtPct(cur.lands_at_pct) : "";
-    } else { quotaRate = "\u2014"; quotaSub = ""; }
-    blockVal = cur ? fmtTok(cur.equiv_tokens) : "\u2014";
-    blockSub = cur && cap5 ? "of \u2248" + fmtTok(cap5) + " \u00b7 " + cur.turns + " turns" : (cur ? cur.turns + " turns" : "");
-    var ctx = live.context || {};
-    ctxVal = ctx.pct !== null && ctx.pct !== undefined ? fmtPct(ctx.pct) : "\u2014";
-    ctxSub = ctx.window ? "of " + fmtTok(ctx.window) : "";
-    cacheVal = live.cache_hit !== null && live.cache_hit !== undefined ? fmtPct(live.cache_hit * 100) : "\u2014";
-    sessVal = live.floor_priced && live.floor_usd !== null ? fmtUsd(live.floor_usd) : "\u2014";
-  } else {
-    labelText = "no session";
-    sublabel = (live && live.reason) ? live.reason : "";
-    burnRate = quotaRate = blockVal = ctxVal = cacheVal = sessVal = "\u2014";
-    burnSub = quotaSub = blockSub = ctxSub = "";
-  }
+  var blockVal = isLive && cur ? fmtTok(cur.equiv_tokens) : "—";
+  var blockCap = isLive && cur && cap5 ? "/" + fmtTok(cap5) : "";
+  var blockHtml = '<span style="color:var(--dim)">BLOCK <span style="color:var(--ink)">' + blockVal + blockCap + "</span></span>";
+
+  var beh = isLive ? hero.burn_equiv_per_hour : null;
+  var buh = isLive ? hero.burn_usd_per_hour : null;
+  var pobh = isLive ? hero.pct_of_block_per_hour : null;
+  var rateHtml = '<span style="color:var(--dim)">RATE <span style="color:var(--ink)">' +
+    (beh !== null && beh !== undefined ? fmtTok(beh) + "/hr" : "—") + '</span> · <span style="color:var(--ink)">' +
+    (buh !== null && buh !== undefined ? fmtUsd(buh) + "/hr" : "—") + "</span>" +
+    (capsKnown ? ' · <span style="color:var(--l2)">' + (pobh !== null && pobh !== undefined ? fmtPct(pobh) + "/hr" : "—") + "</span>" : "") +
+    "</span>";
+
+  var ctxPct = isLive && live.context ? live.context.pct : null;
+  var ctxHtml = '<span style="color:var(--dim)">CTX <span style="color:var(--ink)">' + (ctxPct !== null && ctxPct !== undefined ? fmtPct(ctxPct) : "—") + "</span></span>";
+
+  var cacheHit = isLive ? live.cache_hit : null;
+  var cacheHtml = '<span style="color:var(--dim)">CACHE <span style="color:var(--ink)">' + (cacheHit !== null && cacheHit !== undefined ? fmtPct(cacheHit * 100) : "—") + "</span></span>";
+
+  var sessVal = isLive && live.floor_priced && live.floor_usd !== null ? fmtUsd(live.floor_usd) : "—";
 
   host.innerHTML =
-    '<div style="display:flex;align-items:center;gap:0;margin-top:14px;padding:14px 24px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);flex-wrap:wrap">' +
-    '<div style="display:flex;align-items:center;gap:9px;padding-right:22px">' +
-    '<span class="cc-live-dot" style="width:7px;height:7px;border-radius:4px;background:' + (isLive ? "var(--color-accent)" : "var(--color-neutral-700)") + ';' + (isLive ? "animation:ccpulse 1.8s ease-in-out infinite" : "") + '"></span>' +
-    '<span style="font-family:var(--font-heading);font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-accent-300)">Live</span>' +
-    '<span style="font-size:12.5px;color:var(--color-neutral-300)">' + esc(labelText) + "</span>" +
-    '<span style="font-size:12px;color:var(--color-neutral-600)">' + esc(sublabel) + "</span>" +
-    "</div>" + divider +
-    tile("Burn rate", burnRate, burnSub) + divider +
-    tile("Same rate, in quota", quotaRate, quotaSub) + divider +
-    tile("This block", blockVal, blockSub) + divider +
-    tile("Context", ctxVal, ctxSub) + divider +
-    tile("From cache", cacheVal, "") + divider +
-    '<div style="padding:0 0 0 22px"><div style="font-size:11px;color:var(--color-neutral-600)">Session so far</div><div style="font-family:var(--font-heading);font-size:15px;margin-top:2px">' + sessVal + "</div></div>" +
+    '<div class="px-panel" style="padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:20px 26px;margin-top:20px">' +
+    '<span style="display:flex;align-items:center;gap:8px">' + dot + label + "</span>" +
+    blockHtml + rateHtml + ctxHtml + cacheHtml +
+    '<span style="flex:1"></span>' +
+    '<span style="color:var(--dim)">SESSION ' + sessVal + "</span>" +
     "</div>";
 }
 
@@ -714,74 +698,35 @@ function renderProjects() {
   var p = state.projects;
   var rows = (p && p.rows) || [];
   if (!rows.length) {
-    host.innerHTML = '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);font-size:12.5px;color:var(--color-neutral-500)">No projects ingested yet.</div>';
+    host.innerHTML = '<div class="px-panel px-faint" style="margin-top:20px">No projects ingested yet.</div>';
     return;
   }
   var total = rows.reduce(function (a, r) { return a + (r.equiv || 0); }, 0);
-  var lead = rows[0];
-  var leadShare = total > 0 ? Math.round((lead.equiv || 0) / total * 100) : 0;
-  var fractionWord = leadShare >= 70 ? "nearly three quarters" : leadShare >= 62 ? "two thirds" : leadShare >= 45 ? "about half" : leadShare + "%";
-  var leadLabel = lead.ephemeral ? "test \u0026 scratch runs" : (lead.project || "?");
-  var projLead = rows.length > 1
-    ? esc(leadLabel) + " alone is " + fractionWord + " of the window \u2014 every other project together fits in the rest."
-    : "";
 
   var rowsHtml = rows.map(function (r, i) {
     var sharePct = total > 0 ? Math.round((r.equiv || 0) / total * 100) : 0;
-    var barPct = Math.max(2, sharePct);
     var name = r.ephemeral ? "everything else" : (baseName(r.cwd) || r.project || "?");
-    var pathLabel = r.ephemeral ? (r.eph_count + " temp folders") : (homeAbbrev(r.cwd) || r.project || "");
-    var leak = r.top_leak;
-    var leakHtml;
-    if (leak) {
-      /* mock 6.4c: delta_pct is None for a project with no previous window
-         to compare against -- that renders as the mock\u2019s own dash, never
-         "\u25b2 None". A non-positive delta (flat or down) reads the same way:
-         the mock only ever draws an up-arrow or a dash. */
-      var deltaText, deltaColor;
-      if (r.delta_pct === null || r.delta_pct === undefined || r.delta_pct <= 0) {
-        deltaText = "\u2014"; deltaColor = "var(--color-neutral-600)";
-      } else if (r.delta_pct >= 500) {
-        // 6.4g #6: a real +12951% is not a meaningful number to a reader --
-        // the mock's own copy for this case drops the digits entirely.
-        deltaText = "\u25b2 much higher"; deltaColor = "var(--lvl-3)";
-      } else {
-        deltaText = "\u25b2 +" + Math.round(r.delta_pct) + "%"; deltaColor = "var(--lvl-3)";
-      }
-      leakHtml = '<div style="font-size:12.5px;color:var(--color-neutral-300)">' + esc(leak.name) + "</div>" +
-        '<div style="font-size:10.5px;color:' + deltaColor + '">' + fmtTok(leak.tokens_saved) + " saveable \u00b7 " + deltaText + "</div>";
-    } else {
-      leakHtml = '<div style="font-size:12.5px;color:var(--color-neutral-600)">\u2014</div>';
-    }
+    var lvl = PX_LVL[pxLvl(sharePct)];
     var clickable = !r.ephemeral && r.project;
-    return '<div data-project="' + esc(r.project || "") + '" class="cc-hover-projrow cc-proj-row" style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:11px 12px;border-radius:var(--radius-sm);border-bottom:1px solid var(--color-neutral-900);cursor:' + (clickable ? "pointer" : "default") + '">' +
-      '<div style="font-family:var(--font-heading);font-size:11px;color:var(--color-neutral-600)">' + String(i + 1).padStart(2, "0") + "</div>" +
-      "<div>" +
-      '<div style="font-size:13.5px;color:var(--color-neutral-200)">' + esc(name) + "</div>" +
-      '<div class="cc-mono" style="font-size:10.5px;color:var(--color-neutral-600)">' + esc(pathLabel) + "</div>" +
+    return '<div data-project="' + esc(r.project || "") + '" class="cc-proj-row" style="display:grid;grid-template-columns:24px minmax(110px,1.2fr) minmax(150px,2fr) minmax(60px,0.7fr) minmax(110px,1.6fr);gap:0 16px;align-items:center;cursor:' + (clickable ? "pointer" : "default") + '">' +
+      '<div class="px-faint">' + String(i + 1).padStart(2, "0") + "</div>" +
+      "<div>" + esc(name) + "</div>" +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<span style="width:34px;color:' + (sharePct >= 45 ? lvl : "var(--ink)") + '">' + sharePct + "%</span>" +
+      '<span style="flex:1;display:flex;gap:2px">' + pxMeter(sharePct, 20, lvl, null, "height:10px") + "</span>" +
       "</div>" +
-      '<div style="display:flex;align-items:center;gap:12px">' +
-      '<span style="width:34px;font-family:var(--font-heading);font-size:14px;color:' + (sharePct >= 45 ? fillColor(sharePct) : "var(--color-neutral-300)") + '">' + sharePct + "%</span>" +
-      '<span style="flex:1;height:7px;border-radius:4px;background:var(--color-neutral-900);display:block"><span style="display:block;height:7px;border-radius:4px;width:' + barPct + '%;background:' + fillColor(sharePct) + '"></span></span>' +
-      "</div>" +
-      '<div style="text-align:right;font-size:13px;color:var(--color-neutral-300)">' + fmtTok(r.equiv) + "</div>" +
-      '<div style="text-align:right;font-size:12.5px;color:var(--color-neutral-500)">' + (r.cache_hit !== null && r.cache_hit !== undefined ? fmtPct(r.cache_hit * 100) : "\u2014") + "</div>" +
-      "<div>" + leakHtml + "</div>" +
+      '<div style="text-align:right;color:var(--dim)">' + fmtTok(r.equiv) + "</div>" +
+      '<div class="px-faint" style="text-transform:uppercase">' + (r.top_leak ? esc(r.top_leak.name) : "—") + "</div>" +
       "</div>";
   }).join("");
 
   host.innerHTML =
-    '<div style="margin-top:20px;padding:26px 28px 22px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
-    '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px;flex-wrap:wrap">' +
-    "<div>" +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:6px">Which projects drain the window</div>' +
-    '<div style="font-size:12.5px;color:var(--color-neutral-500)">' + (p.window_days || 30) + " days \u00b7 " + fmtTok(total) + " tokens. Click a row to scope the whole page to it.</div>" +
+    '<div class="px-panel" style="margin-top:20px">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:16px">' +
+    '<span class="px-label">PROJECTS · ' + (p.window_days || 30) + ' DAYS</span>' +
+    '<span style="color:var(--dim)">' + fmtTok(total) + ' TOKENS</span>' +
     "</div>" +
-    '<div style="font-size:12.5px;color:var(--color-neutral-400);text-align:right;max-width:420px">' + projLead + "</div>" +
-    "</div>" +
-    '<div style="display:grid;grid-template-columns:24px minmax(120px,1.4fr) minmax(150px,2fr) minmax(64px,0.7fr) minmax(48px,0.5fr) minmax(120px,1.8fr);gap:0 16px;align-items:center;padding:0 12px 8px;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider)">' +
-    '<div></div><div>Project</div><div>Share of the month</div><div style="text-align:right">Tokens</div><div style="text-align:right">Cache</div><div>Biggest leak</div></div>' +
-    '<div style="display:flex;flex-direction:column">' + rowsHtml + "</div>" +
+    '<div style="display:flex;flex-direction:column;gap:8px">' + rowsHtml + "</div>" +
     "</div>";
 
   Array.prototype.forEach.call(host.querySelectorAll(".cc-proj-row"), function (el) {
@@ -799,193 +744,75 @@ function renderProjects() {
    a bill" prominent. The line/area colour uses the same fillColor scale the
    mock\u2019s own code (not its comment) applies, simplified to one colour
    per series (its average level) rather than a per-point gradient. ==== */
-function dayValue(d) {
-  var lo = (d.floor_usd || 0) + (d.est_lo || 0);
-  var hi = (d.floor_usd || 0) + (d.est_hi || 0);
-  return { mid: (lo + hi) / 2, lo: lo, hi: hi };
-}
-
-function dollarSeries(daily) {
-  if (state.range === "week") {
-    var out = [];
-    for (var i = 0; i < daily.length; i += 6) {
-      var chunk = daily.slice(i, i + 6);
-      var mid = 0, lo = 0, hi = 0;
-      chunk.forEach(function (d) { var v = dayValue(d); mid += v.mid; lo += v.lo; hi += v.hi; });
-      var label = chunk.length > 1 ? chunk[0].date.slice(5) + "\u2013" + chunk[chunk.length - 1].date.slice(5) : chunk[0].date;
-      out.push({ label: label, v: mid, lo: lo, hi: hi, sub: chunk.length + " days" });
-    }
-    return out;
-  }
-  if (state.range === "total") {
-    var run = 0, runLo = 0, runHi = 0;
-    return daily.map(function (d) {
-      var v = dayValue(d); run += v.mid; runLo += v.lo; runHi += v.hi;
-      return { label: d.date, v: run, lo: runLo, hi: runHi, sub: "running total" };
-    });
-  }
-  return daily.map(function (d) {
-    var v = dayValue(d);
-    return { label: d.date, v: v.mid, lo: v.lo, hi: v.hi, sub: fmtTok(d.equiv || 0) + " tokens" };
-  });
-}
-
 function renderDollars() {
   var host = document.getElementById("cc-dollars");
   var s = state.summary;
   if (!s) { host.innerHTML = ""; return; }
   var daily = s.series || [];
-  var series = dollarSeries(daily);
-  var n = series.length;
-  var peak = 0;
-  series.forEach(function (x) { if (x.v > peak) peak = x.v; });
-  var step = peak > 3000 ? 1000 : peak > 900 ? 500 : 100;
-  var axisMax = Math.max(step, Math.ceil(peak / step) * step);
-  var VW = 1000, VH = 110;
-  function px(i) { return n <= 1 ? VW / 2 : (i / (n - 1)) * VW; }
-  function py(v) { return VH - (v / axisMax) * (VH - 5); }
-  var linePts = series.map(function (x, i) { return px(i).toFixed(1) + "," + py(x.v).toFixed(1); }).join(" ");
-  var areaPts = "0," + VH + " " + linePts + " " + VW + "," + VH;
-  /* mock 6.2/6.4c: per-point heat gradient, not one flat colour -- each day's
-     own stop is fillColor(that day's share of the axis). */
-  var lineStops = series.map(function (x, i) {
-    var o = (n === 1 ? 50 : (i / (n - 1)) * 100).toFixed(2) + "%";
-    return { o: o, c: fillColor(axisMax > 0 ? Math.round(x.v / axisMax * 100) : 0) };
+  var vals = daily.map(function (d) {
+    return (d.exact_covered && d.exact_usd !== null && d.exact_usd !== undefined) ? d.exact_usd : (d.floor_usd || 0);
   });
-  var heatStops = lineStops.map(function (st) { return '<stop offset="' + st.o + '" stop-color="' + st.c + '"></stop>'; }).join("");
-  var fillStops = lineStops.map(function (st) { return '<stop offset="' + st.o + '" stop-color="' + st.c + '" stop-opacity="0.16"></stop>'; }).join("");
-  /* "spike" days: no fixed demo threshold survives real data, so a day is
-     marked when it clears 1.5x the series mean -- same spirit as the mock\u2019s
-     per-range constant, applied to whatever range is on screen. */
-  var seriesMean = n > 0 ? series.reduce(function (a, x) { return a + x.v; }, 0) / n : 0;
-  var spike = seriesMean > 0 ? seriesMean * 1.5 : Infinity;
-  var marks = series
-    .map(function (x, i) { return { x: x, i: i }; })
-    .filter(function (o) { return o.x.v >= spike; })
-    .slice(0, 6)
-    .map(function (o) {
-      return { x: px(o.i).toFixed(1), y: py(o.x.v).toFixed(1), color: fillColor(axisMax > 0 ? Math.round(o.x.v / axisMax * 100) : 0) };
-    });
-  var marksHtml = marks.map(function (m) {
-    return '<circle cx="' + m.x + '" cy="' + m.y + '" r="3" fill="var(--color-bg)" stroke="' + m.color + '" stroke-width="1.6" vector-effect="non-scaling-stroke"></circle>';
-  }).join("");
+  var total = vals.reduce(function (a, v) { return a + v; }, 0);
+  var max = vals.reduce(function (a, v) { return v > a ? v : a; }, 0);
 
-  var nTicks = Math.max(1, Math.round(axisMax / step));
-  var ticksHtml = "";
-  for (var t = nTicks; t >= 0; t--) {
-    var top = (100 - (t / nTicks) * 100) + "%";
-    ticksHtml += '<div style="position:absolute;left:46px;right:0;top:' + top + ';height:1px;background:' + (t === 0 ? "var(--color-neutral-800)" : "var(--color-neutral-900)") + '"></div>';
-    ticksHtml += '<div style="position:absolute;left:0;width:38px;top:' + top + ';margin-top:-8px;text-align:right;font-size:10.5px;color:var(--color-neutral-600)">' + (t === 0 ? "$0" : fmtUsd(t * step)) + "</div>";
+  var LADDER = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+  var blockUsd = 1;
+  if (max > 0) {
+    var raw = max / 8;
+    blockUsd = LADDER[LADDER.length - 1];
+    for (var li = 0; li < LADDER.length; li++) {
+      if (LADDER[li] >= raw / 1.5) { blockUsd = LADDER[li]; break; }
+    }
   }
-  var barsAxis = series.map(function (x, i) {
-    var label = state.range === "day" ? (i % 5 === 0 ? String(i + 1) : "") : x.label;
-    return '<div data-i="' + i + '" class="cc-dollar-bar" style="flex:1;text-align:center;font-size:10px;color:var(--color-neutral-600);white-space:nowrap;cursor:default">' + esc(label) + "</div>";
+
+  var MAX_BLOCKS = 9;
+  var chartHtml = daily.map(function (d, i) {
+    var val = vals[i];
+    var blocks = Math.min(MAX_BLOCKS, Math.max(val > 0 ? 1 : 0, Math.round(val / blockUsd)));
+    var lvl = PX_LVL[pxLvl(max > 0 ? Math.round(val / max * 100) : 0)];
+    var blocksHtml = "";
+    for (var bi = 0; bi < blocks; bi++) {
+      blocksHtml += '<div style="height:12px;background:' + lvl + '"></div>';
+    }
+    return '<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%">' + blocksHtml + "</div>";
   }).join("");
-  var hv = state.hover;
-  var h = (hv !== null && series[hv]) ? series[hv] : null;
-  var readoutLabel = h ? esc(h.label) + " \u00b7 " + fmtUsd(h.v) : (state.range === "total" && n ? fmtUsd(series[n - 1].v) + " total" : "Hover a day");
-  var readoutDetail = h ? esc(h.sub) : "";
 
-  var segBtn = function (key, text) {
-    var active = state.range === key;
-    return '<div data-range="' + key + '" class="cc-range-btn" style="padding:5px 12px;border-radius:3px;font-size:11.5px;cursor:pointer;color:' +
-      (active ? "var(--color-accent-200)" : "var(--color-neutral-500)") + ";background:" + (active ? "var(--color-accent-900)" : "transparent") + '">' + text + "</div>";
-  };
+  var MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  function axisLabel(dateStr) {
+    var parts = (dateStr || "").split("-");
+    if (parts.length < 3) return "";
+    var mi = parseInt(parts[1], 10) - 1;
+    var day = parseInt(parts[2], 10);
+    return (MONTHS[mi] || "") + " " + day;
+  }
+  var n = daily.length;
+  var axisHtml = "";
+  if (n) {
+    var idxs = [0, Math.round((n - 1) / 3), Math.round((n - 1) * 2 / 3), n - 1];
+    axisHtml = idxs.map(function (idx) { return "<span>" + esc(axisLabel(daily[idx].date)) + "</span>"; }).join("");
+  }
 
-  var total = daily.reduce(function (a, d) { return a + dayValue(d).mid; }, 0);
-  var totalLo = daily.reduce(function (a, d) { return a + dayValue(d).lo; }, 0);
-  var totalHi = daily.reduce(function (a, d) { return a + dayValue(d).hi; }, 0);
+  var captionHtml = "";
+  if (n >= 4 && total > 0) {
+    var sortedVals = vals.slice().sort(function (a, b) { return b - a; });
+    var top4Sum = sortedVals.slice(0, 4).reduce(function (a, v) { return a + v; }, 0);
+    var top4Pct = Math.round(top4Sum / total * 100);
+    captionHtml = '<div style="margin-top:12px;color:var(--dim)">FOUR TALLEST DAYS = ' + fmtUsd(top4Sum) + ' · ' + top4Pct + '% OF THE MONTH</div>';
+  }
 
-  var t = state.summary.tokens || {};
-  var billable = t.billable_equiv || 0;
-  var rawTotal = (t.cread || 0) + (t.cw5m || 0) + (t.cw1h || 0);
-  var quotaPct = rawTotal > 0 ? Math.min(100, billable / rawTotal * 100) : 0;
-
-  /* "That 3%, magnified" (mock 436-448): the quota-counted slice broken into
-     its own three components -- cache write 1h, cache write 5m, output. */
-  var magOut = t.out_tokens_est ? (t.out_tokens_est[0] + t.out_tokens_est[1]) / 2 : 0;
-  var mag1h = t.cw1h || 0, mag5m = t.cw5m || 0;
-  var magTotal = mag1h + mag5m + magOut;
-  var mag1hPct = magTotal > 0 ? mag1h / magTotal * 100 : 0;
-  var mag5mPct = magTotal > 0 ? mag5m / magTotal * 100 : 0;
-  var magOutPct = magTotal > 0 ? magOut / magTotal * 100 : 0;
-
-  /* mock 419: "the four tallest days" caption, always over daily granularity
-     regardless of the day/week/total toggle on screen. */
-  var dayVals = daily.map(function (d) { return dayValue(d).mid; }).sort(function (a, b) { return b - a; });
-  var top4Sum = dayVals.slice(0, 4).reduce(function (a, v) { return a + v; }, 0);
-  var top4Pct = total > 0 ? Math.round(top4Sum / total * 100) : 0;
+  var confidence = (s.spend && s.spend.confidence_label) ? " · " + esc(String(s.spend.confidence_label).toUpperCase()) : "";
 
   host.innerHTML =
-    '<div style="display:grid;grid-template-columns:1fr 300px;gap:28px;margin-top:20px;padding:24px 28px 26px;background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)">' +
-    "<div>" +
-    '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:18px;flex-wrap:wrap">' +
-    "<div>" +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:8px">Value the plan absorbed \u00b7 ' + (s.window_days || 30) + ' days</div>' +
-    '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">' +
-    '<span style="font-family:var(--font-heading);font-weight:500;font-size:23px;letter-spacing:-0.02em;color:var(--color-neutral-200)">' + fmtUsd(total) + "</span>" +
-    '<span style="font-size:13px;color:var(--color-neutral-500)">[' + fmtUsd(totalLo) + "\u2013" + fmtUsd(totalHi) + '] at API prices \u2014 not a bill, and not what your quota counts</span>' +
-    "</div></div>" +
-    '<div style="display:flex;gap:2px;padding:3px;background:var(--color-bg);border-radius:var(--radius-sm)">' +
-    segBtn("day", "Per day") + segBtn("week", "Per week") + segBtn("total", "Running total") +
-    "</div></div>" +
-    '<div style="display:flex;align-items:baseline;gap:10px;height:22px;margin-bottom:10px;font-size:12.5px">' +
-    '<span style="font-family:var(--font-heading);color:var(--color-neutral-200)">' + readoutLabel + "</span>" +
-    '<span style="color:var(--color-neutral-500)">' + readoutDetail + "</span></div>" +
-    '<div style="position:relative;padding-left:46px">' + ticksHtml +
-    '<div style="position:relative;height:110px">' +
-    '<svg viewBox="0 0 1000 110" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:110px;display:block;overflow:visible">' +
-    "<defs>" +
-    '<linearGradient id="ccheat" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1000" y2="0">' + heatStops + "</linearGradient>" +
-    '<linearGradient id="ccvalfill" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1000" y2="0">' + fillStops + "</linearGradient>" +
-    "</defs>" +
-    '<polygon fill="url(#ccvalfill)" points="' + areaPts + '"></polygon>' +
-    '<polyline fill="none" stroke="url(#ccheat)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="' + linePts + '"></polyline>' +
-    marksHtml +
-    "</svg>" +
-    '<div style="position:absolute;inset:0;display:flex;z-index:4">' +
-    series.map(function (x, i) { return '<div data-i="' + i + '" class="cc-dollar-hover" style="flex:1;height:100%;cursor:default"></div>'; }).join("") +
-    "</div></div>" +
-    '<div style="display:flex;margin-top:8px">' + barsAxis + "</div>" +
-    '<div style="margin-top:18px;font-size:12.5px;color:var(--color-neutral-400);max-width:620px">The four tallest days are ' + fmtUsd(top4Sum) + " \u2014 " + top4Pct + "% of the month.</div>" +
-    "</div></div>" +
-    '<div style="padding-left:28px;border-left:1px solid var(--color-divider)">' +
-    '<div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.09em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:14px">What the quota counted</div>' +
-    '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:var(--font-heading);font-weight:500;font-size:23px;letter-spacing:-0.02em;color:var(--color-neutral-200)">' + fmtPct(quotaPct) + '</span><span style="font-size:12.5px;color:var(--color-neutral-500)">of ' + fmtTok(rawTotal) + " raw tokens</span></div>" +
-    '<div style="font-size:12px;color:var(--color-neutral-600);margin-top:4px;margin-bottom:16px">Cache reads count at a fraction of full weight, so the quota-counted share is smaller than the raw total.</div>' +
-    '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden">' +
-    '<div style="width:' + (100 - quotaPct) + '%;background:var(--lvl-1)"></div>' +
-    '<div style="width:' + quotaPct + '%;background:var(--lvl-4);border-left:1px solid var(--color-surface)"></div>' +
+    '<div class="px-panel" style="margin-top:20px">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:6px">' +
+    '<span class="px-label">VALUE ABSORBED · ' + (s.window_days || 30) + ' DAYS</span>' +
+    '<span style="color:var(--dim)">' + fmtUsd(total) + ' AT API PRICES · NOT A BILL' + confidence + "</span>" +
     "</div>" +
-    '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10.5px;color:var(--color-neutral-600)">' +
-    '<span style="color:var(--lvl-1)">cheap from cache \u00b7 ' + fmtTok(rawTotal) + '</span><span style="color:var(--lvl-4)">quota-weighted \u00b7 ' + fmtTok(billable) + "</span></div>" +
-    '<div style="position:relative;margin-top:14px;padding:14px 14px 12px;background:var(--color-bg);border:1px solid var(--color-neutral-900);border-radius:var(--radius-md)">' +
-    '<div style="font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--color-neutral-600);margin-bottom:10px">That ' + fmtPct(quotaPct) + ', magnified</div>' +
-    '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:12px">' +
-    '<div style="width:' + mag1hPct + '%;background:var(--lvl-4)"></div>' +
-    '<div style="width:' + mag5mPct + '%;background:var(--lvl-3);border-left:1px solid var(--color-bg)"></div>' +
-    '<div style="width:' + magOutPct + '%;background:var(--lvl-1);border-left:1px solid var(--color-bg)"></div>' +
-    "</div>" +
-    '<div style="display:flex;flex-direction:column;gap:9px">' +
-    '<div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-4)"></span><span style="flex:1;color:var(--color-neutral-400)">Cache write 1h</span><span style="color:var(--color-neutral-300)">' + fmtTok(mag1h) + "</span></div>" +
-    '<div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-3)"></span><span style="flex:1;color:var(--color-neutral-400)">Cache write 5m</span><span style="color:var(--color-neutral-300)">' + fmtTok(mag5m) + "</span></div>" +
-    '<div style="display:flex;align-items:center;gap:9px;font-size:12px"><span style="width:6px;height:6px;border-radius:2px;background:var(--lvl-1)"></span><span style="flex:1;color:var(--color-neutral-400)">Output</span><span style="color:var(--color-neutral-300)">' + fmtTok(magOut) + "</span></div>" +
-    "</div></div>" +
-    '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:10.5px;color:var(--color-neutral-500)">' +
-    '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-1)"></span>free</span>' +
-    '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-3)"></span>costs a little</span>' +
-    '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:8px;border-radius:2px;background:var(--lvl-4)"></span>costs the most</span>' +
-    "</div>" +
-    '<div style="margin-top:12px;font-size:12px;color:var(--color-neutral-400)">Writes are the half you can shrink \u2014 and they burn the weekly window fastest.</div>' +
-    "</div></div>";
-
-  document.getElementById("cc-dollars").querySelectorAll(".cc-range-btn").forEach(function (el) {
-    el.addEventListener("click", function () { state.range = el.getAttribute("data-range"); state.hover = null; renderDollars(); });
-  });
-  document.getElementById("cc-dollars").querySelectorAll(".cc-dollar-hover, .cc-dollar-bar").forEach(function (el) {
-    el.addEventListener("mouseenter", function () { state.hover = parseInt(el.getAttribute("data-i"), 10); renderDollars(); });
-    el.addEventListener("mouseleave", function () { state.hover = null; renderDollars(); });
-  });
+    '<div class="px-faint" style="margin-bottom:14px">1 BLOCK = ' + fmtUsd(blockUsd) + ' · COLOUR IS THE DAY’S SIZE</div>' +
+    '<div style="display:flex;align-items:flex-end;gap:3px;height:120px">' + chartHtml + "</div>" +
+    '<div style="display:flex;justify-content:space-between;margin-top:8px" class="px-faint">' + axisHtml + "</div>" +
+    captionHtml +
+    "</div>";
 }
 
 /* ==== This week\u2019s windows (7x4 grid) + Heaviest windows table ====

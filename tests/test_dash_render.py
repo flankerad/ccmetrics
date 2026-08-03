@@ -134,17 +134,12 @@ def test_punch_list_2_strings_present(page_text):
     wording is literal (not derived from live data)."""
     # item 1 (week-grid morning/afternoon/evening/late column headers) was
     # the slot-label row -- 10-pixel-week-month deletes it, the mock has none.
-    assert "magnified" in page_text  # item 2: "That N%, magnified" sub-panel
-    assert "Cache write 1h" in page_text
-    assert "Cache write 5m" in page_text
-    assert ">Output<" in page_text
-    assert "costs a little" in page_text  # item 3: the level legend
-    assert "costs the most" in page_text
-    assert "Writes are the half you can shrink" in page_text  # item 4
-    assert "Share of the month" in page_text  # item 5
+    # items 2-5, 8 (magnified sub-panel, quota legend, writes sentence,
+    # projects column-header row, "four tallest days" prose) are dropped by
+    # 11-pixel-live-projects-value's VALUE ABSORBED/PROJECTS redesign.
     assert "everything else" in page_text  # item 6
     assert "cc-theme-btn" not in page_text  # item 7: theme toggle removed with the palette system
-    assert "The four tallest days are " in page_text  # item 8
+    assert "FOUR TALLEST DAYS = " in page_text  # item 8, new wording
 
 
 def test_punch_list_3_correctness_and_strings(page_text):
@@ -172,8 +167,9 @@ def test_punch_list_3_correctness_and_strings(page_text):
     assert "esc(oneSentence(item.help)) + " + chr(34) + "</div>" + chr(34) in page_text
     assert 'data-fix=' in page_text and 'esc(item.fix_text || "")' in page_text
 
-    # item 6: absurd percentages get worded, not printed
-    assert "much higher" in page_text
+    # item 6: absurd percentages get worded, not printed -- the whole
+    # delta_pct/leak-arrow mechanism this guarded is deleted by
+    # 11-pixel-live-projects-value (mock's PROJECTS rows carry no delta).
 
     # item 7 (week grid hover wiring) is gone: 10-pixel-week-month's mock has
     # no hover readouts at all, in THIS WEEK or MONTH.
