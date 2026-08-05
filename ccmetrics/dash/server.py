@@ -35,6 +35,7 @@ from .. import __version__, constants, costs, detectors, ingest, live, report, s
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 7433
+DEFAULT_REINGEST_S = 60
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WINDOW_DAYS = constants.value(constants.RETENTION["turn_days"])
 
@@ -801,11 +802,17 @@ def _default(o):
 def _reingest_loop(period: float, stop: threading.Event) -> None:
     """Keep a long-running dash from drifting: re-read ~/.claude/projects on a
     timer instead of only once at boot. One thread, one connection (same
-    per-thread pattern as request handling), so there's never a second ingest
-    pass racing this one — no lock needed. `stop.wait` doubles as the sleep so
-    shutdown doesn't have to wait out a full period.
+    per-thread pattern as request handling). Nothing else in this process ever
+    calls ingest.ingest() -- live.py only tails/parses for the /api/live tile,
+    it never writes -- so there's no second ingest pass to race and no lock
+    needed. `stop.wait` doubles as the sleep so shutdown doesn't have to wait
+    out a full period.
     """
-    conn = store.connect()
+    try:
+        conn = store.connect()
+    except Exception as exc:  # never let a boot-time failure kill this silently
+        print(f"ccmetrics dash: re-ingest disabled, connect failed: {exc}", flush=True)
+        return
     while not stop.wait(period):
         try:
             stats = ingest.ingest(conn)
@@ -815,7 +822,11 @@ def _reingest_loop(period: float, stop: threading.Event) -> None:
             print(f"ccmetrics dash: re-ingest failed: {exc}", flush=True)
 
 
-def serve(port: int = DEFAULT_PORT, open_browser: bool = True, reingest_period: float | None = 60) -> int:
+def serve(
+    port: int = DEFAULT_PORT,
+    open_browser: bool = True,
+    reingest_period: float | None = DEFAULT_REINGEST_S,
+) -> int:
     httpd = ThreadingHTTPServer((HOST, port), Handler)
     httpd.daemon_threads = True
     url = f"http://{HOST}:{port}/"
