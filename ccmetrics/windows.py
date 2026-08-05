@@ -368,17 +368,31 @@ def _by_local_date(blocks):
     return out
 
 
-def week_grid(blocks, now=None) -> list[dict]:
-    """The last 7 LOCAL calendar days, 4 merged slots each.
+def week_grid(blocks, now=None, resets_at=None) -> list[dict]:
+    """7 LOCAL calendar days, 4 merged slots each, anchored to the weekly
+    reset (Bug 3, PLAN-fill-and-clock's own hero fuse convention).
 
-    Seven days, not "the last 20 blocks" — 20 blocks is about 4.2 days and was
-    only ever a week by mislabel.
+    The weekly cap's window runs reset-minus-7-days to reset (see the hero
+    fuse's day row, index.html ~line 315), so the grid's dates are pinned the
+    same way: day 0 is the most recent occurrence of `resets_at`'s weekday,
+    day 6 is the day before the NEXT reset. That is "this week" as the cap
+    actually counts it, not just "whatever 7 days ended today" -- a rolling
+    end-on-today window drifts a different 7 dates onto the same labels every
+    day and, worse, does not agree with the hero fuse directly above it.
+
+    No `resets_at` (hook never ran / no weekly reading yet) falls back to the
+    last 7 local days ending today -- still real, still ordered, just without
+    a reset instant to anchor the row to.
     """
-    today = _local(now or _now()).date()
+    reset_dt = parse_iso(resets_at) if resets_at else None
+    if reset_dt is not None:
+        start = _local(reset_dt).date() - _dt.timedelta(days=WEEK_DAYS)
+    else:
+        start = _local(now or _now()).date() - _dt.timedelta(days=WEEK_DAYS - 1)
     index = _by_local_date(blocks)
     rows = []
-    for i in range(WEEK_DAYS - 1, -1, -1):
-        d = today - _dt.timedelta(days=i)
+    for i in range(WEEK_DAYS):
+        d = start + _dt.timedelta(days=i)
         mine = index.get(d.isoformat(), [])
         rows.append({
             "day": DAY_NAMES[d.weekday()],
@@ -1097,7 +1111,7 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
 
     hero = projection(conn, blocks=blocks, caps=caps, live_tiles=live_tiles, now=now)
 
-    week = week_grid(blocks, now=now)
+    week = week_grid(blocks, now=now, resets_at=hero.get("resets_at"))
     for row in week:
         for cell in row["cells"]:
             _score(cell, cap5, provisional=cap5_provisional)
@@ -1109,7 +1123,10 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
         _score_week(cell, cap7)
 
     today = _local(now).date()
-    week_from = (today - _dt.timedelta(days=WEEK_DAYS - 1)).isoformat()
+    # week_from tracks the SAME 7 dates week_grid just drew (Bug 3: the grid
+    # anchors to resets_at, not to today) -- otherwise week_blocks/dry_count
+    # would count a different span than the row labels on screen.
+    week_from = week[0]["date"]
     month_from = (today - _dt.timedelta(days=HORIZON_DAYS - 1)).isoformat()
     week_blocks = [b for b in blocks if b["local_date"] >= week_from]
 

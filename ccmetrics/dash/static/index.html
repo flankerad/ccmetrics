@@ -65,6 +65,28 @@ function modelColor(shortName) { return MODEL_COLOR[shortName] || "var(--dim)"; 
 var PX_LVL = ["var(--l0)", "var(--l1)", "var(--l2)", "var(--l3)", "var(--l4)"];
 function pxLvl(p) { return p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0; }
 function pxLeftLvl(pl) { return pl <= 10 ? 4 : pl <= 25 ? 3 : pl <= 55 ? 2 : 1; }
+/* PLAN-fill-and-clock's own week-share ladder (0d16970 deleted it along with
+   the legacy token bridge, but the reasoning it documented still holds --
+   tests/test_windows.py pins pct_of_week's own accuracy at these exact
+   breakpoints for that reason). pct_of_week grades a single window against
+   the WHOLE WEEK's cap, not one 5-hour block's -- a window is a small slice
+   of a week by nature, so pxLvl's 45/75/95 edges parked every real cell in
+   the lowest band forever. Live distribution: most windows sit under 6% of
+   the week, 6-12% is a genuinely heavy one, 12-20% a very heavy one, and
+   only the single worst window of a month clears 20%. Never applied to
+   `dry` -- that stays `_score`'s 5-hour-cap-only claim. */
+var WEEK_LVL_EDGES = [6, 12, 20];
+function pxLvlWeek(p) {
+  if (p === null || p === undefined) return 0;
+  return p >= WEEK_LVL_EDGES[2] ? 4 : p >= WEEK_LVL_EDGES[1] ? 3 : p >= WEEK_LVL_EDGES[0] ? 2 : p > 0 ? 1 : 0;
+}
+/* The week grid's meter is a bar, not just a colour -- rescale the same
+   share onto 0-100 (the top edge = a full bar) so the fill and the colour
+   band agree, instead of every real cell showing one lit segment forever. */
+function weekFillPct(p) {
+  if (p === null || p === undefined) return 0;
+  return Math.min(100, Math.max(0, p) / WEEK_LVL_EDGES[2] * 100);
+}
 function pxMeter(pct, n, on, off, cellStyle) {
   var out = [];
   for (var i = 0; i < n; i++) {
@@ -509,7 +531,10 @@ function renderHorizon() {
   var cellsHtml = cells.map(function (c) {
     var bg;
     if (capsKnown && c.pct_of_week !== null && c.pct_of_week !== undefined) {
-      bg = PX_LVL[pxLvl(c.pct_of_week)];
+      // pct_of_week is a share of the WEEK, not of a 5-hour block -- pxLvl's
+      // edges belong to _score's 5-hour-cap pct_of_cap and would park every
+      // real month cell in the lowest band (see WEEK_LVL_EDGES above).
+      bg = PX_LVL[pxLvlWeek(c.pct_of_week)];
     } else {
       var frac = maxTok > 0 ? c.equiv_tokens / maxTok : 0;
       bg = frac > 0.5 ? "var(--line)" : "var(--l0)";
@@ -517,8 +542,15 @@ function renderHorizon() {
     return '<div style="flex:1;min-width:0;height:44px;background:' + bg + '"></div>';
   }).join("");
 
-  var dryHeader = capsKnown
-    ? '<span style="color:var(--l4)">' + (w.dry_count_month ?? "?") + " RAN DRY</span>"
+  // dry_count_month is null whenever the 5-hour SESSION cap (the only cap
+  // "ran dry" can be judged against) is unknown -- which can happen even
+  // with caps_known true, when only a WEEKLY cap has been estimated so far.
+  // The header and the caption below both key off this one flag so they can
+  // never print the fabricated-looking header next to a caption that
+  // contradicts it (Bug 2).
+  var dryKnownMonth = capsKnown && w.dry_count_month != null;
+  var dryHeader = dryKnownMonth
+    ? '<span style="color:var(--l4)">' + w.dry_count_month + " RAN DRY</span>"
     : '<span style="color:var(--dim)">CAP UNKNOWN — NO DRY COUNT</span>';
 
   var axisHtml;
@@ -536,7 +568,7 @@ function renderHorizon() {
   }
 
   var caption;
-  if (capsKnown) {
+  if (dryKnownMonth) {
     var dryCells = cells.filter(function (c) { return c.dry; });
     var eveningDry = dryCells.filter(function (c) { return c.evening; }).length;
     if (dryCells.length > 0) {
@@ -546,6 +578,11 @@ function renderHorizon() {
     } else {
       caption = "NO WINDOW RAN DRY THIS MONTH";
     }
+  } else if (capsKnown) {
+    // A weekly cap can be known while the 5-hour session cap -- the only
+    // thing "ran dry" is judged against -- is still unknown: say so plainly
+    // instead of asserting a zero nobody actually measured.
+    caption = "5-HOUR CAP UNKNOWN — DRY COUNT NOT AVAILABLE";
   } else {
     caption = "FILL IS RELATIVE TO THE HEAVIEST WINDOW IN RANGE — CAPS ARE UNKNOWN UNTIL A READING EXISTS.";
   }
@@ -660,7 +697,14 @@ function renderProjects() {
 
   var rowsHtml = rows.map(function (r, i) {
     var sharePct = total > 0 ? Math.round((r.equiv || 0) / total * 100) : 0;
-    var name = (r.grouped || r.ephemeral) ? (r.name || "everything else") : (baseName(r.cwd) || r.project || "?");
+    // "everything else" names ONE bucket -- the grouped tail row. The
+    // ephemeral row (scratch/tmp-dir sessions with no repo to point at) used
+    // to fall back to that same literal string whenever it had no `name` of
+    // its own, so both rows could read "everything else" at once (Bug 4).
+    // It gets its own honest label instead.
+    var name = r.grouped ? (r.name || "everything else")
+      : r.ephemeral ? "scratch & tmp-dir runs"
+      : (baseName(r.cwd) || r.project || "?");
     var lvl = PX_LVL[pxLvl(sharePct)];
     var clickable = !r.grouped && !r.ephemeral && r.project;
     return '<div data-project="' + esc(r.project || "") + '" class="cc-proj-row" style="display:grid;grid-template-columns:24px minmax(110px,1.2fr) minmax(150px,2fr) minmax(60px,0.7fr) minmax(110px,1.6fr);gap:0 16px;align-items:center;cursor:' + (clickable ? "pointer" : "default") + '">' +
@@ -801,8 +845,22 @@ function renderWeek() {
     var edge, fillPct, on;
     if (capsKnown) {
       edge = c.dry ? "var(--l4)" : "transparent";
-      fillPct = c.pct_of_cap;
-      on = PX_LVL[pxLvl(c.pct_of_cap)];
+      if (c.pct_of_cap != null) {
+        fillPct = c.pct_of_cap;
+        on = PX_LVL[pxLvl(c.pct_of_cap)];
+      } else {
+        /* pct_of_cap needs the 5-hour SESSION cap specifically -- when only
+           a WEEKLY cap has been estimated (this account's actual state),
+           every cell's pct_of_cap is null even though caps_known is true,
+           and the bar drew empty. pct_of_week is real whenever cap7 is
+           known, but it is a share of a WEEK, not of a 5-hour block --
+           feeding it straight into pxLvl/a 0-100 fill parks every real cell
+           at "1 lit segment, lowest band" forever (a week's worth of slices
+           rarely nears 100% of the week on its own). weekFillPct/pxLvlWeek
+           rescale it the same way the deleted WEEK_LVL_EDGES ladder did. */
+        fillPct = weekFillPct(c.pct_of_week);
+        on = PX_LVL[pxLvlWeek(c.pct_of_week)];
+      }
     } else {
       edge = "transparent";
       fillPct = maxTok > 0 ? (c.equiv_tokens / maxTok * 100) : 0;
@@ -824,9 +882,18 @@ function renderWeek() {
     var tail, tailColor;
     if (capsKnown) {
       if (qualifying.length) {
-        var avg = Math.round(qualifying.reduce(function (a, c) { return a + (c.pct_of_cap || 0); }, 0) / qualifying.length);
+        // Same pct_of_cap-with-pct_of_week-fallback as the bars above, so
+        // the row average never disagrees with what the bars just showed.
+        // The PRINTED number always stays the literal share (never the
+        // bars' rescaled fill) -- only its colour switches ladders, same as
+        // the bars, when the row fell back to a week share.
+        var usingWeekShare = qualifying.every(function (c) { return c.pct_of_cap == null; });
+        var avg = Math.round(qualifying.reduce(function (a, c) {
+          var p = c.pct_of_cap != null ? c.pct_of_cap : c.pct_of_week;
+          return a + (p || 0);
+        }, 0) / qualifying.length);
         tail = avg + "% AVG";
-        tailColor = PX_LVL[pxLvl(avg)];
+        tailColor = usingWeekShare ? PX_LVL[pxLvlWeek(avg)] : PX_LVL[pxLvl(avg)];
       } else {
         tail = "—";
         tailColor = "var(--dim)";
@@ -843,8 +910,13 @@ function renderWeek() {
       "</div>";
   }).join("");
 
-  var dryHeader = capsKnown
-    ? '<span style="color:var(--l4)">' + (w.dry_count_week ?? "?") + " RAN DRY</span>"
+  // dry_count_week is null whenever the 5-hour SESSION cap is unknown, which
+  // can be true even though caps_known is (a weekly cap alone does not say
+  // whether any single 5-hour window ran dry) -- so this reads the count's
+  // own null-ness, not the broader caps_known flag, matching the MONTH
+  // panel's header/caption agreement fix (Bug 2).
+  var dryHeader = capsKnown && w.dry_count_week != null
+    ? '<span style="color:var(--l4)">' + w.dry_count_week + " RAN DRY</span>"
     : '<span style="color:var(--dim)">CAP UNKNOWN — NO DRY COUNT</span>';
 
   var led = w.led_counts || {};

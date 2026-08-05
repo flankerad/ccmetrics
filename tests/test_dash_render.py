@@ -183,23 +183,33 @@ def test_empty_store_page_parses_no_exception(conn, cc_env, running_server):
 
 def test_month_strip_is_hoverless_and_colours_straight_from_pct_of_week(page_text):
     """10-pixel-week-month: the mock's MONTH strip has no hover state at all --
-    each cell's fill is coloured straight from PX_LVL[pxLvl(pct_of_week)] when
-    the weekly cap is known, falling back to a flat two-step token-relative
-    neutral (never a colour ramp) only when caps are genuinely unknown."""
-    assert "PX_LVL[pxLvl(c.pct_of_week)]" in page_text
+    each cell's fill is coloured from pct_of_week when the weekly cap is
+    known, falling back to a flat two-step token-relative neutral (never a
+    colour ramp) only when caps are genuinely unknown. D1 bug-1 follow-up:
+    pct_of_week is a share of a WEEK, not a 5-hour block, so it grades on
+    the restored WEEK_LVL_EDGES ladder (pxLvlWeek) rather than pxLvl's
+    45/75/95 5-hour-cap edges, which parked every real cell in the lowest
+    band forever."""
+    assert "PX_LVL[pxLvlWeek(c.pct_of_week)]" in page_text
     assert 'bg = frac > 0.5 ? "var(--line)" : "var(--l0)";' in page_text
     assert "cc-hz-cell" not in page_text
     assert "state.hz" not in page_text
     assert "FILL IS RELATIVE TO THE HEAVIEST WINDOW IN RANGE" in page_text
 
 
-def test_week_grid_cell_fill_uses_pct_of_cap_for_both_fill_and_colour(page_text):
-    """15-pixel-proportions #3: pct_of_week is null on every real week cell,
-    so the 7-block meter must fill AND colour from pct_of_cap instead; caps-
-    unknown windows fall back to a token-relative fill against var(--line),
-    no colour ramp."""
-    assert "fillPct = c.pct_of_cap;" in page_text
-    assert "on = PX_LVL[pxLvl(c.pct_of_cap)];" in page_text
+def test_week_grid_cell_fill_falls_back_to_pct_of_week_when_pct_of_cap_is_null(page_text):
+    """D1 bug-1 fix: pct_of_cap needs the 5-hour SESSION cap specifically and
+    is null on every real week cell once only a WEEKLY cap has been
+    estimated, even though caps_known is true -- so the 7-block meter must
+    fill AND colour from pct_of_week in that case instead of drawing empty.
+    D1 bug-1 follow-up: pct_of_week is a share of a WEEK, so the fallback
+    goes through weekFillPct/pxLvlWeek (the restored WEEK_LVL_EDGES ladder),
+    not pxLvl's 5-hour-cap edges, or every real cell reads as one lit
+    segment in the lowest band regardless of how heavy it actually was.
+    caps-unknown windows still fall back to a token-relative fill against
+    var(--line), no colour ramp."""
+    assert "fillPct = weekFillPct(c.pct_of_week);" in page_text
+    assert "on = PX_LVL[pxLvlWeek(c.pct_of_week)];" in page_text
     assert "TOKENS SHOWN, NOT FILL — CAP UNKNOWN" in page_text
 
 
