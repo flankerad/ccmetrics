@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .. import __version__, constants, costs, detectors, live, report, store, windows
+from .. import __version__, constants, costs, detectors, ingest, live, report, store, windows
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 7433
@@ -798,7 +798,24 @@ def _default(o):
     return str(o)
 
 
-def serve(port: int = DEFAULT_PORT, open_browser: bool = True) -> int:
+def _reingest_loop(period: float, stop: threading.Event) -> None:
+    """Keep a long-running dash from drifting: re-read ~/.claude/projects on a
+    timer instead of only once at boot. One thread, one connection (same
+    per-thread pattern as request handling), so there's never a second ingest
+    pass racing this one — no lock needed. `stop.wait` doubles as the sleep so
+    shutdown doesn't have to wait out a full period.
+    """
+    conn = store.connect()
+    while not stop.wait(period):
+        try:
+            stats = ingest.ingest(conn)
+            if stats.get("turns_new"):
+                print(f"ccmetrics dash: re-ingest: {stats['turns_new']} new turns", flush=True)
+        except Exception as exc:  # a bad pass should never take the dash down
+            print(f"ccmetrics dash: re-ingest failed: {exc}", flush=True)
+
+
+def serve(port: int = DEFAULT_PORT, open_browser: bool = True, reingest_period: float | None = 60) -> int:
     httpd = ThreadingHTTPServer((HOST, port), Handler)
     httpd.daemon_threads = True
     url = f"http://{HOST}:{port}/"
@@ -808,10 +825,14 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True) -> int:
             webbrowser.open(url)
         except Exception:
             pass
+    stop = threading.Event()
+    if reingest_period:
+        threading.Thread(target=_reingest_loop, args=(reingest_period, stop), daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("", flush=True)
     finally:
+        stop.set()  # wake the re-ingest thread so it exits without lingering
         httpd.server_close()
     return 0

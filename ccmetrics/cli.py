@@ -266,7 +266,11 @@ def main(argv: list[str] | None = None) -> int:
             if not args.no_ingest:
                 _run_ingest(conn)
             conn.close()  # the server opens its own connection per thread
-            return dash.serve(port=args.port, open_browser=not args.no_open)
+            # --no-ingest means serve the store as-is: no periodic re-ingest either.
+            reingest_period = None if args.no_ingest else 60
+            return dash.serve(
+                port=args.port, open_browser=not args.no_open, reingest_period=reingest_period
+            )
 
         if not args.no_ingest:
             _run_ingest(conn)
