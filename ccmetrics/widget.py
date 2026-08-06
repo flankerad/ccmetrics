@@ -278,12 +278,16 @@ class Widget:
         self._px(cx - 1, top + 11 * s, 2, fuse_top - (top + 11 * s), INK)
 
     def _bar(self, top: float, height: float, pct: float, graded: bool,
-             ghost_to: float | None = None) -> None:
-        """One 40-cell bar. `graded` colours each cell by where that cell sits
-        in the WINDOW, not where it sits in the fill: a bar at 20% must stay
-        green throughout, and only a bar that really is near its cap may show
-        red at its end. Ungraded fills flat neutral, which is what a bar with
-        no cap behind it is entitled to claim.
+             ghost_to: float | None = None, fuse: bool = False) -> None:
+        """One 40-cell bar. `graded` walks the green -> red ramp.
+
+        `fuse` picks WHICH ramp, and the page draws these two the same way:
+        a fuse grades by how far into its own fill each cell sits, so the
+        week burns calm at the start and alarming at the flame. Every other
+        bar takes ONE colour for the whole fill, from how much room is left
+        -- grading those made a healthy 20% run green-to-red across itself
+        and read as an emergency. Ungraded fills flat neutral, which is what
+        a bar with no cap behind it is entitled to claim.
 
         `ghost_to` dims the cells between the fill and a projection, so the
         block bar can show where it is heading without drawing that stretch
@@ -291,10 +295,16 @@ class Widget:
         """
         pad, gap = 16, 1
         cell_w = (WIDTH - pad * 2 - gap * (CELLS - 1)) / CELLS
+        flat = PX_LVL[px_left_lvl(100 - pct)]
         for i in range(CELLS):
             at = (i / CELLS) * 100
             if at < pct:
-                fill = PX_LVL[px_lvl(at)] if graded else LINE
+                if not graded:
+                    fill = LINE
+                elif fuse:
+                    fill = PX_LVL[px_lvl(round((at / max(pct, 1)) * 100))]
+                else:
+                    fill = flat
             elif ghost_to is not None and at < ghost_to:
                 fill = LINE
             else:
@@ -383,7 +393,7 @@ class Widget:
         # clock put three tight lines over a tall gap. The verdict above names
         # the week already, and only the block bar below needs saying which.
         fuse_top, bar_h, pad = 78, 18, 16
-        self._bar(fuse_top, bar_h, used_pct, source == "cap")
+        self._bar(fuse_top, bar_h, used_pct, source == "cap", fuse=True)
 
         bar_l, bar_w = pad, WIDTH - pad * 2
         if clock_pct is not None:
