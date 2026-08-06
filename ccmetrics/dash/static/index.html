@@ -230,9 +230,24 @@ function get(url) {
    all, and tagging it would claim a filter it never applies. */
 function scopeTag() {
   if (!state.scope) return "";
-  return '<span class="cc-scope-chip" title="Showing one project only — click to show every project again" ' +
+  /* state.scope is the project KEY -- a slugged absolute path, unreadable on
+     a chip. The PROJECTS row already worked out the short name and the
+     numbers, so look the row back up and reuse them rather than re-deriving
+     a name from the key. No row (scope set before projects loaded) falls back
+     to the key's last path segment. */
+  var rows = (state.projects && state.projects.rows) || [];
+  var row = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].project === state.scope) { row = rows[i]; break; }
+  }
+  var days = (state.projects && state.projects.window_days) || 30;
+  var name = row ? (baseName(row.cwd) || row.project) : (String(state.scope).split(/[\\/-]/).pop() || state.scope);
+  var body = esc(name);
+  if (row) body += ' <span style="color:var(--dim)">· ' + fmtTok(row.equiv) + " · " + days + "D</span>";
+  return '<span class="cc-scope-chip" title="' + esc(name + " only, last " + days + " days" +
+    (row ? " — " + fmtTok(row.equiv) + " absorbed" : "") + " · click to show every project again") + '" ' +
     'style="margin-left:10px;padding:1px 7px;border:2px solid var(--l2);color:var(--l2);cursor:pointer;text-transform:none">' +
-    esc(baseName(state.scope) || state.scope) + " ✕</span>";
+    body + " ✕</span>";
 }
 
 /* One listener pass for every chip the render just wrote. */
