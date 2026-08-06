@@ -45,6 +45,10 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--no-open", action="store_true", help="do not open a browser")
     d.add_argument("--no-ingest", action="store_true", help="serve the store as-is")
 
+    wg = sub.add_parser("widget", help="floating always-on-top window with the hero's fuse")
+    wg.add_argument("--port", type=int, default=7433, help="port the dash is serving on")
+    wg.add_argument("--scope", help="project key to read, default every project")
+
     lv = sub.add_parser("live", help="R7 live tiles for the session running right now")
     lv.add_argument("--json", action="store_true", help="print the tile payload as JSON")
 
@@ -170,6 +174,12 @@ def _render_live(t: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
+    if args.cmd == "widget":
+        # Reads the dash's own endpoint, so it never opens the store itself --
+        # dispatched before the store is opened for that reason.
+        from . import widget
+
+        return widget.run(port=args.port, scope=args.scope)
     if args.cmd == "constants":
         print(json.dumps(constants.provenance(), indent=2))
         return 0
