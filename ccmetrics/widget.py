@@ -279,9 +279,11 @@ class Widget:
 
     def _bar(self, top: float, height: float, pct: float, graded: bool,
              ghost_to: float | None = None) -> None:
-        """One 40-cell bar. `graded` walks the green -> red ramp by how far
-        into the fill each cell sits; ungraded fills flat neutral, which is
-        what a bar with no cap behind it is entitled to claim.
+        """One 40-cell bar. `graded` colours each cell by where that cell sits
+        in the WINDOW, not where it sits in the fill: a bar at 20% must stay
+        green throughout, and only a bar that really is near its cap may show
+        red at its end. Ungraded fills flat neutral, which is what a bar with
+        no cap behind it is entitled to claim.
 
         `ghost_to` dims the cells between the fill and a projection, so the
         block bar can show where it is heading without drawing that stretch
@@ -292,7 +294,7 @@ class Widget:
         for i in range(CELLS):
             at = (i / CELLS) * 100
             if at < pct:
-                fill = PX_LVL[px_lvl(round((at / max(pct, 1)) * 100))] if graded else LINE
+                fill = PX_LVL[px_lvl(at)] if graded else LINE
             elif ghost_to is not None and at < ghost_to:
                 fill = LINE
             else:
