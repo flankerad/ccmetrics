@@ -13,6 +13,13 @@ import json
 
 from ccmetrics import plan, report, store
 
+
+def _plain(line: str) -> str:
+    """The status line without its colour escapes."""
+    import re as _re
+
+    return _re.sub(r"\033\[[0-9;]*m", "", line)
+
 BASE = _dt.datetime(2026, 7, 31, 12, 0, 0, tzinfo=_dt.timezone.utc)
 
 
@@ -600,12 +607,16 @@ def test_passthrough_failure_modes_fall_back_to_our_own_line(cmd):
     """A status line is the user's editor chrome: it may never go blank or
     loud, so every way the wrapped command can let us down ends in ccmetrics'
     own line instead."""
-    assert plan.run("{}", passthrough=cmd) == "ccmetrics"
+    import os
+
+    assert _plain(plan.run("{}", passthrough=cmd)) == os.path.basename(os.getcwd())
 
 
 def test_passthrough_slow_command_times_out_and_falls_back(monkeypatch):
     monkeypatch.setattr(plan, "PASSTHROUGH_TIMEOUT_S", 0.2)
-    assert plan.run("{}", passthrough="sleep 5") == "ccmetrics"
+    import os
+
+    assert _plain(plan.run("{}", passthrough="sleep 5")) == os.path.basename(os.getcwd())
 
 
 def test_cli_statusline_with_a_broken_passthrough_prints_a_line_and_exits_0(
@@ -618,7 +629,9 @@ def test_cli_statusline_with_a_broken_passthrough_prints_a_line_and_exits_0(
 
     monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
     assert main(["statusline", "--passthrough", "ccmetrics-no-such-command-xyz"]) == 0
-    assert capsys.readouterr().out.strip() == "ccmetrics"
+    import os
+
+    assert _plain(capsys.readouterr().out.strip()) == os.path.basename(os.getcwd())
 
 
 def test_setup_text_shows_both_the_plain_and_the_chained_fragment():

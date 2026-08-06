@@ -93,6 +93,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="wire ccmetrics into statusLine.command, wrapping any command already there",
     )
     su.add_argument(
+        "--print",
+        dest="print_only",
+        action="store_true",
+        help="print the instructions and change nothing (the old default)",
+    )
+    su.add_argument(
         "--revert",
         action="store_true",
         help="undo --apply: restore the wrapped command, or remove statusLine if we added it",
@@ -196,7 +202,10 @@ def main(argv: list[str] | None = None) -> int:
 
         settings_path = Path(args.settings) if args.settings else plan_mod.default_settings_path()
 
-        if args.apply:
+        if args.print_only:
+            print(plan_mod.setup_text())  # print-only: no file is ever written
+            return 0
+        if args.apply or not (args.revert or args.check):
             try:
                 result = plan_mod.apply_setup(settings_path)
             except plan_mod.SetupError as e:

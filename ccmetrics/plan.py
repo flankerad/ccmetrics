@@ -417,6 +417,34 @@ def record_usage_cache(conn, cache=None, path=None) -> int:
     return store.insert_plan_snapshot(conn, fetched_at, fresh, session_id=None)
 
 
+def _git_branch(cwd: str) -> str | None:
+    """Current branch, read straight off .git/HEAD — no subprocess.
+
+    This runs on every redraw, so it walks up to the repo root and reads one
+    small file. A detached HEAD gives a short commit id; anything unreadable
+    gives None and the segment simply does not appear.
+    """
+    try:
+        here = Path(cwd).resolve()
+    except OSError:
+        return None
+    for d in (here, *here.parents):
+        git = d / ".git"
+        try:
+            if git.is_file():  # worktree: ".git" is a pointer file
+                line = git.read_text(encoding="utf-8", errors="replace").strip()
+                if not line.startswith("gitdir:"):
+                    return None
+                git = Path(line.split(":", 1)[1].strip())
+            head = (git / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if head.startswith("ref:"):
+            return head.split("/", 2)[-1][:60] or None
+        return head[:7] or None
+    return None
+
+
 def extract(payload: dict) -> dict:
     """Whitelist the handful of fields we use. Nothing else is ever read.
 
@@ -424,15 +452,32 @@ def extract(payload: dict) -> dict:
     numbers, model names and timestamps, and that is what reaches the store.
     """
     out: dict = {"session_id": None, "model": None, "cost_usd": None,
-                 "context_pct": None, "windows": {}}
+                 "context_pct": None, "windows": {}, "project": None,
+                 "branch": None, "style": None, "ctx_used": None, "ctx_max": None}
     if not isinstance(payload, dict):
         return out
+
+    ws = payload.get("workspace")
+    if isinstance(ws, dict):
+        for key in ("project_dir", "current_dir"):
+            v = ws.get(key)
+            if isinstance(v, str) and v.strip():
+                out["project"] = Path(v.strip()).name[:40]
+                out["branch"] = _git_branch(v.strip())
+                break
+
+    style = payload.get("output_style")
+    if isinstance(style, dict):
+        v = style.get("name")
+        if isinstance(v, str) and v.strip():
+            out["style"] = v.strip()[:20]
 
     sid = payload.get("session_id")
     if isinstance(sid, str) and 0 < len(sid) <= 128:
         out["session_id"] = sid
 
     model = payload.get("model")
+    model_id = model.get("id") if isinstance(model, dict) else None
     if isinstance(model, dict):
         for key in ("display_name", "id"):
             v = model.get(key)
@@ -447,6 +492,16 @@ def extract(payload: dict) -> dict:
     ctx = payload.get("context_window")
     if isinstance(ctx, dict):
         out["context_pct"] = _pct(ctx.get("used_percentage"))
+        used = _num(ctx.get("used_tokens"))
+        total = (
+            _num(ctx.get("max_tokens"))
+            or constants.context_window(model_id)
+            or constants.context_window(out["model"])
+        )
+        if used is None and total and out["context_pct"] is not None:
+            used = total * out["context_pct"] / 100.0
+        out["ctx_used"] = used
+        out["ctx_max"] = float(total) if total else None
 
     limits = payload.get("rate_limits")
     if isinstance(limits, dict):
@@ -546,27 +601,117 @@ def fmt_reset(iso: str | None) -> str:
 # --- the printed line -------------------------------------------------------
 
 
-def render_line(data: dict) -> str:
-    """The one-line statusline. Only facts that arrived on stdin appear."""
-    from . import costs
+# Colours for the printed line. Claude Code renders ANSI escapes in the status
+# line, so these are always emitted unless NO_COLOR is set.
+_ORANGE = "\033[38;5;209m"
+_DIM = "\033[2m"
+_BOLD = "\033[1m"
+_OFF = "\033[0m"
 
-    parts = []
+# The dashboard's four heat stops (--l1..--l4 in dash/static/index.html), as
+# hue/saturation/lightness. The status line blends BETWEEN them rather than
+# stepping, so 40% used sits visibly between green and yellow instead of
+# snapping to one of four colours.
+_HEAT_STOPS = (
+    (0.0, (136.0, 0.20, 0.39)),   # #4f7a58 green
+    (50.0, (63.0, 0.37, 0.46)),   # #9aa04a yellow-green
+    (80.0, (30.0, 0.55, 0.51)),   # #c8873c orange
+    (100.0, (7.0, 0.52, 0.48)),   # #bd4a3a red
+)
+
+
+def _hsl_rgb(h: float, s: float, ll: float) -> tuple[int, int, int]:
+    c = (1 - abs(2 * ll - 1)) * s
+    x = c * (1 - abs((h / 60.0) % 2 - 1))
+    m = ll - c / 2
+    r, g, b = [(c, x, 0), (x, c, 0), (0, c, x), (0, x, c), (x, 0, c), (c, 0, x)][int(h // 60) % 6]
+    return tuple(round((v + m) * 255) for v in (r, g, b))
+
+
+def _heat(pct: float) -> str:
+    """Truecolor escape for a used-percentage, green -> orange -> red."""
+    pct = max(0.0, min(100.0, float(pct)))
+    lo = _HEAT_STOPS[0]
+    for stop in _HEAT_STOPS:
+        if stop[0] >= pct:
+            hi = stop
+            break
+        lo = stop
+    else:
+        hi = _HEAT_STOPS[-1]
+    span = hi[0] - lo[0]
+    t = 0.0 if span <= 0 else (pct - lo[0]) / span
+    h, s, ll = (a + (b - a) * t for a, b in zip(lo[1], hi[1]))
+    r, g, b = _hsl_rgb(h, s, ll)
+    return f"\033[38;2;{r};{g};{b}m"
+
+
+def _paint(text: str, code: str) -> str:
+    if os.environ.get("NO_COLOR"):
+        return text
+    return f"{code}{text}{_OFF}"
+
+
+def _fmt_tokens(n: float) -> str:
+    """94400 -> '94.4k'; 200000 -> '200k'; 1000000 -> '1M'."""
+    if n < 1000:
+        return f"{n:.0f}"
+    if n >= 1_000_000:
+        m = n / 1_000_000.0
+        return f"{m:.0f}M" if abs(m - round(m)) < 0.05 else f"{m:.1f}M"
+    k = n / 1000.0
+    return f"{k:.0f}k" if abs(k - round(k)) < 0.05 else f"{k:.1f}k"
+
+
+def render_line(data: dict) -> str:
+    """The one-line statusline. Only facts that arrived on stdin appear.
+
+    Shape (statusline.sh 'Clean Claude'):
+        project > branch | * Model :: style 94.4k/200k (47%) | 5h 32% | wk 18%
+    Every segment is optional; missing ones close up without leaving separators.
+    """
+    head = []
+    if data.get("project"):
+        head.append(_paint(data["project"], _BOLD))
+    if data.get("branch"):
+        arrow = _paint(">", _DIM)
+        head.append(f"{arrow} {_paint(data['branch'], _DIM)}")
+
+    mid = []
     if data.get("model"):
-        parts.append(data["model"])
-    cost = data.get("cost_usd")
-    if cost is not None:
-        parts.append(costs.fmt_usd(cost))
+        mid.append(_paint(f"✳ {data['model']}", _ORANGE))
+    tail = []
+    if data.get("style"):
+        tail.append(_paint(data["style"], _ORANGE))
+    used, total = data.get("ctx_used"), data.get("ctx_max")
+    ctx = data.get("context_pct")
+    if used is not None and total:
+        pct = f" ({ctx:.0f}%)" if ctx is not None else ""
+        text = f"{_fmt_tokens(used)}/{_fmt_tokens(total)}{pct}"
+        tail.append(_paint(text, _heat(ctx)) if ctx is not None else text)
+    elif ctx is not None:
+        tail.append(_paint(f"{ctx:.0f}%", _heat(ctx)))
+    if tail:
+        joined = " ".join(tail)
+        mid.append(f"{_paint('::', _DIM)} {joined}" if mid else joined)
+
+    parts = [" ".join(head)] if head else []
+    if mid:
+        parts.append(" ".join(mid))
     windows = data.get("windows") or {}
-    for name in sorted(windows, key=_window_sort):
+    # shortest window first here, unlike the dashboard: the 5h number is the one
+    # that bites soonest, so it reads left to right as urgency.
+    for name in sorted(windows, key=lambda n: (-_window_sort(n)[0], n)):
         pct = windows[name].get("used_pct")
         if pct is None:
             continue
         short, _long = window_labels(name)
-        parts.append(f"{short} {pct:.0f}%")
-    ctx = data.get("context_pct")
-    if ctx is not None:
-        parts.append(f"ctx {ctx:.0f}%")
-    return " · ".join(parts) if parts else "ccmetrics"
+        parts.append(_paint(f"{short} {pct:.0f}%", _heat(pct)))
+    if not parts:
+        # Nothing arrived on stdin: name where we are rather than name ourselves,
+        # so the line still tells the user something true.
+        return _paint(Path.cwd().name or "ccmetrics", _BOLD)
+    return f" {_paint('|', _DIM)} ".join(parts)
 
 
 def _passthrough(command: str, stdin_text: str) -> str | None:

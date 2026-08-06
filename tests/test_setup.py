@@ -421,11 +421,18 @@ def test_apply_writes_absolute_path_when_path_build_is_stale(monkeypatch, tmp_pa
 # --- cli wiring ---------------------------------------------------------
 
 
-def test_cli_setup_no_flags_prints_instructions_and_changes_nothing(tmp_path, capsys):
+def test_cli_setup_print_prints_instructions_and_changes_nothing(tmp_path, capsys):
     settings = tmp_path / "settings.json"
-    assert main(["setup", "--settings", str(settings)]) == 0
+    assert main(["setup", "--print", "--settings", str(settings)]) == 0
     assert not settings.exists()
     assert "ccmetrics statusline" in capsys.readouterr().out
+
+
+def test_cli_setup_no_flags_wires_the_status_line(tmp_path, capsys):
+    settings = tmp_path / "settings.json"
+    assert main(["setup", "--settings", str(settings)]) == 0
+    capsys.readouterr()
+    assert "ccmetrics statusline" in settings.read_text()
 
 
 def test_cli_setup_apply_then_check_round_trip(cc_env, tmp_path, capsys):
