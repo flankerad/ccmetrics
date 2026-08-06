@@ -223,6 +223,32 @@ function get(url) {
     return r.json();
   });
 }
+/* Clicking a project row silently narrows six panels to that one project.
+   Every panel that actually reloads under a scope prints this chip in its
+   own header, so no panel can show a filtered number without saying so.
+   `PROJECTS` deliberately does not carry it -- that panel always lists them
+   all, and tagging it would claim a filter it never applies. */
+function scopeTag() {
+  if (!state.scope) return "";
+  return '<span class="cc-scope-chip" title="Showing one project only — click to show every project again" ' +
+    'style="margin-left:10px;padding:1px 7px;border:2px solid var(--l2);color:var(--l2);cursor:pointer;text-transform:none">' +
+    esc(baseName(state.scope) || state.scope) + " ✕</span>";
+}
+
+/* One listener pass for every chip the render just wrote. */
+function wireScopeChips(host) {
+  // The render harness hands in a document stub with no query API at all --
+  // no chips to wire is a normal state, not a reason to fail the whole page.
+  if (!host || typeof host.querySelectorAll !== "function") return;
+  Array.prototype.forEach.call(host.querySelectorAll(".cc-scope-chip"), function (el) {
+    el.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      state.scope = null;
+      boot();
+    });
+  });
+}
+
 function scopedUrl(base, projectBase) {
   if (!state.scope) return base;
   return (projectBase || base) + (base.indexOf("?") >= 0 ? "&" : "?") + "project=" + encodeURIComponent(state.scope);
@@ -401,7 +427,13 @@ function heroFuse() {
     } else {
       cellBg = "var(--l0)";
     }
-    fuseCells += '<div style="flex:1;height:22px;background:' + cellBg + '"></div>';
+    /* Each cell is one fortieth of the window, so its hover says which slice
+       of the burn it stands for -- otherwise a 40-cell bar has 40 identical
+       rectangles and no way to read a number off any one of them. */
+    var cellTip = Math.round(cellAt) + "-" + Math.round(cellAt + 2.5) + "% of the window · " +
+      (cellAt < usedPct ? "burnt" : "still yours");
+    if (burnt !== null && burnt !== undefined) cellTip += " · " + fmtTok(burnt) + " burnt so far";
+    fuseCells += '<div title="' + esc(cellTip) + '" style="flex:1;height:22px;background:' + cellBg + '"></div>';
   }
 
   /* The clock case is 57px wide and the flame is ~34px wide once scaled, so
@@ -510,7 +542,15 @@ function heroHeadroom() {
     var rowColor = leftKnown ? meterColor : "var(--dim)";
     var usedW = hr.used_pct !== null && hr.used_pct !== undefined ? hr.used_pct : 0;
     var leftFill = leftKnown ? hr.left_pct : (capsKnown ? 0 : 100 - usedW);
-    return '<div>' +
+    /* Row-level hover, not per-cell: these 16 cells are one number's bar, so
+       the useful facts are the row's own -- how much is left, out of what,
+       and when it comes back. */
+    var rowTip = String(hr.short_label || hr.label || "").toUpperCase() +
+      (leftKnown ? " — " + fmtPct(hr.left_pct) + " left" : " — no cap known") +
+      (hr.left_equiv != null ? " · " + fmtTok(hr.left_equiv) + " of room" : "") +
+      (hr.cap_equiv != null ? " · cap " + fmtTok(hr.cap_equiv) : "") +
+      (hr.resets_at ? " · back at " + fmtClock(hr.resets_at) : "");
+    return '<div title="' + esc(rowTip) + '">' +
       '<div style="display:flex;justify-content:space-between;margin-bottom:6px">' +
       '<span style="display:flex;align-items:center;gap:7px;color:var(--dim);text-transform:uppercase">' + dot + esc(hr.short_label || hr.label) + "</span>" +
       '<span style="font-size:15px;color:' + rowColor + '">' + left + "</span>" +
@@ -543,7 +583,7 @@ function heroHeadroom() {
     }
   }
   return '<div class="px-panel">' +
-    '<div class="px-label">LIMITS LEFT</div>' +
+    '<div class="px-label">LIMITS LEFT' + scopeTag() + '</div>' +
     '<div style="display:flex;flex-direction:column;gap:16px;margin-top:14px">' + body + "</div>" +
     advice +
     "</div>";
@@ -728,7 +768,7 @@ function renderHorizon() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px">' +
-    '<span class="px-label">MONTH · ' + cells.length + ' WINDOWS</span>' +
+    '<span class="px-label">MONTH · ' + cells.length + ' WINDOWS</span>' + scopeTag() +
     dryHeader +
     "</div>" +
     '<div style="display:flex;gap:3px">' + cellsHtml + "</div>" +
@@ -833,7 +873,7 @@ function renderRecoverable() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">' +
-    '<span class="px-label">RECOVERABLE · ' + fmtTok(total) + ' TOKENS</span>' +
+    '<span class="px-label">RECOVERABLE · ' + fmtTok(total) + ' TOKENS</span>' + scopeTag() +
     '<span id="cc-find-toggle" style="display:flex;align-items:center;gap:10px;color:var(--dim);flex-wrap:wrap;cursor:pointer">' + projection +
     '<span id="cc-find-caret">▸</span> ' + all.length + ' FINDINGS</span>' +
     "</div>" +
@@ -915,9 +955,23 @@ function renderProjects() {
       : (baseName(r.cwd) || r.project || "?");
     var lvl = PX_LVL[pxLvl(sharePct)];
     var clickable = !r.grouped && !r.ephemeral && r.project;
-    return '<div data-project="' + esc(r.project || "") + '" class="cc-proj-row" style="display:grid;grid-template-columns:24px minmax(110px,1.2fr) minmax(150px,2fr) minmax(60px,0.7fr) minmax(110px,1.6fr);gap:0 16px;align-items:center;cursor:' + (clickable ? "pointer" : "default") + '">' +
+    /* The clicked row is what every other panel is now filtered to, so it
+       has to look picked -- a lit left edge and a bright name, not just a
+       word in the page header nobody looks at while reading a chart. */
+    var picked = clickable && state.scope === r.project;
+    var rowStyle = picked
+      ? "border-left:3px solid var(--l2);padding-left:9px;margin-left:-12px"
+      : "border-left:3px solid transparent;padding-left:9px;margin-left:-12px";
+    /* One hover for the whole row: the meter's 20 cells are a single share
+       drawn wide, and the row is what a click will scope the page to. */
+    var rowTip = name.toUpperCase() + " — " + sharePct + "% of the last " +
+      ((p.window_days || 30) + " days") + " · " + fmtTok(r.equiv) + " absorbed" +
+      (r.top_leak ? " · biggest leak: " + r.top_leak.name : "") +
+      (clickable ? (picked ? " · click to show every project again" : " · click to show only this project") : "");
+    return '<div title="' + esc(rowTip) + '" data-project="' + esc(r.project || "") + '" class="cc-proj-row" style="display:grid;grid-template-columns:24px minmax(110px,1.2fr) minmax(150px,2fr) minmax(60px,0.7fr) minmax(110px,1.6fr);gap:0 16px;align-items:center;' + rowStyle + ';cursor:' + (clickable ? "pointer" : "default") + '">' +
       '<div class="px-faint">' + String(i + 1).padStart(2, "0") + "</div>" +
-      "<div>" + esc(name) + "</div>" +
+      '<div style="color:' + (picked ? "var(--l2)" : "var(--ink)") + '">' + esc(name) +
+      (picked ? ' <span style="color:var(--dim)">· showing</span>' : "") + "</div>" +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<span style="width:34px;color:' + (sharePct >= 45 ? lvl : "var(--ink)") + '">' + sharePct + "%</span>" +
       '<span style="flex:1;display:flex;gap:2px">' + pxMeter(sharePct, 20, lvl, null, "height:10px") + "</span>" +
@@ -931,7 +985,9 @@ function renderProjects() {
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:16px">' +
     '<span class="px-label">PROJECTS · ' + (p.window_days || 30) + ' DAYS</span>' +
-    '<span style="color:var(--dim)">' + fmtTok(total) + ' TOKENS</span>' +
+    '<span style="color:var(--dim)">' +
+    (state.scope ? 'CLICK THE LIT ROW TO SHOW EVERY PROJECT AGAIN · ' : "") +
+    fmtTok(total) + ' TOKENS</span>' +
     "</div>" +
     '<div style="display:flex;flex-direction:column;gap:8px">' + rowsHtml + "</div>" +
     "</div>";
@@ -990,7 +1046,14 @@ function renderDollars() {
     for (var bi = 0; bi < blocks; bi++) {
       blocksHtml += '<div style="height:12px;background:' + lvl + '"></div>';
     }
-    return '<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%">' + blocksHtml + "</div>";
+    /* A column is a day rounded to whole blocks, so its height is always a
+       little wrong on purpose -- the hover carries the number the rounding
+       came from, plus the tokens behind the money. */
+    var tip = axisLabel(d.date) + " (" + d.date + ") — " + fmtUsd(val) +
+      " at API prices · " + blocks + (blocks === 1 ? " block" : " blocks");
+    if (d.equiv) tip += " · " + fmtTok(d.equiv) + " absorbed";
+    if (d.turns) tip += " · " + d.turns + " turns";
+    return '<div title="' + esc(tip) + '" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%">' + blocksHtml + "</div>";
   }).join("");
 
   var MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -1021,7 +1084,7 @@ function renderDollars() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px">' +
-    '<span class="px-label">VALUE ABSORBED · ' + (s.window_days || 30) + ' DAYS</span>' +
+    '<span class="px-label">VALUE ABSORBED · ' + (s.window_days || 30) + ' DAYS</span>' + scopeTag() +
     '<span style="color:var(--dim)">' + fmtUsd(total) + ' AT API PRICES · NOT A BILL' + confidence + "</span>" +
     "</div>" +
     '<div class="px-faint" style="margin-bottom:14px">1 BLOCK = ' + fmtUsd(blockUsd) + ' · COLOUR IS THE DAY’S SIZE</div>' +
@@ -1182,7 +1245,7 @@ function renderWeek() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px">' +
-    '<span class="px-label">THIS WEEK · ' + (w.week_blocks || 0) + ' WINDOWS</span>' +
+    '<span class="px-label">THIS WEEK · ' + (w.week_blocks || 0) + ' WINDOWS</span>' + scopeTag() +
     dryHeader +
     "</div>" +
     headHtml +
@@ -1246,6 +1309,11 @@ function renderAll() {
   renderDollars();
   renderWeek();
   renderFooter();
+  /* One pass over the finished page instead of a call inside every render:
+     the chips are identical wherever they land, and each render replaces its
+     own innerHTML, so wiring after all of them is the only point at which
+     every chip that exists is in the document. */
+  wireScopeChips(document);
 }
 
 boot();
