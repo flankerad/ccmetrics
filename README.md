@@ -42,9 +42,30 @@ Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/
 ```bash
 ccmetrics        # inside a repo → that repo's summary: top leaks + paste-ready fixes
 ccmetrics dash   # anywhere → global dashboard in your browser, per-project drill-down
+ccmetrics widget # optional → small always-on-top window with the week fuse (needs the dash running)
 ccmetrics otel   # optional → local OTEL receiver (127.0.0.1:4318) for exact costs
 ccmetrics statusline --setup   # optional → your real plan % in the status line and the dash
 ```
+
+### The widget needs Tk
+
+`ccmetrics widget` draws with Tk, the graphics toolkit Python normally bundles.
+Nothing installs it for you, and several Python builds leave it out — including
+the interpreter `uv` downloads for itself. Everything else in ccmetrics runs
+without it.
+
+| Platform | What you need |
+|---|---|
+| Windows | nothing — the python.org installer includes Tk |
+| macOS (Apple's own python3) | nothing |
+| macOS (Homebrew) | `brew install python-tk` |
+| Debian/Ubuntu | `sudo apt install python3-tk` |
+| Fedora | `sudo dnf install python3-tkinter` |
+
+If `uv tool install` picked a Python without it, point the install at one that
+has it: `uv tool install --force --python $(which python3) .`
+
+Check yours with `python3 -c "import tkinter"` — silence means it works.
 
 The dashboard glance view, zero clicks: live session tiles (burn rate, context %, cache-hit, spend — a runaway session gets flagged *while it's running*), 30-day spend trend, token mix, top leaks ranked by `tokens saved ÷ effort` each with a copy button, and a per-project table.
 
@@ -71,7 +92,7 @@ How much of your Pro/Max plan is gone is **not** in any file on your machine —
 ccmetrics statusline --setup   # prints the ~/.claude/settings.json fragment; edits nothing
 ```
 
-Turn it on and your status line becomes `Opus · $0.31 · wk 62% · 5h 31% · ctx 24%`, while `ccmetrics dash` grows a **PLAN** card and `ccmetrics` prints a PLAN line. Only the percentage, the reset time and the session id are stored (90 days, metadata as always); readings older than 6 hours are labelled stale rather than shown as current. Leave it off and nothing changes — the card and the line simply never appear.
+Turn it on and your status line becomes `ccmetrics > main | ✳ Opus :: 48k/200k (24%) | 5h 31% | wk 62%`, coloured green through red by how much you have spent, while `ccmetrics dash` grows a **PLAN** card and `ccmetrics` prints a PLAN line. Only the percentage, the reset time and the session id are stored (90 days, metadata as always); readings older than 6 hours are labelled stale rather than shown as current. Leave it off and nothing changes — the card and the line simply never appear.
 
 #### Turn it on with one command
 
