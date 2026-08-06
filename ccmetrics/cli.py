@@ -76,10 +76,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sl.add_argument(
         "--passthrough",
         metavar="CMD",
+        action="append",
         default=None,
         help="your own status line command: it is run on the same session JSON "
-        "and ITS output is printed, after ccmetrics has recorded the plan %%. "
-        "Claude Code allows one status line command, so this keeps yours",
+        "and its output is printed BEFORE ccmetrics' own line. Claude Code "
+        "allows one status line command, so this keeps yours. Repeatable",
     )
 
     su = sub.add_parser(

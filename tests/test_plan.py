@@ -579,8 +579,17 @@ def test_usage_credits_none_on_missing_or_malformed_file(tmp_path):
 # the user already had there.
 
 
-def test_passthrough_prints_the_wrapped_commands_output_not_our_own_line():
-    assert plan.run("{}", passthrough="printf theirs") == "theirs"
+def test_passthrough_prints_the_wrapped_commands_output_then_our_own_line():
+    """Both lines are shown: theirs first, ours after the separator."""
+    import os
+
+    out = _plain(plan.run("{}", passthrough="printf theirs"))
+    assert out == "theirs | " + os.path.basename(os.getcwd())
+
+
+def test_several_passthroughs_all_appear_in_order():
+    out = _plain(plan.run("{}", passthrough=["printf one", "printf two"]))
+    assert out.startswith("one | two | ")
 
 
 def test_passthrough_is_handed_the_same_stdin_and_the_snapshot_is_still_stored(conn):
@@ -592,7 +601,8 @@ def test_passthrough_is_handed_the_same_stdin_and_the_snapshot_is_still_stored(c
 
     out = plan.run(payload, passthrough="cat")
 
-    assert json.loads(out) == json.loads(payload)  # the child saw the payload
+    seen = _plain(out).split(" | ")[0]
+    assert json.loads(seen) == json.loads(payload)  # the child saw the payload
     latest = store.latest_plan_windows(conn)       # and ccmetrics still recorded it
     assert latest["five_hour"]["used_pct"] == pytest.approx(31.0)
 

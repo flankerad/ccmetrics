@@ -752,11 +752,11 @@ def run(stdin_text: str, passthrough: str | None = None) -> str:
     store that cannot be opened still prints the model and cost from stdin.
 
     `passthrough` is the user's own statusline command, if they had one. The
-    payload is read once and given to both: ccmetrics records the plan snapshot
-    from it, then prints THAT command's output in place of its own line, so
-    owning the single statusline slot costs the user nothing. Anything going
-    wrong with it -- missing, failing, slow, silent -- falls back to ccmetrics'
-    own line, because a status line must never go blank or loud.
+    payload is read once and handed to every one of them: ccmetrics records the
+    plan snapshot from it, then prints their output AND its own line, joined,
+    so owning the single statusline slot costs the user nothing. Anything going
+    wrong with one -- missing, failing, slow, silent -- simply leaves it out,
+    because a status line must never go blank or loud.
     """
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
@@ -774,14 +774,21 @@ def run(stdin_text: str, passthrough: str | None = None) -> str:
                 conn.close()
         except Exception:
             pass  # a statusline must never fail loudly: it is the user's editor chrome
-    if passthrough:
+    commands = [passthrough] if isinstance(passthrough, str) else list(passthrough or [])
+    borrowed = []
+    for cmd in commands:
         try:
-            borrowed = _passthrough(passthrough, stdin_text)
+            line = _passthrough(cmd, stdin_text)
         except Exception:
-            borrowed = None
-        if borrowed is not None:
-            return borrowed
-    return render_line(data)
+            line = None
+        if line:
+            borrowed.append(line)
+    ours = render_line(data)
+    if borrowed:
+        # Both are shown, borrowed first: the user's own prompt is what they
+        # read by habit, ours is the number they consult.
+        return f" {_paint('|', _DIM)} ".join([*borrowed, ours])
+    return ours
 
 
 # --- setup ------------------------------------------------------------------
