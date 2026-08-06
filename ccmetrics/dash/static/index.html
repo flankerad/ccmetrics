@@ -598,7 +598,10 @@ function heroHeadroom() {
     }
   }
   return '<div class="px-panel">' +
-    '<div class="px-label">LIMITS LEFT' + scopeTag() + '</div>' +
+    /* This panel is the narrow right column, so the chip goes on its own line
+       under the label -- inline it wrapped mid-name and broke its own box. */
+    '<div class="px-label">LIMITS LEFT</div>' +
+    (state.scope ? '<div style="margin-top:8px;margin-left:-10px">' + scopeTag() + "</div>" : "") +
     '<div style="display:flex;flex-direction:column;gap:16px;margin-top:14px">' + body + "</div>" +
     advice +
     "</div>";
