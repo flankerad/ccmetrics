@@ -159,7 +159,10 @@ def test_punch_list_3_correctness_and_strings(page_text):
     assert "oneSentence(item.help)" in page_text
     # fix_text still exists (behind Copy fix, via data-fix), just not as the
     # row body -- the row body div now reads from oneSentence(), not fix_text
-    assert "esc(oneSentence(item.help)) + " + chr(34) + "</div>" + chr(34) in page_text
+    # the clipped body still comes from oneSentence(); clicking it swaps in the
+    # detector's whole help text (findOpenHelp keeps it open across re-renders)
+    assert "oneSentence(item.help)) + " + chr(34) + "</div>" + chr(34) in page_text
+    assert "findOpenHelp" in page_text and 'cc-help-' in page_text
     assert 'data-fix=' in page_text and 'esc(item.fix_text || "")' in page_text
 
     # item 6: absurd percentages get worded, not printed -- the whole

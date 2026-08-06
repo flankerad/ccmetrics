@@ -301,6 +301,9 @@ var state = {
    project. Outside `state` on purpose: `state` is server data, this is what
    the reader did to the page, and it must survive every re-render. */
 var findOpenGroups = {};
+/* Which top-three finding bodies the reader has unfolded, keyed by the
+   finding's own name so the timer re-render never snaps one shut. */
+var findOpenHelp = {};
 
 function get(url) {
   return fetch(url, { credentials: "same-origin" }).then(function (r) {
@@ -937,6 +940,7 @@ function renderRecoverable() {
       " · ";
   }
 
+  var helpOpen = top.map(function (item) { return !!findOpenHelp[item.name]; });
   var rows = top.map(function (item, i) {
     var pct = total > 0 ? Math.round((item.tokens_saved || 0) / total * 100) : 0;
     var lvl = PX_LVL[pxLvl(pct)];
@@ -949,7 +953,12 @@ function renderRecoverable() {
       '<div style="min-width:0">' +
       '<div style="font-size:13px;text-transform:uppercase">' + esc(item.name) +
       (item.project ? " · " + esc(baseName(item.cwd) || item.project) : "") + "</div>" +
-      '<div style="margin-top:4px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(oneSentence(item.help)) + "</div>" +
+      // The body is clipped to one line by default and unfolds on click to the
+      // detector's whole help text. Clipped and full are the same element:
+      // toggling white-space is what un-clips it, so nothing reflows sideways.
+      '<div id="cc-help-' + i + '" data-help-key="' + esc(item.name || String(i)) + '" title="click for the full text" style="margin-top:4px;color:var(--dim);cursor:pointer;' +
+      (helpOpen[i] ? "white-space:normal" : "white-space:nowrap;overflow:hidden;text-overflow:ellipsis") + '">' +
+      esc(helpOpen[i] ? String(item.help || "") : oneSentence(item.help)) + "</div>" +
       "</div>" +
       '<div style="display:flex;gap:2px">' + pxMeter(pct, 12, lvl) + "</div>" +
       '<div style="font-size:13px;color:' + lvl + '">' + fmtTok(item.tokens_saved) + "</div>" +
@@ -1011,6 +1020,24 @@ function renderRecoverable() {
     "</div>";
 
   top.forEach(function (item, i) {
+    var body = document.getElementById("cc-help-" + i);
+    if (body) {
+      body.addEventListener("click", function () {
+        var nowOpen = body.style.whiteSpace !== "normal";
+        findOpenHelp[item.name] = nowOpen;
+        if (nowOpen) {
+          body.style.whiteSpace = "normal";
+          body.style.overflow = "visible";
+          body.style.textOverflow = "clip";
+          body.textContent = String(item.help || "");
+        } else {
+          body.style.whiteSpace = "nowrap";
+          body.style.overflow = "hidden";
+          body.style.textOverflow = "ellipsis";
+          body.textContent = oneSentence(item.help);
+        }
+      });
+    }
     var el = document.getElementById("cc-copy-" + i);
     if (!el) return;
     el.addEventListener("click", function () {
