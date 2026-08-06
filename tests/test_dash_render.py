@@ -115,11 +115,11 @@ def test_hero_verdict_single_digits_left_reads_as_urgent(page_text):
     assert "The week is almost gone." in page_text  # unchanged, still the strongest
 
 
-def test_hero_face_is_an_ascii_scale_including_the_hot_end(page_text):
-    """The emoji face became a calm -> alarmed ASCII register; "(>_<;)" is the
-    explicitly requested hot-end glyph."""
-    assert "(>_<;)" in page_text
-    assert "(・_・)" in page_text
+def test_hero_face_is_an_emoji_scale_including_the_hot_end(page_text):
+    """PLAN-dash-ui-fixes 1: the kaomoji register became real emoji, calm ->
+    alarmed; "🥵" is the explicitly requested hot-end glyph."""
+    assert "🥵" in page_text
+    assert "😐" in page_text
 
 
 def test_punch_list_2_strings_present(page_text):

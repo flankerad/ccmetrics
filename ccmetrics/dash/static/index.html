@@ -31,7 +31,6 @@ a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
   <div id="cc-hero"></div>
   <div id="cc-recoverable"></div>
   <div id="cc-week"></div>
-  <div id="cc-live"></div>
   <div id="cc-horizon"></div>
   <div id="cc-projects"></div>
   <div id="cc-dollars"></div>
@@ -95,6 +94,25 @@ function pxMeter(pct, n, on, off, cellStyle) {
   }
   return out.join("");
 }
+/* PLAN-dash round2 2: PLAN-dash-ui-fixes 2 graded each lit cell by how far it
+   sits inside the current fill, copying the px panel's SPENT fuse (calm at
+   the start, alarming at the fill's edge). This meter's `pct` is how much
+   room is LEFT, not how much is spent -- grading it like a fuse made a
+   healthy 68%-left row run green-to-orange across its own bar, reading as
+   "burning down" when it is actually fine. A left-meter states how much
+   remains: plenty left reads calm across the WHOLE fill, little left reads
+   alarmed across the whole fill. `pxLeftLvl` already maps percent-left to
+   that single level -- apply it once per row, not once per cell position. */
+function pxMeterGraded(pct, n, cellStyle) {
+  var out = [];
+  var lvl = PX_LVL[pxLeftLvl(pct)];
+  for (var i = 0; i < n; i++) {
+    var cellAt = (i / n) * 100;
+    var bg = cellAt < pct ? lvl : "var(--l0)";
+    out.push('<div style="flex:1;height:12px;background:' + bg + (cellStyle ? ";" + cellStyle : "") + '"></div>');
+  }
+  return out.join("");
+}
 
 /* ==== formatting ==== */
 /* PLAN-dash-v2 6.4g #4: the payload carries `cwd` (a real absolute path)
@@ -145,8 +163,18 @@ function oneSentence(help) {
   if (!help) return "";
   var s = String(help);
   var dot = s.indexOf(". ");
-  if (dot > 0 && dot < 160) s = s.slice(0, dot + 1);
-  else if (s.length > 160) s = s.slice(0, 157) + "\u2026";
+  // PLAN-dash round2 3: 65 chars is a one-line budget sized for the card's
+  // body column (~500px at the page's max-width:1320px, 12px monospace at
+  // ~7.2px/char) -- not just a length cap. Cutting the STRING at the last
+  // space before that budget guarantees the "\u2026" always follows a whole word;
+  // the CSS nowrap+ellipsis on the row (below) stays as a narrow-viewport
+  // fallback that this JS clamp means it should rarely have to use.
+  if (dot > 0 && dot < 65) {
+    s = s.slice(0, dot + 1);
+  } else if (s.length > 65) {
+    var cut = s.lastIndexOf(" ", 62);
+    s = s.slice(0, cut > 0 ? cut : 62) + "\u2026";
+  }
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 /* getDay() order, shared by the clock formatter and the fuse day ticks. */
@@ -254,16 +282,16 @@ function heroFuse() {
        <=15% left     watching it    -- worth a glance, not yet urgent
        <=10% left     stressed       -- the cap is nearly spent
        <=5%  left     alarmed (🥵) -- effectively out; requested for the hot end */
-  var face = "(・_・)";
+  var face = "😐";
   if (pctLeft !== null) {
     if (pctLeft <= 5) {
-      face = "(>_<;)";
+      face = "🥵";
     } else if (pctLeft <= 10) {
-      face = "(•_•;)";
+      face = "😰";
     } else if (pctLeft <= 15) {
-      face = "(•_•)";
+      face = "😟";
     } else {
-      face = "(•‿•)";
+      face = "🙂";
     }
   }
   var verdict, verdictSub;
@@ -368,8 +396,18 @@ function heroFuse() {
 
   var clockMarker = "";
   if (clockKnown) {
+    /* The pixel-clock sprite (mantel body + blocky digit readout) was
+       unreadable at this size, so the marker is now a clock emoji plus
+       plain-text HH:MM, redrawn every render since it reads Date() live.
+       Same anchoring via translate(-50%,-100%) on clockPct, same marker
+       line below. */
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, "0");
+    var mm = String(now.getMinutes()).padStart(2, "0");
     clockMarker =
-      '<div style="position:absolute;left:' + clockPct + '%;top:-30px;margin-left:-6px;transform:translateX(-100%);white-space:nowrap;color:var(--dim);z-index:6">clock &gt;</div>' +
+      '<div style="position:absolute;left:' + clockPct + '%;top:-24px;transform:translate(-50%,-100%);white-space:nowrap;pointer-events:none;z-index:6;color:var(--dim)">' +
+      '🕐 ' + hh + ':' + mm +
+      "</div>" +
       '<div style="position:absolute;left:' + clockPct + '%;top:-22px;width:2px;height:56px;background:var(--dim);z-index:6"></div>';
   }
 
@@ -389,12 +427,12 @@ function heroFuse() {
 
   return '<div class="px-panel">' +
     '<div style="display:flex;align-items:center;gap:14px">' +
-    '<div style="border:2px solid var(--line);padding:8px 12px;font-size:17px;color:#f4c7ad">' + face + "</div>" +
+    '<div style="font-size:34px;line-height:1;color:#f4c7ad">' + face + "</div>" +
     "<div>" +
     '<div style="font-size:15px;letter-spacing:0.02em;text-transform:uppercase">' + esc(verdict) + "</div>" +
     '<div style="margin-top:4px;color:var(--dim)">' + esc(verdictSub) + "</div>" +
     "</div></div>" +
-    '<div style="position:relative;margin-top:44px">' +
+    '<div style="position:relative;margin-top:48px">' +
     clockMarker +
     '<div style="display:flex;gap:2px;height:22px">' + fuseCells + "</div>" +
     flame +
@@ -417,8 +455,14 @@ function heroHeadroom() {
       : "";
     /* 15-pixel-proportions #8: pxLeftLvl(null) coerces null -> 0 and reads as
        "<=10 left" (red) -- a genuinely unknown left_pct must stay neutral,
-       never borrow the fullness ramp for a row with no data. */
-    var leftKnown = capsKnown && hr.left_pct !== null && hr.left_pct !== undefined;
+       never borrow the fullness ramp for a row with no data.
+       PLAN-dash-ui-fixes 5 rule 3: `capsKnown` is page-wide (true the moment
+       ANY window's cap is known) -- gating on it alone let a row with no cap
+       of its own print a percentage straight off the raw reading while the
+       dry counts elsewhere honestly said the cap was unknown. Require this
+       row's OWN cap too, so the two claims can never disagree. */
+    var rowCapKnown = hr.cap_equiv !== null && hr.cap_equiv !== undefined;
+    var leftKnown = capsKnown && rowCapKnown && hr.left_pct !== null && hr.left_pct !== undefined;
     var left = leftKnown ? fmtPct(hr.left_pct) : "—";
     var meterColor = leftKnown ? PX_LVL[pxLeftLvl(hr.left_pct)] : (capsKnown ? "var(--l0)" : "var(--line)");
     var rowColor = leftKnown ? meterColor : "var(--dim)";
@@ -429,7 +473,11 @@ function heroHeadroom() {
       '<span style="display:flex;align-items:center;gap:7px;color:var(--dim);text-transform:uppercase">' + dot + esc(hr.short_label || hr.label) + "</span>" +
       '<span style="font-size:15px;color:' + rowColor + '">' + left + "</span>" +
       "</div>" +
-      '<div style="display:flex;gap:2px">' + pxMeter(leftFill, 16, meterColor) + "</div>" +
+      /* PLAN-dash round2 2: a known row's meter (pxMeterGraded) grades its
+         whole lit fill by percent-LEFT, not per-cell position -- an unknown
+         row keeps the flat neutral fill, since there is no real percent to
+         grade. */
+      '<div style="display:flex;gap:2px">' + (leftKnown ? pxMeterGraded(leftFill, 16) : pxMeter(leftFill, 16, meterColor)) + "</div>" +
       '<div class="px-faint" style="margin-top:5px;text-transform:uppercase">' + esc(hr.note) + "</div>" +
       "</div>";
   }).join("");
@@ -463,7 +511,8 @@ function renderHero() {
   var host = document.getElementById("cc-hero");
   host.innerHTML =
     '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,300px);gap:20px;margin-top:20px;align-items:start">' +
-    heroFuse() + heroHeadroom() + "</div>";
+    '<div style="display:flex;flex-direction:column;gap:20px">' + heroFuse() + '<div id="cc-live"></div></div>' +
+    heroHeadroom() + "</div>";
 }
 
 /* ==== live strip ====
@@ -507,7 +556,7 @@ function renderLive() {
   var sessVal = isLive && live.floor_priced && live.floor_usd !== null ? fmtUsd(live.floor_usd) : "—";
 
   host.innerHTML =
-    '<div class="px-panel" style="padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:20px 26px;margin-top:20px">' +
+    '<div class="px-panel" style="padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:20px 26px">' +
     '<span style="display:flex;align-items:center;gap:8px">' + dot + label + "</span>" +
     blockHtml + rateHtml + ctxHtml + cacheHtml +
     '<span style="flex:1"></span>' +
@@ -549,8 +598,14 @@ function renderHorizon() {
   // never print the fabricated-looking header next to a caption that
   // contradicts it (Bug 2).
   var dryKnownMonth = capsKnown && w.dry_count_month != null;
+  /* PLAN-dash round2 1: a provisional cap5 (stale reading, an earlier good
+     one reused) is still a real number to count dryness against -- withholding
+     the count was overcautious. Keep the PROVISIONAL label, but show the
+     number beside it instead of hiding it as "unconfirmed". Only a cap5 that
+     was never derived at all still reads unknown. */
   var dryHeader = dryKnownMonth
-    ? '<span style="color:var(--l4)">' + w.dry_count_month + " RAN DRY</span>"
+    ? '<span style="color:var(--l4)">' + w.dry_count_month + " RAN DRY" +
+      (w.cap5_provisional ? " (PROVISIONAL CAP)" : "") + "</span>"
     : '<span style="color:var(--dim)">CAP UNKNOWN — NO DRY COUNT</span>';
 
   var axisHtml;
@@ -568,7 +623,14 @@ function renderHorizon() {
   }
 
   var caption;
-  if (dryKnownMonth) {
+  if (dryKnownMonth && w.cap5_provisional) {
+    // PLAN-dash round2 1: per-cell `dry` stays false while the cap is
+    // provisional (_score's own caution, untouched by this change) -- so the
+    // evening-pattern breakdown below can't be trusted yet. Say the count and
+    // the provisional label together instead of a claim the cells can't back.
+    caption = "5-HOUR CAP IS PROVISIONAL — " + w.dry_count_month +
+      (w.dry_count_month === 1 ? " WINDOW RAN DRY THIS MONTH" : " WINDOWS RAN DRY THIS MONTH");
+  } else if (dryKnownMonth) {
     var dryCells = cells.filter(function (c) { return c.dry; });
     var eveningDry = dryCells.filter(function (c) { return c.evening; }).length;
     if (dryCells.length > 0) {
@@ -636,11 +698,13 @@ function renderRecoverable() {
     var copyId = "cc-copy-" + i;
     return '<div style="display:grid;grid-template-columns:24px minmax(180px,2fr) minmax(120px,1.4fr) minmax(90px,0.9fr) 92px;gap:0 16px;align-items:center;border:2px solid var(--line);padding:12px 14px">' +
       '<div class="px-faint">' + String(i + 1).padStart(2, "0") + "</div>" +
-      "<div>" +
+      // min-width:0: a grid item's implicit min-width is its content size, so
+      // the nowrap+ellipsis body below would otherwise widen this column past
+      // its 180px track instead of clipping (PLAN-dash round2 3).
+      '<div style="min-width:0">' +
       '<div style="font-size:13px;text-transform:uppercase">' + esc(item.name) +
       (item.project ? " · " + esc(baseName(item.cwd) || item.project) : "") + "</div>" +
-      '<div style="margin-top:4px;color:var(--dim)">' + esc(oneSentence(item.help)) + "</div>" +
-      '<div style="margin-top:5px;color:#f4c7ad">&gt; ' + esc(item.fix_text || "") + "</div>" +
+      '<div style="margin-top:4px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(oneSentence(item.help)) + "</div>" +
       "</div>" +
       '<div style="display:flex;gap:2px">' + pxMeter(pct, 12, lvl) + "</div>" +
       '<div style="font-size:13px;color:' + lvl + '">' + fmtTok(item.tokens_saved) + "</div>" +
@@ -648,13 +712,50 @@ function renderRecoverable() {
       "</div>";
   }).join("");
 
+  // Group the expanded list by project so it reads project-by-project
+  // instead of one flat run (PLAN-advice-and-grouping phase 2). Naming
+  // matches the top-three cards above: baseName(cwd) || project.
+  var groups = {};
+  var groupOrder = [];
+  all.forEach(function (item) {
+    var key = item.project || "";
+    if (!groups[key]) {
+      groups[key] = { cwd: item.cwd, project: item.project, items: [], total: 0 };
+      groupOrder.push(key);
+    }
+    groups[key].items.push(item);
+    groups[key].total += (item.tokens_saved || 0);
+  });
+  var groupList = groupOrder.map(function (key) { return groups[key]; });
+  groupList.sort(function (a, b) { return b.total - a.total; });
+  groupList.forEach(function (g) {
+    g.items.sort(function (a, b) { return (b.tokens_saved || 0) - (a.tokens_saved || 0); });
+  });
+
+  var fullList = groupList.map(function (g) {
+    var name = baseName(g.cwd) || g.project || "?";
+    var heading = '<div style="display:flex;justify-content:space-between;gap:16px;padding:8px 0;margin-top:10px;font-size:12px;text-transform:uppercase;color:var(--dim)">' +
+      '<span>' + esc(name) + " · " + g.items.length + "</span>" +
+      '<span>' + fmtTok(g.total) + "</span>" +
+      "</div>";
+    var rowsHtml = g.items.map(function (item, i) {
+      return '<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-top:2px solid var(--line)">' +
+        '<span>' + String(i + 1).padStart(2, "0") + " · " + esc(item.name) + "</span>" +
+        '<span style="color:var(--dim)">' + fmtTok(item.tokens_saved) + "</span>" +
+        "</div>";
+    }).join("");
+    return heading + rowsHtml;
+  }).join("");
+
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">' +
     '<span class="px-label">RECOVERABLE · ' + fmtTok(total) + ' TOKENS</span>' +
-    '<span style="display:flex;align-items:center;gap:10px;color:var(--dim);flex-wrap:wrap">' + projection + all.length + ' FINDINGS</span>' +
+    '<span id="cc-find-toggle" style="display:flex;align-items:center;gap:10px;color:var(--dim);flex-wrap:wrap;cursor:pointer">' + projection +
+    '<span id="cc-find-caret">▸</span> ' + all.length + ' FINDINGS</span>' +
     "</div>" +
     '<div style="display:flex;flex-direction:column;gap:10px">' + rows + "</div>" +
+    '<div id="cc-find-list" style="display:none;margin-top:14px">' + fullList + "</div>" +
     "</div>";
 
   top.forEach(function (item, i) {
@@ -667,6 +768,17 @@ function renderRecoverable() {
       setTimeout(function () { el.textContent = "COPY"; }, 1600);
     });
   });
+
+  var toggle = document.getElementById("cc-find-toggle");
+  var list = document.getElementById("cc-find-list");
+  var caret = document.getElementById("cc-find-caret");
+  if (toggle && list && caret) {
+    toggle.addEventListener("click", function () {
+      var open = list.style.display !== "none";
+      list.style.display = open ? "none" : "block";
+      caret.textContent = open ? "▸" : "▾";
+    });
+  }
 }
 
 /* ==== Projects: "which projects drain the window" ====
@@ -915,8 +1027,10 @@ function renderWeek() {
   // whether any single 5-hour window ran dry) -- so this reads the count's
   // own null-ness, not the broader caps_known flag, matching the MONTH
   // panel's header/caption agreement fix (Bug 2).
-  var dryHeader = capsKnown && w.dry_count_week != null
-    ? '<span style="color:var(--l4)">' + w.dry_count_week + " RAN DRY</span>"
+  var dryKnownWeek = capsKnown && w.dry_count_week != null;
+  var dryHeader = dryKnownWeek
+    ? '<span style="color:var(--l4)">' + w.dry_count_week + " RAN DRY" +
+      (w.cap5_provisional ? " (PROVISIONAL CAP)" : "") + "</span>"
     : '<span style="color:var(--dim)">CAP UNKNOWN — NO DRY COUNT</span>';
 
   var led = w.led_counts || {};

@@ -915,9 +915,11 @@ def _score_week(cell, cap7):
     cell["pct_of_week"] = cell["equiv_tokens"] / cap7 * 100.0
 
 
-def _dry_blocks(blocks, cap5, since_date, provisional=False):
-    if provisional:
-        return None  # not "checked, found none" -- the cap is too shaky to check
+def _dry_blocks(blocks, cap5, since_date):
+    # A provisional cap5 (single-sample confidence, or revived from an earlier
+    # run) is still a real number -- count against it, same as a confirmed
+    # cap. The page labels the count PROVISIONAL via `cap5_provisional`
+    # instead of this function withholding it as null (PLAN-dash round2 1).
     return sum(
         1 for b in blocks
         if b["local_date"] >= since_date and b["equiv_tokens"] / cap5 * 100.0 >= DRY_PCT
@@ -1096,11 +1098,34 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
     """Everything the mock's quota panels need, in one response."""
     now = now or _now()
     blocks, anchor, anchor_at = _bucket(conn, project, TURN_DAYS, now)
-    caps = falsify_stale_caps(cap_estimates(conn, now=now), blocks, now)
+    caps_before_falsify = cap_estimates(conn, now=now)
+    caps = falsify_stale_caps(caps_before_falsify, blocks, now)
     caps_known = bool(caps)
     cap5_info = _pick(caps, *SESSION_KEYS)
-    cap5 = cap5_info.get("cap_equiv") if caps_known else None
-    cap5_provisional = cap5_info.get("confidence") == "single"
+    # A stale/reset current reading (or a falsified estimate) can drop this
+    # run's cap5 while an earlier run already derived a real one -- reuse it
+    # for dry counts and grid fills rather than losing every one of them to a
+    # merely-stale reading (PLAN-dash-ui-fixes 5). Provisional through the
+    # existing flag; `caps_before_falsify` is still real, derived evidence,
+    # never a fabricated cap -- just possibly for a window that has since
+    # reset or been superseded.
+    cap5_revived = False
+    if not cap5_info:
+        cap5_info = _pick(caps_before_falsify, *SESSION_KEYS)
+        cap5_provisional = bool(cap5_info)
+        cap5_revived = bool(cap5_info)
+    else:
+        cap5_provisional = cap5_info.get("confidence") == "single"
+    cap5 = cap5_info.get("cap_equiv")
+    # `_headroom` reads its own per-row cap out of `caps` (never `caps` itself
+    # here -- that dict also drives `caps_known`/`cap7` and must stay exactly
+    # what falsification left it). A shallow copy carries the revived cap5 to
+    # the 5-HOUR BLOCK row too, so it can show a provisional percentage
+    # instead of "cap unknown" right beside dry counts that now say the same.
+    caps_for_headroom = caps
+    if cap5_revived:
+        caps_for_headroom = dict(caps)
+        caps_for_headroom[SESSION_KEYS[0]] = cap5_info
     # PLAN-fill-and-clock: the WEEKLY cap, used only to rescale the week grid
     # and 30-day strip fills (see `_score_week`) -- never touches `_score`'s
     # 5-hour-cap `pct_of_cap`/`dry`.
@@ -1206,7 +1231,7 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
         "setup_cmd": SETUP_CMD,
         "anchor": anchor,
         "hero": hero,
-        "headroom": _headroom(conn, caps, now, cache_windows=(cache.get("windows") if cache else None)),
+        "headroom": _headroom(conn, caps_for_headroom, now, cache_windows=(cache.get("windows") if cache else None)),
         "week": week,
         "week_blocks": len(week_blocks),
         "current_block": current,
@@ -1214,8 +1239,14 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
         "horizon": horizon,
         # null, not 0: 0 claims "checked, found none"; null says "unknown",
         # which is the only honest answer without a cap.
-        "dry_count_week": _dry_blocks(week_blocks, cap5, week_from, cap5_provisional) if cap5 else None,
-        "dry_count_month": _dry_blocks(blocks, cap5, month_from, cap5_provisional) if cap5 else None,
+        "dry_count_week": _dry_blocks(week_blocks, cap5, week_from) if cap5 else None,
+        "dry_count_month": _dry_blocks(blocks, cap5, month_from) if cap5 else None,
+        # A provisional cap5 (single-sample confidence, or revived from an
+        # earlier run) no longer suppresses the dry counts above -- they are
+        # real numbers either way. Carried here so the page can label them
+        # PROVISIONAL instead of asserting a confidence the cap doesn't have
+        # yet (PLAN-dash round2 1, superseding PLAN-dash-ui-fixes 5 rule 3).
+        "cap5_provisional": bool(cap5) and cap5_provisional,
         "led_counts": led,
         "block_hours": BLOCK_HOURS,
         "horizon_days": HORIZON_DAYS,

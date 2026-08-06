@@ -442,9 +442,13 @@ def test_score_provisional_cap_never_claims_dry():
     assert cell["dry"] is False
     assert cell["pct_of_cap"] == 999.0  # still fills/percentages -- just no dry claim
 
-def test_dry_blocks_provisional_returns_none_not_zero():
-    blocks = [{"local_date": "2026-08-01", "equiv_tokens": 1.0}]
-    assert windows._dry_blocks(blocks, 100.0, "2026-08-01", provisional=True) is None
+def test_dry_blocks_counts_regardless_of_cap_confidence():
+    # PLAN-dash round2 1: `_dry_blocks` no longer takes a `provisional` flag --
+    # a provisional cap is still a real number to check dryness against. The
+    # page labels the count PROVISIONAL via `cap5_provisional`; this function
+    # never withholds it as null.
+    blocks = [{"local_date": "2026-08-01", "equiv_tokens": 100.0}]
+    assert windows._dry_blocks(blocks, 100.0, "2026-08-01") == 1
 
 def test_projection_early_hours_none_when_runs_out_after_reset(conn):
     """When the burn rate is slow enough that the week would run out AFTER
@@ -583,6 +587,21 @@ def test_windows_payload_horizon_and_week_carry_pct_of_week_when_weekly_cap_know
     week_cells = [c for row in payload["week"] for c in row["cells"] if c is not None]
     week_pcts = [c.get("pct_of_week") for c in week_cells]
     assert any(p is not None for p in week_pcts)
+
+def test_windows_payload_dry_counts_are_real_numbers_under_provisional_cap5(conn):
+    """PLAN-dash round2 1: a provisional (single-sample) cap5 must not blank
+    out dry_count_week/month -- they are real counts now, just labelled
+    PROVISIONAL via cap5_provisional, never withheld as null."""
+    _turn(conn, windows.iso(BASE - _dt.timedelta(hours=1)), 1000)  # equiv 100.0
+    conn.commit()
+    _set_last_ingest(conn, BASE)
+    caps = {"session": {"cap_equiv": 100.0, "samples": 1, "confidence": "single"}}
+    with mock.patch.object(windows, "cap_estimates", return_value=caps), \
+         mock.patch.object(windows, "falsify_stale_caps", side_effect=lambda c, b, n: c):
+        payload = windows.windows_payload(conn, now=BASE)
+    assert payload["cap5_provisional"] is True
+    assert payload["dry_count_week"] == 1
+    assert payload["dry_count_month"] == 1
 
 
 # --- H3/H4/H6: headroom note basis, stale reset, reset time (6.4h) ---------

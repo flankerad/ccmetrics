@@ -97,112 +97,107 @@ DETECTOR_EFFORT = {
 # --- fix templates: static strings with numeric slots, filled from the
 # finding's own numbers. Never generated per finding (PRD R4b).
 #
-# Every template has the same three parts, written for someone reading it for
-# the first time: a "Fix (<effort tier>):" header plus one imperative sentence
-# (and, when there is something to paste, the exact text underneath); an
-# optional "Careful:" warning (detectors 5 and 7 only); and a "Why:" block that
-# spends the finding's own numbers in everyday words. Lines stay under ~78
-# characters so the console report renders them unwrapped. -------------------
+# Every template carries the same four labels: WHAT (one imperative line, the
+# change, no numbers), DO (the exact thing to paste, or the habit to adopt),
+# WATCH (only where a real caveat exists — detectors 5 and 7 only) and WHY
+# (the evidence, with the numbers, in everyday words). -----------------------
 
 FIX_TEMPLATES = {
     1: (
-        "Fix (paste):\n"
-        "  Add this line to CLAUDE.md so long breaks stop costing a re-send.\n"
-        '    "After a break longer than {ttl_min} minutes, run /compact before\n'
-        '     stepping away, and start a fresh session when you come back."\n'
-        "Why: your saved context is only kept for {ttl_min} minutes. {hits}\n"
-        "  time(s) in {days} days this project came back after a longer break,\n"
-        "  so {raw_tokens} tokens had to be sent again at the expensive write\n"
-        "  price instead of the cheap re-read price."
+        "WHAT:  Stop long breaks costing a full re-send.\n"
+        "DO:    Paste into CLAUDE.md — \"After a break longer than {ttl_min}\n"
+        "       minutes, run /compact before stepping away, and start a fresh\n"
+        "       session when you come back.\"\n"
+        "WHY:   Saved context lasts {ttl_min} minutes. {hits} time(s) in {days}\n"
+        "       days this project came back later, so {raw_tokens} tokens went\n"
+        "       again at the write price instead of the cheap re-read price."
     ),
     2: (
-        "Fix (habit):\n"
-        "  Run /compact yourself at a natural break, before it fires on its own.\n"
-        "Why: {sessions} session(s) ran long enough to be squashed {compactions}\n"
-        "  time(s), rebuilding {raw_tokens} tokens of working context each time.\n"
-        "  Compacting when you choose carries only what you still need."
+        "WHAT:  Compact on your terms, not the system's.\n"
+        "DO:    Run /compact yourself at a natural break, before it fires on\n"
+        "       its own.\n"
+        "WHY:   {sessions} session(s) ran long enough to be squashed\n"
+        "       {compactions} time(s), rebuilding {raw_tokens} tokens of working\n"
+        "       context each time. Compacting when you choose carries only what\n"
+        "       you still need."
     ),
     3: (
-        "Fix (restructure):\n"
-        "  Split long sessions — start a new one as soon as the task changes.\n"
-        "Why: {sessions} session(s) piled on re-read context faster than nearly\n"
-        "  every other session in this project: over {p90_slope} extra tokens per\n"
-        "  turn, {raw_tokens} tokens of repeat reading in total."
+        "WHAT:  Split a session when the task changes.\n"
+        "DO:    Start a new session as soon as the work turns to something else.\n"
+        "WHY:   {sessions} session(s) piled on re-read context faster than nearly\n"
+        "       every other session here — over {p90_slope} extra tokens per turn,\n"
+        "       {raw_tokens} tokens of repeat reading in all."
     ),
     4: (
-        "Fix (habit):\n"
-        "  Keep related work in one warm session instead of many one-shot ones.\n"
-        "Why: {sessions} session(s) wrote {write_tokens} tokens into the cache\n"
-        "  and read back only {read_tokens}. A cache write only pays for itself\n"
-        "  after {breakeven} read(s)."
+        "WHAT:  Keep related work in one warm session.\n"
+        "DO:    Group related work together instead of many one-shot sessions.\n"
+        "WHY:   {sessions} session(s) wrote {write_tokens} tokens into the cache\n"
+        "       and read back only {read_tokens}. A write only repays after\n"
+        "       {breakeven} read(s)."
     ),
     5: (
-        "Fix (paste):\n"
-        "  Switch to a cheap model for the quick turns, then switch back.\n"
-        "    /model {cheap_model}\n"
-        'Careful: {{ "model": "{cheap_model}" }} in settings.json routes EVERY\n'
-        "  turn to {cheap_model}, not just the small ones — review before you\n"
-        "  paste that anywhere.\n"
-        "Why: {turns} of your turns were small and simple — short prompt, few\n"
-        "  tool calls, little sub-agent work — but ran on {models}. The cheap\n"
-        "  model would have produced the same result for a fraction of the price."
+        "WHAT:  Send the quick turns to a cheaper model.\n"
+        "DO:    /model {cheap_model} — switch back when the work gets hard.\n"
+        "WATCH: {{ \"model\": \"{cheap_model}\" }} in settings.json routes EVERY turn\n"
+        "       there, not just the small ones. Review before pasting that.\n"
+        "WHY:   {turns} of your turns were small — short prompt, few tool calls,\n"
+        "       little sub-agent work — but ran on {models}. The cheap model would\n"
+        "       have produced the same result for a fraction of the price."
     ),
     6: (
-        "Fix (habit):\n"
-        "  Add this line to CLAUDE.md and re-use what the transcript already has.\n"
-        '    "Re-use results already in the transcript; never re-run an\n'
-        '     identical command or search twice in one session."\n'
-        "Why: {digests} identical tool call(s) ran {calls} times across\n"
-        "  {sessions} session(s), re-adding {raw_tokens} tokens of results the\n"
-        "  conversation was already holding."
+        "WHAT:  Stop re-running the same command.\n"
+        "DO:    Paste into CLAUDE.md — \"Re-use results already in the transcript;\n"
+        "       never re-run an identical command or search twice in one session.\"\n"
+        "WHY:   {digests} identical tool call(s) ran {calls} times across\n"
+        "       {sessions} session(s), re-adding {raw_tokens} tokens the\n"
+        "       conversation was already holding."
     ),
     7: (
-        "Fix (habit):\n"
-        "  Allowlist the routine, safe ones under permissions.allow in\n"
-        "  settings.json.\n"
-        "    Tools involved: {denied_tools}\n"
-        "Careful: a denial may be deliberate — keep those, and add a CLAUDE.md\n"
-        "  line naming the tool as off-limits so the agent stops trying it.\n"
-        "Why: {denials} denial(s), {errors} failed tool result(s) and\n"
-        "  {hook_errors} hook error(s) burned {raw_tokens} tokens and gave\n"
-        "  nothing back."
+        "WHAT:  Allowlist the safe tools that keep getting blocked.\n"
+        "DO:    Add the routine ones under permissions.allow in settings.json —\n"
+        "       {denied_tools}\n"
+        "WATCH: A denial may be deliberate. Keep those, and add a CLAUDE.md line\n"
+        "       naming the tool as off-limits so the agent stops trying it.\n"
+        "WHY:   {denials} denial(s), {errors} failed tool result(s) and\n"
+        "       {hook_errors} hook error(s) burned {raw_tokens} tokens and gave\n"
+        "       nothing back."
     ),
     8: (
-        "Fix (habit):\n"
-        "  Ask sub-agents for paths and line numbers only, plus a turn budget.\n"
-        '    "Paths and line numbers only, no file bodies. Stop after 5 turns."\n'
-        "Why: {sessions} session(s) spent {turns} sub-agent turn(s) without\n"
-        "  changing a single file — research you paid for that never landed in\n"
-        "  the code."
+        "WHAT:  Cap what sub-agents send back.\n"
+        "DO:    Paste into the sub-agent prompt — \"Paths and line numbers only,\n"
+        "       no file bodies. Stop after 5 turns.\"\n"
+        "WHY:   {sessions} session(s) spent {turns} sub-agent turn(s) without\n"
+        "       changing a single file — research you paid for that never landed\n"
+        "       in the code."
     ),
     9: (
-        "Fix (restructure):\n"
-        "  Start at most {baseline} sub-agents at once, then send a second wave.\n"
-        "Why: {turns} turn(s) started {max_fanout} sub-agents in one go, and they\n"
-        "  all bill at the same time; {baseline} at a time is your usual number."
+        "WHAT:  Start fewer sub-agents at once.\n"
+        "DO:    Cap it at {baseline} at a time, then send a second wave.\n"
+        "WHY:   {turns} turn(s) started {max_fanout} sub-agents in one go, and they\n"
+        "       all bill at the same time. {baseline} at a time is your usual\n"
+        "       number."
     ),
     10: (
-        "Fix (habit):\n"
-        "  Close sessions you have finished instead of resuming them later.\n"
-        "Why: {turns} turn(s) ran with no prompt from you in front of them —\n"
-        "  session resumes, status checks — costing {tokens} tokens. Nothing to\n"
-        "  fix if you resume on purpose; it is listed so the cost is never\n"
-        "  mistaken for work you asked for."
+        "WHAT:  Close sessions you have finished.\n"
+        "DO:    End a session instead of resuming it later.\n"
+        "WHY:   {turns} turn(s) ran with no prompt from you in front of them —\n"
+        "       session resumes, status checks — costing {tokens} tokens. Nothing\n"
+        "       to fix if you resume on purpose; it is listed so the cost is never\n"
+        "       mistaken for work you asked for."
     ),
     11: (
-        "Fix (habit):\n"
-        "  Start a fresh session when one turn costs several times the last few.\n"
-        "Why: {turns} turn(s) in {sessions} session(s) cost far more than nearly\n"
-        "  every turn before them in the same session — {tokens} tokens more\n"
-        "  than usual, added up."
+        "WHAT:  Start fresh when one turn spikes.\n"
+        "DO:    Open a new session when a turn costs several times the last few.\n"
+        "WHY:   {turns} turn(s) in {sessions} session(s) cost far more than nearly\n"
+        "       every turn before them in the same session — {tokens} tokens more\n"
+        "       than usual, added up."
     ),
     12: (
-        "Fix (paste):\n"
-        "  Add this line to CLAUDE.md so unchanged files are not read twice.\n"
-        '    "Read a file once per session; rely on the transcript instead of\n'
-        '     re-reading unchanged files."\n'
-        "Why: {paths} file path(s) were read {reads} times with no edit in\n"
-        "  between, re-adding {raw_tokens} tokens of the same text."
+        "WHAT:  Read each file once per session.\n"
+        "DO:    Paste into CLAUDE.md — \"Read a file once per session; rely on the\n"
+        "       transcript instead of re-reading unchanged files.\"\n"
+        "WHY:   {paths} file path(s) were read {reads} times with no edit in\n"
+        "       between, re-adding {raw_tokens} tokens of the same text."
     ),
 }
 
