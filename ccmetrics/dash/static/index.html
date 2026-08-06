@@ -62,6 +62,11 @@ var MODEL_COLOR = {
 function modelColor(shortName) { return MODEL_COLOR[shortName] || "var(--dim)"; }
 
 var PX_LVL = ["var(--l0)", "var(--l1)", "var(--l2)", "var(--l3)", "var(--l4)"];
+/* 3-wide x 5-tall pixel font for the mantel clock, row-major, "1" = lit. */
+var PX_DIGIT = [
+  "111101101101111", "001001001001001", "111001111100111", "111001111001111", "101101111001001",
+  "111100111001111", "111100111101111", "111001001001001", "111101111101111", "111101111001111"
+];
 function pxLvl(p) { return p >= 95 ? 4 : p >= 75 ? 3 : p >= 45 ? 2 : p > 0 ? 1 : 0; }
 function pxLeftLvl(pl) { return pl <= 10 ? 4 : pl <= 25 ? 3 : pl <= 55 ? 2 : 1; }
 /* PLAN-fill-and-clock's own week-share ladder (0d16970 deleted it along with
@@ -394,21 +399,53 @@ function heroFuse() {
     fuseCells += '<div style="flex:1;height:22px;background:' + cellBg + '"></div>';
   }
 
+  /* The clock case is 57px wide and the flame is ~34px wide once scaled, so
+     they need roughly 46px of horizontal daylight between their centres. At
+     the narrowest sensible bar that is about 7% of its width. Inside that gap
+     the bar drops 14px, which lifts the flame's tip clear of the clock's feet
+     -- moving the bar, not either mark, so both stay at their true positions. */
+  var fuseTop = 50;
+  if (clockKnown && source === "cap" && Math.abs(clockPct - usedPct) < 7) fuseTop = 64;
+
   var clockMarker = "";
   if (clockKnown) {
-    /* The pixel-clock sprite (mantel body + blocky digit readout) was
-       unreadable at this size, so the marker is now a clock emoji plus
-       plain-text HH:MM, redrawn every render since it reads Date() live.
-       Same anchoring via translate(-50%,-100%) on clockPct, same marker
-       line below. */
+    /* Pixel mantel clock: one 3px div, every pixel a box-shadow offset.
+       The case is 19 columns wide; digits sit at a 4-column pitch
+       (cols 1, 5, colon 9, 11, 15) so each 3x5 glyph keeps a blank column
+       after it. Shadow order is digits -> face -> case and must stay that
+       way: earlier shadows paint on top, so reordering hides the digits. */
     var now = new Date();
     var hh = String(now.getHours()).padStart(2, "0");
     var mm = String(now.getMinutes()).padStart(2, "0");
+    var px = [];
+    var digits = [[hh.charAt(0), 1], [hh.charAt(1), 5], [mm.charAt(0), 11], [mm.charAt(1), 15]];
+    for (var gi = 0; gi < digits.length; gi++) {
+      var glyph = PX_DIGIT[Number(digits[gi][0])], gcol = digits[gi][1];
+      for (var gr = 0; gr < 5; gr++) {
+        for (var gc = 0; gc < 3; gc++) {
+          if (glyph.charAt(gr * 3 + gc) === "1") {
+            px.push((gcol + gc) * 3 + "px " + (gr * 3 + 6) + "px 0 0 #191714");
+          }
+        }
+      }
+    }
+    px.push("27px 9px 0 0 #191714", "27px 15px 0 0 #191714");
+    for (var fy = 3; fy <= 21; fy += 3) {
+      for (var fx = 3; fx <= 51; fx += 3) px.push(fx + "px " + fy + "px 0 0 #ece7df");
+    }
+    for (var cx = 0; cx <= 54; cx += 3) {
+      px.push(cx + "px 0px 0 0 #8f887c", cx + "px 24px 0 0 #8f887c");
+    }
+    for (var cy = 3; cy <= 21; cy += 3) {
+      px.push("0px " + cy + "px 0 0 #8f887c", "54px " + cy + "px 0 0 #8f887c");
+    }
+    px.push("3px 27px 0 0 #8f887c", "9px 27px 0 0 #8f887c", "45px 27px 0 0 #8f887c", "51px 27px 0 0 #8f887c");
     clockMarker =
-      '<div style="position:absolute;left:' + clockPct + '%;top:-24px;transform:translate(-50%,-100%);white-space:nowrap;pointer-events:none;z-index:6;color:var(--dim)">' +
-      '🕐 ' + hh + ':' + mm +
-      "</div>" +
-      '<div style="position:absolute;left:' + clockPct + '%;top:-22px;width:2px;height:56px;background:var(--dim);z-index:6"></div>';
+      '<div style="position:absolute;left:' + clockPct + '%;top:6px;transform:translateX(-50%);z-index:6">' +
+      '<div style="position:relative;width:57px;height:30px">' +
+      '<div style="position:absolute;left:0;top:0;width:3px;height:3px;box-shadow:' + px.join(",") + '"></div>' +
+      "</div></div>" +
+      '<div style="position:absolute;left:' + clockPct + '%;top:' + (fuseTop - 2) + 'px;width:2px;height:' + (fuseTop - 22) + 'px;background:var(--bg);box-shadow:2px 0 0 0 var(--ink);z-index:6"></div>';
   }
 
   /* Flame is only rendered against a known cap -- a capless page has no
@@ -416,7 +453,7 @@ function heroFuse() {
   var flame = "";
   if (source === "cap") {
     flame =
-      '<div style="position:absolute;left:' + usedPct + '%;top:22px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">' +
+      '<div style="position:absolute;left:' + usedPct + '%;top:' + (fuseTop + 24) + 'px;transform:translate(-50%,-100%);width:14px;height:20px;pointer-events:none;z-index:4">' +
       '<div style="position:absolute;left:0;bottom:0;width:14px;height:20px;transform:scale(2.4);transform-origin:bottom center">' +
       '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:6px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;animation:ccpix 0.42s steps(1,end) infinite"></div>' +
       '<div style="position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:8px 0px 0 0 #c9341f,6px 2px 0 0 #c9341f,8px 2px 0 0 #c9341f,4px 4px 0 0 #e0512a,6px 4px 0 0 #e0512a,8px 4px 0 0 #e0512a,4px 6px 0 0 #e0512a,6px 6px 0 0 #e0512a,8px 6px 0 0 #e0512a,2px 8px 0 0 #f07f2c,4px 8px 0 0 #f07f2c,6px 8px 0 0 #ffe6b0,8px 8px 0 0 #f07f2c,10px 8px 0 0 #f07f2c,2px 10px 0 0 #f07f2c,4px 10px 0 0 #f07f2c,6px 10px 0 0 #ffe6b0,8px 10px 0 0 #f07f2c,10px 10px 0 0 #f07f2c,0px 12px 0 0 #f07f2c,2px 12px 0 0 #f07f2c,4px 12px 0 0 #f07f2c,6px 12px 0 0 #ffe6b0,8px 12px 0 0 #f07f2c,10px 12px 0 0 #f07f2c,12px 12px 0 0 #f07f2c,0px 14px 0 0 #e0512a,2px 14px 0 0 #e0512a,4px 14px 0 0 #ffc65e,6px 14px 0 0 #ffc65e,8px 14px 0 0 #ffc65e,10px 14px 0 0 #e0512a,12px 14px 0 0 #e0512a,0px 16px 0 0 #e0512a,2px 16px 0 0 #e0512a,4px 16px 0 0 #ffc65e,6px 16px 0 0 #ffc65e,8px 16px 0 0 #ffc65e,10px 16px 0 0 #e0512a,12px 16px 0 0 #e0512a,2px 18px 0 0 #a82a18,4px 18px 0 0 #a82a18,6px 18px 0 0 #a82a18,8px 18px 0 0 #a82a18,10px 18px 0 0 #a82a18;opacity:0;animation:ccpix2 0.42s steps(1,end) infinite"></div>' +
@@ -432,9 +469,9 @@ function heroFuse() {
     '<div style="font-size:15px;letter-spacing:0.02em;text-transform:uppercase">' + esc(verdict) + "</div>" +
     '<div style="margin-top:4px;color:var(--dim)">' + esc(verdictSub) + "</div>" +
     "</div></div>" +
-    '<div style="position:relative;margin-top:48px">' +
+    '<div style="position:relative;margin-top:26px;padding-top:' + fuseTop + 'px">' +
     clockMarker +
-    '<div style="display:flex;gap:2px;height:22px">' + fuseCells + "</div>" +
+    '<div style="display:flex;gap:1px;height:24px;align-items:flex-end">' + fuseCells + "</div>" +
     flame +
     '<div style="display:flex;margin-top:12px;color:var(--dim)">' + fuseDayRow + "</div>" +
     "</div>" +

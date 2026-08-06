@@ -216,21 +216,21 @@ def test_week_grid_cell_fill_falls_back_to_pct_of_week_when_pct_of_cap_is_null(p
 def test_fuse_day_row_derives_from_resets_at_and_tick_clearance_is_gone(page_text):
     """The old midnight-tick day strip (and its FUSE_TICK_CLEARANCE crowding
     guard) is replaced by 7 equal columns keyed off the reset instant; the
-    clock rule is its own dim marker now, with no accent-coloured hairline
+    clock rule is its own marker now, with no accent-coloured hairline
     left to crowd (pixel redesign supersedes PLAN-cap-and-chrome Part 2 #1)."""
     assert "(startDay + di) % 7" in page_text
     assert "FUSE_TICK_CLEARANCE" not in page_text
-    assert "background:var(--dim);z-index:6" in page_text
+    assert "background:var(--bg);box-shadow:2px 0 0 0 var(--ink);z-index:6" in page_text
 
 
 def test_clock_caption_is_gone_rule_alone_marks_it(page_text):
     """PLAN-cap-and-chrome Part 2 #1: the "the clock is here" caption and its
-    arrow are removed entirely -- the vertical rule (now a dim marker, per
-    the pixel redesign) is the only marker left."""
+    arrow are removed entirely -- the vertical rule (now a two-tone marker
+    hanging off the pixel clock) is the only marker left."""
     assert "the clock is here →" not in page_text
     assert "← the clock is here" not in page_text
     assert "clockCaptionText" not in page_text
     assert "clockCaptionCss" not in page_text
     assert "clockCaptionRight" not in page_text
-    # the rule itself is untouched in spirit: still there, now dim-coloured
-    assert "background:var(--dim);z-index:6" in page_text
+    # the rule itself is untouched in spirit: still there, now two-tone
+    assert "background:var(--bg);box-shadow:2px 0 0 0 var(--ink);z-index:6" in page_text
