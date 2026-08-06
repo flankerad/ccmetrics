@@ -212,6 +212,11 @@ var state = {
   windows: null, projects: null, findings: null, summary: null, usage: null, live: null, meta: null
 };
 
+/* Which project groups the reader has opened in the findings list, keyed by
+   project. Outside `state` on purpose: `state` is server data, this is what
+   the reader did to the page, and it must survive every re-render. */
+var findOpenGroups = {};
+
 function get(url) {
   return fetch(url, { credentials: "same-origin" }).then(function (r) {
     if (!r.ok) throw new Error(url + " " + r.status);
@@ -803,10 +808,17 @@ function renderRecoverable() {
     g.items.sort(function (a, b) { return (b.tokens_saved || 0) - (a.tokens_saved || 0); });
   });
 
-  var fullList = groupList.map(function (g) {
+  /* Each project folds shut on its own, so the opened list reads as a short
+     index of projects and their totals instead of one long run of findings.
+     Open state is keyed by project, not by position, and lives outside this
+     function -- the dash re-ingests on a timer and re-renders, which would
+     otherwise snap every group shut under the reader. */
+  var fullList = groupList.map(function (g, gi) {
     var name = baseName(g.cwd) || g.project || "?";
-    var heading = '<div style="display:flex;justify-content:space-between;gap:16px;padding:8px 0;margin-top:10px;font-size:12px;text-transform:uppercase;color:var(--dim)">' +
-      '<span>' + esc(name) + " · " + g.items.length + "</span>" +
+    var key = g.project || name;
+    var open = !!findOpenGroups[key];
+    var heading = '<div id="cc-fg-' + gi + '" data-fg="' + esc(key) + '" style="display:flex;justify-content:space-between;gap:16px;padding:8px 0;margin-top:10px;font-size:12px;text-transform:uppercase;color:var(--dim);cursor:pointer">' +
+      '<span><span id="cc-fgc-' + gi + '">' + (open ? "▾" : "▸") + "</span> " + esc(name) + " · " + g.items.length + "</span>" +
       '<span>' + fmtTok(g.total) + "</span>" +
       "</div>";
     var rowsHtml = g.items.map(function (item, i) {
@@ -815,7 +827,7 @@ function renderRecoverable() {
         '<span style="color:var(--dim)">' + fmtTok(item.tokens_saved) + "</span>" +
         "</div>";
     }).join("");
-    return heading + rowsHtml;
+    return heading + '<div id="cc-fgl-' + gi + '" style="display:' + (open ? "block" : "none") + '">' + rowsHtml + "</div>";
   }).join("");
 
   host.innerHTML =
@@ -837,6 +849,19 @@ function renderRecoverable() {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function () {});
       el.textContent = "COPIED";
       setTimeout(function () { el.textContent = "COPY"; }, 1600);
+    });
+  });
+
+  groupList.forEach(function (g, gi) {
+    var head = document.getElementById("cc-fg-" + gi);
+    var body = document.getElementById("cc-fgl-" + gi);
+    var mark = document.getElementById("cc-fgc-" + gi);
+    if (!head || !body || !mark) return;
+    head.addEventListener("click", function () {
+      var nowOpen = body.style.display === "none";
+      body.style.display = nowOpen ? "block" : "none";
+      mark.textContent = nowOpen ? "▾" : "▸";
+      findOpenGroups[head.getAttribute("data-fg")] = nowOpen;
     });
   });
 
