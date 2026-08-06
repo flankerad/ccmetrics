@@ -147,9 +147,23 @@ function impliedCap(tokens, share) {
    touched -- the same three-way read the old title tooltips carried. */
 function noteFor(dry, lvlIdx, capTok, tokens) {
   if (dry) return { text: "RAN DRY", color: "var(--l4)" };
+  /* Past the cap there is no room left to be tight about -- saying "little
+     room left" over 100% reads as wrong. Name the overshoot instead, and say
+     EST.: the cap is cap_estimates' median of token-delta/percent-delta
+     samples (windows.py), built on whole-percent readings, so a cell landing
+     past it means the guess ran low, not that Claude Code cut anyone off. */
+  if (capTok !== null && (tokens || 0) > capTok) {
+    return { text: fmtTok((tokens || 0) - capTok) + " PAST EST. CAP", color: "var(--l4)" };
+  }
   if (lvlIdx >= 3) return { text: "TIGHT — LITTLE ROOM LEFT", color: "var(--l3)" };
   if (capTok !== null) return { text: fmtTok(Math.max(0, capTok - (tokens || 0))) + " UNUSED", color: "var(--dim)" };
   return { text: "CAP UNKNOWN", color: "var(--dim)" };
+}
+/* A pressed key stays its own colour, just dimmed -- a flat grey press read
+   as "this cell has no data" next to its still-coloured neighbours. Mixing
+   toward the page background keeps the hue and only drops the light. */
+function mutedFill(bg) {
+  return "color-mix(in srgb, " + bg + " 45%, var(--bg))";
 }
 /* The two tooltip divs stay separate on purpose: the outer positions itself
    (owns left/right via `edge`, pointer-events:none so it never steals the
@@ -817,7 +831,7 @@ function renderHorizon() {
     // regardless of paint order.
     return '<div data-cckey="' + hoverKey + '" style="flex:1;min-width:0;position:relative;z-index:' +
       (on ? "20" : "auto") + '">' +
-      '<div style="height:44px;background:' + (on ? "#2b2620" : bg) + ';animation:' +
+      '<div style="height:44px;background:' + (on ? mutedFill(bg) : bg) + ';animation:' +
       (on ? "cckey 0.09s steps(2,end) forwards" : "none") + ';animation-fill-mode:forwards;cursor:default"></div>' +
       tipHtml + "</div>";
   }).join("");
