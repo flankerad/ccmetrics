@@ -1,6 +1,7 @@
-.clauaid/*
-!.clauaid/arch/
-!.clauaid/archive/
+# clauaid's own working state — never public, no exceptions
+.clauaid/
+**/.clauaid/
+.clauaid.json
 
 # python build artifacts
 __pycache__/
@@ -24,5 +25,9 @@ REPO_MAP.md
 RESEARCH-build-a-brand-new.md
 SESSION_LOG.md
 TODO.md
+LEARNED.md
+USER.md
+SPEC.md
+PLAN-*.md
+*.bak
 .claude/
-.clauaid.json
