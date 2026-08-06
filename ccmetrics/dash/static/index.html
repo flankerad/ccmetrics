@@ -786,7 +786,7 @@ function renderHorizon() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px">' +
-    '<span class="px-label">MONTH · ' + cells.length + ' WINDOWS</span>' + scopeTag() +
+    '<span>' + '<span class="px-label">MONTH · ' + cells.length + ' WINDOWS</span>' + scopeTag() + '</span>' +
     dryHeader +
     "</div>" +
     '<div style="display:flex;gap:3px">' + cellsHtml + "</div>" +
@@ -891,7 +891,7 @@ function renderRecoverable() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">' +
-    '<span class="px-label">RECOVERABLE · ' + fmtTok(total) + ' TOKENS</span>' + scopeTag() +
+    '<span>' + '<span class="px-label">RECOVERABLE · ' + fmtTok(total) + ' TOKENS</span>' + scopeTag() + '</span>' +
     '<span id="cc-find-toggle" style="display:flex;align-items:center;gap:10px;color:var(--dim);flex-wrap:wrap;cursor:pointer">' + projection +
     '<span id="cc-find-caret">▸</span> ' + all.length + ' FINDINGS</span>' +
     "</div>" +
@@ -1102,7 +1102,7 @@ function renderDollars() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px">' +
-    '<span class="px-label">VALUE ABSORBED · ' + (s.window_days || 30) + ' DAYS</span>' + scopeTag() +
+    '<span>' + '<span class="px-label">VALUE ABSORBED · ' + (s.window_days || 30) + ' DAYS</span>' + scopeTag() + '</span>' +
     '<span style="color:var(--dim)">' + fmtUsd(total) + ' AT API PRICES · NOT A BILL' + confidence + "</span>" +
     "</div>" +
     '<div class="px-faint" style="margin-bottom:14px">1 BLOCK = ' + fmtUsd(blockUsd) + ' · COLOUR IS THE DAY’S SIZE</div>' +
@@ -1263,7 +1263,7 @@ function renderWeek() {
   host.innerHTML =
     '<div class="px-panel" style="margin-top:20px">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px">' +
-    '<span class="px-label">THIS WEEK · ' + (w.week_blocks || 0) + ' WINDOWS</span>' + scopeTag() +
+    '<span>' + '<span class="px-label">THIS WEEK · ' + (w.week_blocks || 0) + ' WINDOWS</span>' + scopeTag() + '</span>' +
     dryHeader +
     "</div>" +
     headHtml +
