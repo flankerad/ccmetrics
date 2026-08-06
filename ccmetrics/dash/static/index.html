@@ -625,7 +625,22 @@ function renderHorizon() {
       var frac = maxTok > 0 ? c.equiv_tokens / maxTok : 0;
       bg = frac > 0.5 ? "var(--line)" : "var(--l0)";
     }
-    return '<div style="flex:1;min-width:0;height:44px;background:' + bg + '"></div>';
+    /* 60 cells cannot each carry a printed label the way the week's four
+       columns can, so the hover does the whole job here: which half-day the
+       stripe is, and the number its colour stands for. Same literal shares
+       as the week grid's tip -- never the rescaled band the colour came from. */
+    var tip = String(c.label || c.date || "").toUpperCase();
+    if (!c.equiv_tokens) {
+      tip += " — nothing run";
+    } else {
+      tip += " — " + fmtTok(c.equiv_tokens) + " absorbed";
+      if (capsKnown && c.pct_of_cap != null) tip += " · " + fmtPct(c.pct_of_cap) + " of the window cap";
+      else if (capsKnown && c.pct_of_week != null) tip += " · " + fmtPct(c.pct_of_week) + " of the week";
+      if (c.turns) tip += " · " + c.turns + " turns";
+      if (c.leader) tip += " · led by " + shortModel(c.leader);
+      if (c.dry) tip += " · ran dry";
+    }
+    return '<div title="' + esc(tip) + '" style="flex:1;min-width:0;height:44px;background:' + bg + '"></div>';
   }).join("");
 
   // dry_count_month is null whenever the 5-hour SESSION cap (the only cap
@@ -983,9 +998,14 @@ function renderWeek() {
   var maxTok = 0;
   grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; }); });
 
-  function cellHtml(c) {
+  function cellHtml(c, si, day) {
+    /* Native title tooltip, not a custom layer: the bars carry colour and
+       fill, the hover carries the number they stand for. An empty slot still
+       gets one so "nothing here" is readable as a fact, not a rendering gap. */
+    var band = (slotNames[si] || "") + " " + (SLOT_HOURS[si] || "");
+    var head = (day ? day.toUpperCase() + " · " : "") + band.toUpperCase().trim();
     if (!c) {
-      return '<div style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
+      return '<div title="' + esc(head + " — nothing run") + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
         '<div style="width:6px;height:12px;background:transparent"></div>' +
         pxMeter(0, 7, "var(--l0)", null, "height:12px") +
         "</div>";
@@ -1016,16 +1036,41 @@ function renderWeek() {
       on = "var(--line)";
     }
     fillPct = Math.max(0, Math.min(100, fillPct || 0));
-    return '<div style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid ' + edge + ';padding:2px">' +
+    /* The tip prints the literal share the row average uses, never the
+       rescaled bar fill, so hovering can never contradict the printed AVG. */
+    var share = c.pct_of_cap != null ? c.pct_of_cap : c.pct_of_week;
+    var tip = head + " — " + fmtTok(c.equiv_tokens || 0) + " absorbed";
+    if (capsKnown && share != null) {
+      tip += " · " + fmtPct(share) + (c.pct_of_cap != null ? " of the window cap" : " of the week");
+    }
+    if (c.turns) tip += " · " + c.turns + " turns";
+    if (c.leader) tip += " · led by " + shortModel(c.leader);
+    if (c.dry) tip += " · ran dry";
+    return '<div title="' + esc(tip) + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid ' + edge + ';padding:2px">' +
       '<div style="width:6px;height:12px;background:' + led + '"></div>' +
       pxMeter(fillPct, 7, on, null, "height:12px") +
       "</div>";
   }
 
+  /* The four columns are fixed local-clock bands, not "first four windows" --
+     without the hours printed, an empty first column reads as "no data" when
+     it really means "nothing before noon". Boundaries mirror windows.slot();
+     the names come from the API (slot_labels) so only the hours live here. */
+  var SLOT_HOURS = ["00-12", "12-17", "17-22", "22-24"];
+  var slotNames = w.slot_labels || ["morning", "afternoon", "evening", "late"];
+  var headHtml = '<div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:8px">' +
+    '<div style="width:30px"></div>' +
+    slotNames.map(function (n, i) {
+      return '<div style="flex:1;color:var(--dim);text-transform:uppercase;border-bottom:2px solid var(--line);padding-bottom:3px">' +
+        esc(n) + ' <span style="color:var(--line)">' + SLOT_HOURS[i] + "</span></div>";
+    }).join("") +
+    '<div style="width:78px"></div>' +
+    "</div>";
+
   var rowsHtml = grid.map(function (row) {
     var cells = (row.cells || []).slice();
     while (cells.length < 4) cells.push(null);
-    var cellsHtml = cells.map(cellHtml).join("");
+    var cellsHtml = cells.map(function (c, si) { return cellHtml(c, si, row.day); }).join("");
     var labelColor = (row.blocks || 0) > 2 ? "var(--ink)" : "var(--dim)";
     var qualifying = cells.filter(function (c) { return c && ((c.equiv_tokens || c.turns) > 0); });
     var tail, tailColor;
@@ -1090,6 +1135,7 @@ function renderWeek() {
     '<span class="px-label">THIS WEEK · ' + (w.week_blocks || 0) + ' WINDOWS</span>' +
     dryHeader +
     "</div>" +
+    headHtml +
     '<div style="display:flex;flex-direction:column;gap:6px">' + rowsHtml + "</div>" +
     '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;color:var(--dim)">' + lvlLegend + '<span style="flex:1"></span>' + ledLegend + "</div>" +
     "</div>";
