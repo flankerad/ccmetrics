@@ -614,9 +614,25 @@ function renderHorizon() {
   var maxTok = 0;
   cells.forEach(function (c) { if (c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; });
 
+  /* Each stripe is half a day; the hover names the whole day it belongs to,
+     so the day's own total has to be summed here -- no endpoint carries it. */
+  var dayTotals = {};
+  cells.forEach(function (c) {
+    var k = c.date || c.local_date;
+    if (k) dayTotals[k] = (dayTotals[k] || 0) + (c.equiv_tokens || 0);
+  });
+
   var cellsHtml = cells.map(function (c) {
     var bg;
-    if (capsKnown && c.pct_of_week !== null && c.pct_of_week !== undefined) {
+    if (capsKnown && c.pct_of_cap !== null && c.pct_of_cap !== undefined) {
+      /* Colour by share of the WINDOW cap, the same ladder the week grid and
+         the RAN DRY count use. The strip used to colour by share of the week,
+         which has no red band worth reaching -- a half-day that maxed its own
+         window still drew pale, so the header could say "4 ran dry" above 60
+         stripes with no red in them. Week share stays the fallback for cells
+         with no window cap. */
+      bg = PX_LVL[pxLvl(c.pct_of_cap)];
+    } else if (capsKnown && c.pct_of_week !== null && c.pct_of_week !== undefined) {
       // pct_of_week is a share of the WEEK, not of a 5-hour block -- pxLvl's
       // edges belong to _score's 5-hour-cap pct_of_cap and would park every
       // real month cell in the lowest band (see WEEK_LVL_EDGES above).
@@ -629,7 +645,9 @@ function renderHorizon() {
        columns can, so the hover does the whole job here: which half-day the
        stripe is, and the number its colour stands for. Same literal shares
        as the week grid's tip -- never the rescaled band the colour came from. */
-    var tip = String(c.label || c.date || "").toUpperCase();
+    var dayKey = c.date || c.local_date;
+    var tip = String(c.label || dayKey || "").toUpperCase();
+    if (dayKey) tip += " (" + dayKey + ")";
     if (!c.equiv_tokens) {
       tip += " — nothing run";
     } else {
@@ -640,6 +658,7 @@ function renderHorizon() {
       if (c.leader) tip += " · led by " + shortModel(c.leader);
       if (c.dry) tip += " · ran dry";
     }
+    if (dayKey) tip += " · " + fmtTok(dayTotals[dayKey] || 0) + " that whole day";
     return '<div title="' + esc(tip) + '" style="flex:1;min-width:0;height:44px;background:' + bg + '"></div>';
   }).join("");
 
@@ -998,14 +1017,16 @@ function renderWeek() {
   var maxTok = 0;
   grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; }); });
 
-  function cellHtml(c, si, day) {
+  function cellHtml(c, si, day, date, dayTotal) {
     /* Native title tooltip, not a custom layer: the bars carry colour and
        fill, the hover carries the number they stand for. An empty slot still
        gets one so "nothing here" is readable as a fact, not a rendering gap. */
     var band = (slotNames[si] || "") + " " + (SLOT_HOURS[si] || "");
-    var head = (day ? day.toUpperCase() + " · " : "") + band.toUpperCase().trim();
+    var head = (day ? day.toUpperCase() + " · " : "") + band.toUpperCase().trim() +
+      (date ? " (" + date + ")" : "");
+    var dayTail = " · " + fmtTok(dayTotal || 0) + " that whole day";
     if (!c) {
-      return '<div title="' + esc(head + " — nothing run") + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
+      return '<div title="' + esc(head + " — nothing run" + dayTail) + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
         '<div style="width:6px;height:12px;background:transparent"></div>' +
         pxMeter(0, 7, "var(--l0)", null, "height:12px") +
         "</div>";
@@ -1046,6 +1067,7 @@ function renderWeek() {
     if (c.turns) tip += " · " + c.turns + " turns";
     if (c.leader) tip += " · led by " + shortModel(c.leader);
     if (c.dry) tip += " · ran dry";
+    tip += dayTail;
     return '<div title="' + esc(tip) + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid ' + edge + ';padding:2px">' +
       '<div style="width:6px;height:12px;background:' + led + '"></div>' +
       pxMeter(fillPct, 7, on, null, "height:12px") +
@@ -1070,7 +1092,10 @@ function renderWeek() {
   var rowsHtml = grid.map(function (row) {
     var cells = (row.cells || []).slice();
     while (cells.length < 4) cells.push(null);
-    var cellsHtml = cells.map(function (c, si) { return cellHtml(c, si, row.day); }).join("");
+    var rowTotal = cells.reduce(function (a, c) { return a + (c ? (c.equiv_tokens || 0) : 0); }, 0);
+    var cellsHtml = cells.map(function (c, si) {
+      return cellHtml(c, si, row.day, row.date, rowTotal);
+    }).join("");
     var labelColor = (row.blocks || 0) > 2 ? "var(--ink)" : "var(--dim)";
     var qualifying = cells.filter(function (c) { return c && ((c.equiv_tokens || c.turns) > 0); });
     var tail, tailColor;
