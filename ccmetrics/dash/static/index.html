@@ -20,6 +20,13 @@ a{color:var(--clay);text-decoration:none}a:hover{color:#f4c7ad}
 @keyframes ccpix2{0%,33.32%{opacity:0}33.33%,66.65%{opacity:1}66.66%,100%{opacity:0}}
 @keyframes ccpix3{0%,66.65%{opacity:0}66.66%,100%{opacity:1}}
 @keyframes ccblink{0%,49%{opacity:1}50%,100%{opacity:0}}
+/* Hover interaction (hover_implementation.md): the cell travels on hover in
+   two hard steps, a panel snaps in above it in three. Stepped timing only --
+   never ease/linear, that is what keeps the motion mechanical. cctip must
+   only ever animate opacity/translateY, never a horizontal translate, or it
+   will fight the edge clamping computed per cell in JS. */
+@keyframes cckey{0%{transform:translateY(0)}100%{transform:translateY(-3px)}}
+@keyframes cctip{0%{opacity:0;transform:translateY(4px)}40%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
@@ -119,6 +126,69 @@ function pxMeterGraded(pct, n, cellStyle) {
   return out.join("");
 }
 
+/* ==== hover panels (hover_implementation.md) shared across the week grid,
+   month strip and value-absorbed columns ==== */
+/* Edge clamping derives from the cell's own index, never a hardcoded
+   left:50% -- a centred panel on an edge cell runs off the window. First N
+   cells pin left, last N pin right, everything between stays centred. */
+function edgeFor(i, len, n) {
+  if (i < n) return "left:0;right:auto";
+  if (i > len - n - 1) return "left:auto;right:0";
+  return "left:50%;transform:translateX(-50%)";
+}
+/* A cell's own cap in tokens is rarely on the wire directly, only the share
+   (pct_of_cap/pct_of_week) and the absolute tokens it consumed -- both sides
+   of the same fraction, so the cap itself is just algebra back out of it. */
+function impliedCap(tokens, share) {
+  return (share !== null && share !== undefined && share > 0) ? (tokens || 0) / (share / 100) : null;
+}
+/* The consequence line: an actual dry cap wins outright, a merely tight
+   share is next, and otherwise it is how much of the implied cap never got
+   touched -- the same three-way read the old title tooltips carried. */
+function noteFor(dry, lvlIdx, capTok, tokens) {
+  if (dry) return { text: "RAN DRY", color: "var(--l4)" };
+  if (lvlIdx >= 3) return { text: "TIGHT — LITTLE ROOM LEFT", color: "var(--l3)" };
+  if (capTok !== null) return { text: fmtTok(Math.max(0, capTok - (tokens || 0))) + " UNUSED", color: "var(--dim)" };
+  return { text: "CAP UNKNOWN", color: "var(--dim)" };
+}
+/* The two tooltip divs stay separate on purpose: the outer positions itself
+   (owns left/right via `edge`, pointer-events:none so it never steals the
+   hover), the inner just animates in place. Collapsing them made panels fly
+   off-screen, because the animated transform fought the positioning one. */
+function ccTip(edge, linesHtml) {
+  return '<div style="position:absolute;bottom:calc(100% + 6px);' + edge + ';pointer-events:none;z-index:30">' +
+    '<div style="animation:cctip 0.16s steps(3,end) forwards;background:var(--surf);border:2px solid var(--line);' +
+    'padding:8px 10px;display:flex;flex-direction:column;gap:4px;white-space:nowrap;box-shadow:0 4px 0 rgba(0,0,0,0.35)">' +
+    linesHtml.join("") + "</div></div>";
+}
+/* One delegated mouseover/mouseout pair per host, wired once and left alone.
+   Per-cell mouseenter/mouseleave looked simpler but re-rendering the host's
+   innerHTML on every hover destroys the node the browser thinks is "entered"
+   -- the replacement never gets a real enter, so leave can silently never
+   fire and the panel sticks open. Delegation on the host survives every
+   innerHTML rewrite because the host node itself is never replaced, and
+   mouseover/mouseout (unlike enter/leave) bubble, so hit-testing runs fresh
+   on the live DOM each time. */
+function wireHoverDelegate(host, rerender) {
+  if (!host || typeof host.addEventListener !== "function" || host._ccHoverWired) return;
+  host._ccHoverWired = true;
+  host.addEventListener("mouseover", function (ev) {
+    var el = ev.target && ev.target.closest ? ev.target.closest("[data-cckey]") : null;
+    if (!el) return;
+    var key = el.getAttribute("data-cckey");
+    if (state.key === key) return;
+    state.key = key;
+    rerender();
+  });
+  host.addEventListener("mouseout", function (ev) {
+    var el = ev.target && ev.target.closest ? ev.target.closest("[data-cckey]") : null;
+    if (!el || state.key !== el.getAttribute("data-cckey")) return;
+    if (el.contains(ev.relatedTarget)) return; // still inside the same hit area
+    state.key = null;
+    rerender();
+  });
+}
+
 /* ==== formatting ==== */
 /* PLAN-dash-v2 6.4g #4: the payload carries `cwd` (a real absolute path)
    beside the sanitized store key (`-Users-raptor-Dev-clauaid`) -- the mock
@@ -209,6 +279,7 @@ function agoText(iso) {
 var state = {
   scope: null,
   copied: null,
+  key: null, // the one hover key for every data strip on the page -- see hover_implementation.md
   windows: null, projects: null, findings: null, summary: null, usage: null, live: null, meta: null
 };
 
@@ -670,6 +741,7 @@ function renderLive() {
    dry forced false, legend/caption swap to a no-dry-claim variant. ==== */
 function renderHorizon() {
   var host = document.getElementById("cc-horizon");
+  wireHoverDelegate(host, renderHorizon);
   var w = state.windows;
   if (!w) { host.innerHTML = ""; return; }
   var cells = w.horizon || [];
@@ -685,7 +757,10 @@ function renderHorizon() {
     if (k) dayTotals[k] = (dayTotals[k] || 0) + (c.equiv_tokens || 0);
   });
 
-  var cellsHtml = cells.map(function (c) {
+  // Hover panel, 7 cells clamped at each edge (hover_implementation.md N=7):
+  // 60 stripes have no room to print a label, so hover does the whole job.
+  var N_HZ = 7;
+  var cellsHtml = cells.map(function (c, i) {
     var bg;
     if (capsKnown && c.pct_of_cap !== null && c.pct_of_cap !== undefined) {
       /* Colour by share of the WINDOW cap, the same ladder the week grid and
@@ -704,25 +779,47 @@ function renderHorizon() {
       var frac = maxTok > 0 ? c.equiv_tokens / maxTok : 0;
       bg = frac > 0.5 ? "var(--line)" : "var(--l0)";
     }
-    /* 60 cells cannot each carry a printed label the way the week's four
-       columns can, so the hover does the whole job here: which half-day the
-       stripe is, and the number its colour stands for. Same literal shares
-       as the week grid's tip -- never the rescaled band the colour came from. */
     var dayKey = c.date || c.local_date;
-    var tip = String(c.label || dayKey || "").toUpperCase();
-    if (dayKey) tip += " (" + dayKey + ")";
-    if (!c.equiv_tokens) {
-      tip += " — nothing run";
-    } else {
-      tip += " — " + fmtTok(c.equiv_tokens) + " absorbed";
-      if (capsKnown && c.pct_of_cap != null) tip += " · " + fmtPct(c.pct_of_cap) + " of the window cap";
-      else if (capsKnown && c.pct_of_week != null) tip += " · " + fmtPct(c.pct_of_week) + " of the week";
-      if (c.turns) tip += " · " + c.turns + " turns";
-      if (c.leader) tip += " · led by " + shortModel(c.leader);
-      if (c.dry) tip += " · ran dry";
+    var head = String(c.label || dayKey || "").toUpperCase() + (dayKey ? " (" + dayKey + ")" : "");
+
+    var usingCap = capsKnown && c.pct_of_cap !== null && c.pct_of_cap !== undefined;
+    var usingWeek = !usingCap && capsKnown && c.pct_of_week !== null && c.pct_of_week !== undefined;
+    var share = usingCap ? c.pct_of_cap : (usingWeek ? c.pct_of_week : null);
+    var lvlIdx = usingCap ? pxLvl(share) : (usingWeek ? pxLvlWeek(share) : 0);
+    var barPct = usingCap ? share : (usingWeek ? weekFillPct(share) : 0);
+    var capTok = impliedCap(c.equiv_tokens, share);
+
+    var hoverKey = "m" + i;
+    var on = state.key === hoverKey;
+
+    var tipHtml = "";
+    if (on) {
+      var headline = !c.equiv_tokens ? "NOTHING RUN" : (share !== null ? fmtPct(share) : fmtTok(c.equiv_tokens || 0));
+      var note = noteFor(c.dry, lvlIdx, capTok, c.equiv_tokens);
+      tipHtml = ccTip(edgeFor(i, cells.length, N_HZ), [
+        '<div>' + esc(head) + ' — <span style="color:' + bg + '">' + esc(headline) + "</span></div>",
+        '<div style="display:flex;gap:2px">' + pxMeter(barPct, 10, bg, null, "height:8px") + "</div>",
+        '<div style="color:var(--dim)">' + esc(capTok !== null
+          ? fmtTok(c.equiv_tokens || 0) + " OF " + fmtTok(capTok)
+          : fmtTok(c.equiv_tokens || 0) + " ABSORBED") + "</div>",
+        '<div style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:10px;background:' +
+          (c.leader ? modelColor(shortModel(c.leader)) : "var(--dim)") + '"></span>' +
+          esc(c.leader ? "LED BY " + shortModel(c.leader).toUpperCase() : "NO LEADER") + "</div>",
+        '<div style="color:' + note.color + '">' + esc(note.text) + "</div>"
+      ]);
     }
-    if (dayKey) tip += " · " + fmtTok(dayTotals[dayKey] || 0) + " that whole day";
-    return '<div title="' + esc(tip) + '" style="flex:1;min-width:0;height:44px;background:' + bg + '"></div>';
+
+    // Visible cell IS the coloured stripe here (unlike the week grid's
+    // border+meter), so the piano-key press darkens the fill itself --
+    // the data moves up into the panel while the key is down. z-index on
+    // the hovered hit area itself (belt-and-suspenders alongside the panel's
+    // own z-index) keeps its panel above every later sibling stripe
+    // regardless of paint order.
+    return '<div data-cckey="' + hoverKey + '" style="flex:1;min-width:0;position:relative;z-index:' +
+      (on ? "20" : "auto") + '">' +
+      '<div style="height:44px;background:' + (on ? "#2b2620" : bg) + ';animation:' +
+      (on ? "cckey 0.09s steps(2,end) forwards" : "none") + ';animation-fill-mode:forwards;cursor:default"></div>' +
+      tipHtml + "</div>";
   }).join("");
 
   // dry_count_month is null whenever the 5-hour SESSION cap (the only cap
@@ -1027,6 +1124,7 @@ function renderProjects() {
    per series (its average level) rather than a per-point gradient. ==== */
 function renderDollars() {
   var host = document.getElementById("cc-dollars");
+  wireHoverDelegate(host, renderDollars);
   var s = state.summary;
   if (!s) { host.innerHTML = ""; return; }
   var daily = s.series || [];
@@ -1055,25 +1153,6 @@ function renderDollars() {
     if (AXIS_LADDER[ai] >= max) { axisMax = AXIS_LADDER[ai]; break; }
   }
 
-  var MAX_BLOCKS = 9;
-  var chartHtml = daily.map(function (d, i) {
-    var val = vals[i];
-    var blocks = Math.min(MAX_BLOCKS, Math.max(val > 0 ? 1 : 0, Math.round(val / blockUsd)));
-    var lvl = PX_LVL[pxLvl(axisMax > 0 ? Math.round(val / axisMax * 100) : 0)];
-    var blocksHtml = "";
-    for (var bi = 0; bi < blocks; bi++) {
-      blocksHtml += '<div style="height:12px;background:' + lvl + '"></div>';
-    }
-    /* A column is a day rounded to whole blocks, so its height is always a
-       little wrong on purpose -- the hover carries the number the rounding
-       came from, plus the tokens behind the money. */
-    var tip = axisLabel(d.date) + " (" + d.date + ") — " + fmtUsd(val) +
-      " at API prices · " + blocks + (blocks === 1 ? " block" : " blocks");
-    if (d.equiv) tip += " · " + fmtTok(d.equiv) + " absorbed";
-    if (d.turns) tip += " · " + d.turns + " turns";
-    return '<div title="' + esc(tip) + '" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%">' + blocksHtml + "</div>";
-  }).join("");
-
   var MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
   function axisLabel(dateStr) {
     var parts = (dateStr || "").split("-");
@@ -1082,6 +1161,52 @@ function renderDollars() {
     var day = parseInt(parts[2], 10);
     return (MONTHS[mi] || "") + " " + day;
   }
+
+  // Hover panel, 4 columns clamped at each edge (hover_implementation.md
+  // N=4). Dollars have no cap and no model, so the meter and model lines
+  // drop -- only when/headline, absolute-vs-axis-top, and the consequence.
+  var MAX_BLOCKS = 9;
+  var N_DO = 4;
+  var chartHtml = daily.map(function (d, i) {
+    var val = vals[i];
+    var blocks = Math.min(MAX_BLOCKS, Math.max(val > 0 ? 1 : 0, Math.round(val / blockUsd)));
+    var lvlIdx = pxLvl(axisMax > 0 ? Math.round(val / axisMax * 100) : 0);
+    var lvl = PX_LVL[lvlIdx];
+    var blocksHtml = "";
+    for (var bi = 0; bi < blocks; bi++) {
+      blocksHtml += '<div style="height:12px;background:' + lvl + '"></div>';
+    }
+
+    var hoverKey = "v" + i;
+    var on = state.key === hoverKey;
+
+    var tipHtml = "";
+    if (on) {
+      var head = axisLabel(d.date) + " (" + d.date + ")";
+      var note;
+      if (lvlIdx >= 4) note = { text: "TALLEST DAY IN RANGE", color: "var(--l4)" };
+      else if (lvlIdx === 3) note = { text: "TIGHT — NEAR THE CHART TOP", color: "var(--l3)" };
+      else note = { text: fmtUsd(Math.max(0, axisMax - val)) + " UNDER THE TOP", color: "var(--dim)" };
+      tipHtml = ccTip(edgeFor(i, daily.length, N_DO), [
+        '<div>' + esc(head) + ' — <span style="color:' + lvl + '">' + esc(fmtUsd(val)) + "</span></div>",
+        '<div style="color:var(--dim)">' + esc(fmtUsd(val) + " OF " + fmtUsd(axisMax) + " AXIS TOP · " +
+          fmtTok(d.equiv || 0) + " ABSORBED") + "</div>",
+        '<div style="color:' + note.color + '">' + esc(note.text) + "</div>"
+      ]);
+    }
+
+    /* A column is a day rounded to whole blocks, so its height is always a
+       little wrong on purpose -- the panel carries the real number the
+       rounding came from. The visible cell is the whole stacked column; it
+       darkens as a unit when pressed, same piano-key feel as the other two
+       strips. */
+    return '<div data-cckey="' + hoverKey + '" style="flex:1;position:relative;height:100%;z-index:' +
+      (on ? "20" : "auto") + '">' +
+      '<div style="display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%;background:' +
+      (on ? "#2b2620" : "transparent") + ';animation:' + (on ? "cckey 0.09s steps(2,end) forwards" : "none") +
+      ';animation-fill-mode:forwards;cursor:default">' + blocksHtml + "</div>" +
+      tipHtml + "</div>";
+  }).join("");
   var n = daily.length;
   var axisHtml = "";
   if (n) {
@@ -1116,6 +1241,7 @@ function renderDollars() {
    6.3: dry forced false when caps are unknown; legend/%->tokens swap. */
 function renderWeek() {
   var host = document.getElementById("cc-week");
+  wireHoverDelegate(host, renderWeek);
   var w = state.windows;
   if (!w) { host.innerHTML = ""; return; }
   var capsKnown = w.caps_known;
@@ -1123,19 +1249,22 @@ function renderWeek() {
   var maxTok = 0;
   grid.forEach(function (row) { (row.cells || []).forEach(function (c) { if (c && c.equiv_tokens > maxTok) maxTok = c.equiv_tokens; }); });
 
+  // Hover panel, 1 cell clamped at each edge of a 4-wide row
+  // (hover_implementation.md N=1). padding-bottom:4px on the hit area is
+  // this grid's own reservation so the 3px lift never clips into the row
+  // below it -- the month strip and dollar columns have room without it.
+  var N_WK = 1;
+
   function cellHtml(c, si, day, date, dayTotal) {
-    /* Native title tooltip, not a custom layer: the bars carry colour and
-       fill, the hover carries the number they stand for. An empty slot still
-       gets one so "nothing here" is readable as a fact, not a rendering gap. */
     var band = (slotNames[si] || "") + " " + (SLOT_HOURS[si] || "");
     var head = (day ? day.toUpperCase() + " · " : "") + band.toUpperCase().trim() +
       (date ? " (" + date + ")" : "");
-    var dayTail = " · " + fmtTok(dayTotal || 0) + " that whole day";
     if (!c) {
-      return '<div title="' + esc(head + " — nothing run" + dayTail) + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
+      return '<div style="flex:1;position:relative;padding-bottom:4px">' +
+        '<div style="display:flex;gap:2px;align-items:center;height:20px;border:2px solid var(--l0);padding:2px">' +
         '<div style="width:6px;height:12px;background:transparent"></div>' +
         pxMeter(0, 7, "var(--l0)", null, "height:12px") +
-        "</div>";
+        "</div></div>";
     }
     var led = c.leader ? modelColor(shortModel(c.leader)) : "transparent";
     var edge, fillPct, on;
@@ -1163,21 +1292,41 @@ function renderWeek() {
       on = "var(--line)";
     }
     fillPct = Math.max(0, Math.min(100, fillPct || 0));
-    /* The tip prints the literal share the row average uses, never the
-       rescaled bar fill, so hovering can never contradict the printed AVG. */
+    /* The printed share always stays the literal number the row average
+       uses, never the rescaled bar fill, so hovering can never contradict
+       the printed AVG. */
     var share = c.pct_of_cap != null ? c.pct_of_cap : c.pct_of_week;
-    var tip = head + " — " + fmtTok(c.equiv_tokens || 0) + " absorbed";
-    if (capsKnown && share != null) {
-      tip += " · " + fmtPct(share) + (c.pct_of_cap != null ? " of the window cap" : " of the week");
+
+    var hoverKey = day + si;
+    var hovered = state.key === hoverKey;
+
+    var tipHtml = "";
+    if (hovered) {
+      var lvlIdx = capsKnown ? (c.pct_of_cap != null ? pxLvl(share) : pxLvlWeek(share)) : 0;
+      var capTok = capsKnown ? impliedCap(c.equiv_tokens, share) : null;
+      var note = noteFor(c.dry, lvlIdx, capTok, c.equiv_tokens);
+      var headline = capsKnown && share != null ? fmtPct(share) : fmtTok(c.equiv_tokens || 0);
+      tipHtml = ccTip(edgeFor(si, 4, N_WK), [
+        '<div>' + esc(head) + ' — <span style="color:' + on + '">' + esc(headline) + "</span></div>",
+        '<div style="display:flex;gap:2px">' + pxMeter(fillPct, 10, on, null, "height:8px") + "</div>",
+        '<div style="color:var(--dim)">' + esc(capTok !== null
+          ? fmtTok(c.equiv_tokens || 0) + " OF " + fmtTok(capTok)
+          : fmtTok(c.equiv_tokens || 0) + " ABSORBED") + "</div>",
+        '<div style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:10px;background:' +
+          (c.leader ? modelColor(shortModel(c.leader)) : "var(--dim)") + '"></span>' +
+          esc(c.leader ? "LED BY " + shortModel(c.leader).toUpperCase() : "NO LEADER") + "</div>",
+        '<div style="color:' + note.color + '">' + esc(note.text) + "</div>"
+      ]);
     }
-    if (c.turns) tip += " · " + c.turns + " turns";
-    if (c.leader) tip += " · led by " + shortModel(c.leader);
-    if (c.dry) tip += " · ran dry";
-    tip += dayTail;
-    return '<div title="' + esc(tip) + '" style="flex:1;display:flex;gap:2px;align-items:center;height:20px;border:2px solid ' + edge + ';padding:2px">' +
+
+    return '<div data-cckey="' + hoverKey + '" style="flex:1;position:relative;padding-bottom:4px;z-index:' +
+      (hovered ? "20" : "auto") + '">' +
+      '<div style="display:flex;gap:2px;align-items:center;height:20px;border:2px solid ' + edge +
+      ';padding:2px;background:' + (hovered ? "#2b2620" : "transparent") + ';animation:' +
+      (hovered ? "cckey 0.09s steps(2,end) forwards" : "none") + ';animation-fill-mode:forwards">' +
       '<div style="width:6px;height:12px;background:' + led + '"></div>' +
       pxMeter(fillPct, 7, on, null, "height:12px") +
-      "</div>";
+      "</div>" + tipHtml + "</div>";
   }
 
   /* The four columns are fixed local-clock bands, not "first four windows" --

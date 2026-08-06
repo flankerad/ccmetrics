@@ -182,7 +182,10 @@ def test_empty_store_page_parses_no_exception(conn, cc_env, running_server):
 
 
 def test_month_strip_is_hoverless_and_colours_straight_from_pct_of_week(page_text):
-    """10-pixel-week-month: the mock's MONTH strip has no hover state at all --
+    """10-pixel-week-month: naming leftover from before hover_implementation.md
+    (D5-D8) added a hover panel to every strip -- this test still only pins
+    the DATA-DRIVEN fill colour a cell shows at rest, which the hover panel
+    never changes the source of, only overlays with a piano-key press --
     each cell's fill is coloured from pct_of_week when the weekly cap is
     known, falling back to a flat two-step token-relative neutral (never a
     colour ramp) only when caps are genuinely unknown. D1 bug-1 follow-up:
@@ -234,3 +237,40 @@ def test_clock_caption_is_gone_rule_alone_marks_it(page_text):
     assert "clockCaptionRight" not in page_text
     # the rule itself is untouched in spirit: still there, now two-tone
     assert "background:var(--bg);box-shadow:2px 0 0 0 var(--ink);z-index:6" in page_text
+
+
+def test_hover_keyframes_are_stepped_never_eased(page_text):
+    """hover_implementation.md #1: the piano-key cell lift and the panel's
+    snap-in must both arrive in discrete frames -- steps(2,end)/steps(3,end)
+    -- never ease/linear, or the motion reads as web-smooth instead of
+    mechanical. Pins the keyframe declarations and every usage site."""
+    assert "@keyframes cckey{0%{transform:translateY(0)}100%{transform:translateY(-3px)}}" in page_text
+    assert "@keyframes cctip{" in page_text
+    cctip_kf = page_text[page_text.index("@keyframes cctip{"):]
+    cctip_kf = cctip_kf[: cctip_kf.index("}}") + 2]
+    assert "translateX" not in cctip_kf  # cctip is opacity/translateY only, never horizontal
+    assert "ease" not in cctip_kf and "linear" not in cctip_kf
+    assert "cckey 0.09s steps(2,end) forwards" in page_text
+    assert "cctip 0.16s steps(3,end) forwards" in page_text
+
+
+def test_hover_edge_clamping_flushes_first_and_last_cells(page_text):
+    """hover_implementation.md #4: edge clamping is derived from the cell's
+    own index (edgeFor), never a hardcoded left:50% -- first/last N cells
+    pin flush instead of centring off-screen."""
+    assert "function edgeFor(i, len, n)" in page_text
+    assert "left:0;right:auto" in page_text
+    assert "left:auto;right:0" in page_text
+    assert "left:50%;transform:translateX(-50%)" in page_text
+
+
+def test_hover_panels_use_one_shared_key_and_delegated_wiring(page_text):
+    """hover_implementation.md #2: a single state.key drives every panel on
+    the page (week/month/dollars ids never collide), and the listeners are
+    delegated on the host -- not re-attached per cell per render, which is
+    what let a panel stick open after its own DOM node got replaced."""
+    assert "key: null" in page_text
+    assert "state.key ===" in page_text
+    assert "function wireHoverDelegate(host, rerender)" in page_text
+    assert "cc-hz-cell" not in page_text
+    assert "state.hz" not in page_text
