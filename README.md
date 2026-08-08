@@ -19,15 +19,27 @@
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
 ```
-┌ LIVE ── burn 12%/hr │ ctx 61% │ cache-hit 94% │ session at least $0.83 ┐
-SPEND 30d  ▂▃▅▇▅▆█  at least $41.20 + $6–9 est. output    TOKEN MIX ██████░░
-TOP LEAKS                              SAVES        FIX
-1 Cold start after a break             ~1.2M tok    [copy] CLAUDE.md line
-2 Compaction tax (9 sessions)          ~640K tok    [copy] /compact habit
-3 Premium model on small turns         ~410K tok    [copy] settings.json
-▸ per-project ▸ per-session ▸ per-turn timeline
+ccmetrics · your-project · last 30 days
+
+SPEND   at least $41.20
+        + est. output $6.10–$9.15   (a range, never added to the number above)
+
+PLAN    wk 62% (resets Mon 17:30) · 5h 31% (resets Sat 22:20)
+        your plan, straight from Anthropic via Claude Code's status line
+
+TOKENS  ███████████████████████▒  read 61.4M █ · write-5m 1.1M ▓ · write-1h 903K ▒
+        cache-hit 94% · 612 turns · 9 sessions · 2 compactions
+
+TOP LEAKS (ranked by tokens saved vs how hard the fix is)
+  1. Premium model on small turns       ~   1.2M tok    $12.83  effort:paste
+     WHAT:  Send the quick turns to a cheaper model.
+     DO:    /model claude-haiku-4-5 — switch back when the work gets hard.
+     WATCH: { "model": "claude-haiku-4-5" } in settings.json routes EVERY turn
+            there, not just the small ones. Review before pasting that.
+
+run `ccmetrics --all-leaks` for every finding, `ccmetrics constants` for sources
 ```
-<sub>illustration, not a screenshot — the real thing is `ccmetrics` in your terminal and `ccmetrics dash` in your browser</sub>
+<sub>shape of the real `ccmetrics` output, with example numbers. `ccmetrics live` adds a burn-rate line for the session running right now, and `ccmetrics dash` opens the same data in your browser.</sub>
 
 ## Why
 
