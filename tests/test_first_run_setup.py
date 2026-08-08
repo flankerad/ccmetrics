@@ -17,19 +17,12 @@ import sys
 
 import pytest
 
-from ccmetrics import cli, plan, store
+from ccmetrics import plan, store
 from ccmetrics.cli import main
 
 
 def _make_tty(monkeypatch, value: bool = True) -> None:
     monkeypatch.setattr(sys.stdout, "isatty", lambda: value)
-
-
-@pytest.fixture(autouse=True)
-def _no_first_run_dash(monkeypatch):
-    # This module only exercises the status-line auto-wire gate; the
-    # first-run dashboard launch is covered in tests/test_first_run_dash.py.
-    monkeypatch.setattr(cli, "_first_run_dash", lambda *a, **k: None)
 
 
 @pytest.fixture(autouse=True)
