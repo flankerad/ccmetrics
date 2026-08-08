@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import time
 
 from . import __version__, constants, ingest, report, store
 
@@ -24,6 +26,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--global", dest="global_", action="store_true", help="report across all projects")
     p.add_argument("--no-ingest", action="store_true", help="report from the store as-is")
+    p.add_argument("--no-setup", action="store_true", help="do not wire the status line on first run")
     p.add_argument("--json", action="store_true", help="machine-readable summary")
     p.add_argument(
         "--all-leaks",
@@ -89,8 +92,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     su = sub.add_parser(
         "setup",
-        help="one-command installer for the status line hook (no flags: print "
-        "instructions only, changes nothing)",
+        help="one-command installer for the status line hook (no flags: applies; "
+        "--print: print instructions only, changes nothing)",
     )
     su.add_argument(
         "--apply",
@@ -136,6 +139,45 @@ def _run_ingest(conn, quiet: bool = False) -> dict:
             file=sys.stderr,
         )
     return stats
+
+
+def _first_run_statusline(conn, args) -> None:
+    """On the plain console report, wire our own status line into
+    ~/.claude/settings.json exactly once, unasked. Silent unless it acts."""
+    if getattr(args, "json", False):
+        return
+    if not sys.stdout.isatty():
+        return
+    if os.environ.get("CCMETRICS_NO_SETUP"):
+        return
+    if getattr(args, "no_setup", False):
+        return
+    if store.get_meta(conn, "statusline_autowire") is not None:
+        return
+
+    from . import plan as plan_mod
+
+    try:
+        try:
+            result = plan_mod.apply_setup(plan_mod.default_settings_path())
+        except plan_mod.SetupError as e:
+            print(f"ccmetrics left your status line alone: {e}")
+        else:
+            if result.get("changed"):
+                print(
+                    "ccmetrics wired its status line into ~/.claude/settings.json — "
+                    "your plan usage (5h and weekly %) now shows there."
+                )
+                print("undo any time: ccmetrics setup --revert")
+                warning = result.get("invocation_warning")
+                if warning:
+                    print(warning)
+    except Exception:
+        pass
+    finally:
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+        store.set_meta(conn, "statusline_autowire", now_iso)
+        conn.commit()
 
 
 def _render_live(t: dict) -> str:
@@ -335,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
                 plan=store.latest_plan_windows(conn),
             )
         )
+        _first_run_statusline(conn, args)
         return 0
     finally:
         conn.close()
