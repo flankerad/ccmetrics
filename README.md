@@ -44,7 +44,7 @@ ccmetrics        # inside a repo → that repo's summary: top leaks + paste-read
 ccmetrics dash   # anywhere → global dashboard in your browser, per-project drill-down
 ccmetrics widget # optional → small always-on-top window with the week fuse (needs the dash running)
 ccmetrics otel   # optional → local OTEL receiver (127.0.0.1:4318) for exact costs
-ccmetrics statusline --setup   # optional → your real plan % in the status line and the dash
+ccmetrics setup --revert       # the status line wires itself on first run; this undoes it
 ```
 
 ### The widget needs Tk
@@ -88,26 +88,24 @@ One install covers every project on the machine: it reads all of `~/.claude/proj
 
 How much of your Pro/Max plan is gone is **not** in any file on your machine — it lives on Anthropic's servers. So ccmetrics never estimates it. There is exactly one honest local source: Claude Code hands its status-line command its own session JSON, and for subscribers that JSON carries `rate_limits` — the same percentages `/usage` shows.
 
-```bash
-ccmetrics statusline --setup   # prints the ~/.claude/settings.json fragment; edits nothing
+Your status line becomes `ccmetrics > main | ✳ Opus :: 48k/200k (24%) | 5h 31% | wk 62%`, coloured green through red by how much you have spent, while `ccmetrics dash` grows a **PLAN** card and `ccmetrics` prints a PLAN line. Only the percentage, the reset time and the session id are stored (90 days, metadata as always); readings older than 6 hours are labelled stale rather than shown as current. Undo the wiring and the card and the line simply stop appearing.
+
+#### It turns itself on
+
+Claude Code only runs one status-line command, so wiring ccmetrics in by hand would mean editing JSON. The first time you run `ccmetrics`, it does that for you and says so:
+
+```
+ccmetrics wired its status line into ~/.claude/settings.json — your plan usage (5h and weekly %) now shows there.
+undo any time: ccmetrics setup --revert
 ```
 
-Turn it on and your status line becomes `ccmetrics > main | ✳ Opus :: 48k/200k (24%) | 5h 31% | wk 62%`, coloured green through red by how much you have spent, while `ccmetrics dash` grows a **PLAN** card and `ccmetrics` prints a PLAN line. Only the percentage, the reset time and the session id are stored (90 days, metadata as always); readings older than 6 hours are labelled stale rather than shown as current. Leave it off and nothing changes — the card and the line simply never appear.
+It tries this exactly once, ever. It stays out of the way when nobody is watching: piped output, `--json`, and the status-line hook itself never trigger it. `CCMETRICS_NO_SETUP=1` or `ccmetrics --no-setup` skips it entirely, and `ccmetrics setup --check` tells you where things stand, including when a plan % was last seen. Skipped it and changed your mind? `ccmetrics setup --apply` wires it by hand.
 
-#### Turn it on with one command
-
-Claude Code only runs one status-line command, so wiring ccmetrics in by hand means editing JSON. `ccmetrics setup` does it for you:
-
-```bash
-ccmetrics setup --apply    # turns the status line on; keeps your own command if you had one
-ccmetrics setup --check    # confirms it's wired up, and shows when a plan % was last seen
-```
-
-What `--apply` does: it opens `~/.claude/settings.json` (create `--settings <path>` to point at a different file, e.g. a project-level settings.json), saves a backup next to it (`settings.json.bak-ccmetrics`), and sets the status line to `ccmetrics statusline`. If you already had a status line command, it wraps yours instead of replacing it, so your status line still looks the same — ccmetrics just also records your plan %. It's safe to run more than once: if it's already wired up, it says so and changes nothing.
+What the wiring does: it opens `~/.claude/settings.json` (create `--settings <path>` to point at a different file, e.g. a project-level settings.json), saves a backup next to it (`settings.json.bak-ccmetrics`), and sets the status line to `ccmetrics statusline`. If you already had a status line command, it wraps yours instead of replacing it, so your status line still looks the same — ccmetrics just also records your plan %. It's safe to run more than once: if it's already wired up, it says so and changes nothing.
 
 Changed your mind? `ccmetrics setup --revert` puts your settings back the way they were — no need for the backup file, it reads its own state back out of the settings file.
 
-If `ccmetrics` isn't on your PATH, `--apply` writes the full path to whichever `ccmetrics` you ran it with, so the status line keeps working either way. `--check` will tell you loudly if that ever stops being true.
+If `ccmetrics` isn't on your PATH, the wiring writes the full path to whichever `ccmetrics` you ran it with, so the status line keeps working either way. `--check` will tell you loudly if that ever stops being true.
 
 ## The 12 leak detectors
 
@@ -137,7 +135,7 @@ One honesty rule: the `CLAUDE.md` lines and habits are safe to paste as-is; the 
 - **Local only.** No network egress of usage data, no account, no cloud, no telemetry.
 - **Metadata only.** Stores counts, byte sizes, timestamps, tool names, file paths, and hashes — **never** prompt text, file contents, or tool-result bodies.
 - **Read-only against `~/.claude`.** It cannot damage your Claude Code install or sessions.
-- **Proposes, never applies.** No file of yours is ever edited. You read the fix, you paste it.
+- **Proposes, never applies.** Every leak fix is yours to read and paste — ccmetrics edits none of your files. One exception, named here so it is never a surprise: on its very first run it adds its own status-line command to `~/.claude/settings.json`, which is how your plan percentages reach you without you doing anything. It copies that file first, keeps any status line you already had, and `ccmetrics setup --revert` puts it back. `CCMETRICS_NO_SETUP=1 ccmetrics` — or `ccmetrics --no-setup` — leaves the file untouched. Nothing else on your disk is ever written to.
 - One state file (SQLite, capped under 100 MB); delete it any time — nothing of yours is lost.
 
 ## Numbers you can defend
