@@ -12,6 +12,7 @@ phase and the test-call phase, so a patch made during setup would be lost."""
 
 from __future__ import annotations
 
+import json
 import sys
 
 import pytest
@@ -28,6 +29,9 @@ def _make_tty(monkeypatch, value: bool = True) -> None:
 def _settings(tmp_path, monkeypatch):
     settings = tmp_path / "settings.json"
     monkeypatch.setattr(plan, "default_settings_path", lambda: settings)
+    # Pin the resolved invocation so assertions on settings.json content are
+    # not at the mercy of how the test runner itself was launched.
+    monkeypatch.setattr(plan, "resolve_invocation", lambda: ("ccmetrics", None))
     return settings
 
 
@@ -74,16 +78,39 @@ def test_happy_path_wires_once_and_prints(cc_env, capsys, monkeypatch, conn, _se
     )
     assert "undo any time: ccmetrics setup --revert" in out
     assert _settings.exists()
-    assert "statusline" in _settings.read_text()
+    written = json.loads(_settings.read_text())
+    assert written["statusLine"] == {"type": "command", "command": "ccmetrics statusline"}
     assert store.get_meta(conn, "statusline_autowire") is not None
 
-    # second run: meta already set -- silent, apply not called again
+    # second run: meta already set -- silent, plan.apply_setup not called again
+    calls = []
+    monkeypatch.setattr(plan, "apply_setup", lambda *a, **k: calls.append(1) or {"changed": False})
     written_at = _settings.read_text()
     _make_tty(monkeypatch, True)
     assert main(["--no-ingest"]) == 0
     out2 = capsys.readouterr().out
     assert "wired its status line" not in out2
     assert _settings.read_text() == written_at
+    assert calls == []
+
+
+def test_wraps_an_existing_statusline_and_leaves_a_backup(cc_env, capsys, monkeypatch, conn, _settings):
+    _make_tty(monkeypatch, True)
+    original = {"statusLine": {"type": "command", "command": "my-other-tool"}, "keepMe": True}
+    _settings.write_text(json.dumps(original))
+
+    assert main(["--no-ingest"]) == 0
+    out = capsys.readouterr().out
+    assert "ccmetrics wired its status line into ~/.claude/settings.json" in out
+
+    written = json.loads(_settings.read_text())
+    assert "my-other-tool" in written["statusLine"]["command"]
+    assert "ccmetrics statusline" in written["statusLine"]["command"]
+    assert written["keepMe"] is True  # unrelated keys survive
+
+    backup = _settings.with_name(_settings.name + ".bak-ccmetrics")
+    assert backup.exists()
+    assert json.loads(backup.read_text()) == original
 
 
 def test_setup_error_path_prints_one_line_and_marks_meta(cc_env, capsys, monkeypatch, conn, _settings):
