@@ -1,9 +1,12 @@
 """ccmetrics setup — one-command installer for the statusline hook.
 
 `setup --apply` wires `ccmetrics statusline` into statusLine.command in a
-Claude Code settings.json, wrapping any command already there. `--revert`
-undoes it. `--check` reports state read-only. All of it is exercised through
-`--settings <tmp_path>` so no test ever touches the real ~/.claude."""
+Claude Code settings.json, replacing any command already there — Claude Code
+renders one status line, so the slot is ours alone. The displaced command is
+not lost: the whole settings file is copied to `.bak-ccmetrics` first, and
+`--revert` puts the displaced command back from there. `--check` reports state
+read-only. All of it is exercised through `--settings <tmp_path>` so no test
+ever touches the real ~/.claude."""
 
 from __future__ import annotations
 
@@ -80,18 +83,27 @@ def test_apply_creates_missing_parent_directory(tmp_path):
     assert settings.exists()
 
 
-def test_apply_wraps_an_existing_third_party_command(tmp_path):
+def test_apply_replaces_an_existing_third_party_command(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
 
     result = plan.apply_setup(settings)
 
     data = json.loads(settings.read_text())
-    assert data["statusLine"]["command"] == "ccmetrics statusline --passthrough 'my-tool --flag'"
+    assert data["statusLine"]["command"] == "ccmetrics statusline"
     assert result["old"] == "my-tool --flag"
+
+
+def test_apply_backs_up_the_command_it_displaced(tmp_path):
+    settings = tmp_path / "settings.json"
+    original = {"statusLine": {"type": "command", "command": "my-tool --flag"}, "keepMe": True}
+    settings.write_text(json.dumps(original))
+
+    plan.apply_setup(settings)
+
     backup = tmp_path / "settings.json.bak-ccmetrics"
     assert backup.exists()
-    assert json.loads(backup.read_text())["statusLine"]["command"] == "my-tool --flag"
+    assert json.loads(backup.read_text()) == original
 
 
 def test_apply_preserves_unrelated_keys(tmp_path):
@@ -103,7 +115,7 @@ def test_apply_preserves_unrelated_keys(tmp_path):
     assert json.loads(settings.read_text())["other"] == {"keep": True}
 
 
-def test_apply_twice_is_idempotent_no_double_wrap(tmp_path):
+def test_apply_twice_is_idempotent(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
 
@@ -111,20 +123,84 @@ def test_apply_twice_is_idempotent_no_double_wrap(tmp_path):
     result2 = plan.apply_setup(settings)
 
     assert result2["changed"] is False
-    command = json.loads(settings.read_text())["statusLine"]["command"]
-    assert command == "ccmetrics statusline --passthrough 'my-tool --flag'"
-    assert command.count("--passthrough") == 1
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    # the second apply must not re-back-up: that would overwrite the displaced
+    # command with our own and lose it for good
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    assert json.loads(backup.read_text())["statusLine"]["command"] == "my-tool --flag"
 
 
-def test_apply_command_with_single_quotes_round_trips(tmp_path):
+def test_apply_unwraps_a_passthrough_command_left_by_an_older_build(tmp_path):
+    """Older ccmetrics builds chained onto the command already there. Applying
+    over one of those rewrites it to the plain command and says what it
+    dropped."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(
+        json.dumps(
+            {"statusLine": {"type": "command", "command": "ccmetrics statusline --passthrough 'my-tool --flag'"}}
+        )
+    )
+
+    result = plan.apply_setup(settings)
+
+    assert result["changed"] is True
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    assert "my-tool --flag" in result["message"]
+
+
+def test_apply_unwrapping_leaves_a_usable_backup_alone(tmp_path):
+    """The backup already holds the command the older build displaced.
+    Unwrapping must not overwrite it with a command of ours — that would lose
+    the user's command for good, since revert refuses an ours-command."""
+    settings = tmp_path / "settings.json"
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    backup.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
+    settings.write_text(
+        json.dumps(
+            {"statusLine": {"type": "command", "command": "ccmetrics statusline --passthrough 'my-tool --flag'"}}
+        )
+    )
+
+    result = plan.apply_setup(settings)
+
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    assert json.loads(backup.read_text())["statusLine"]["command"] == "my-tool --flag"
+    # no write happened, but that file is still the one --revert will read,
+    # so the reported backup path must name it
+    assert result["backup"] == backup
+
+
+def test_apply_unwrapping_replaces_a_corrupt_backup_with_a_usable_one(tmp_path):
+    """A backup that exists but is junk is no backup at all — unwrapping has
+    to write a fresh one, or the command in the wrap is lost. Existence of
+    the file is not the test; readability is."""
+    settings = tmp_path / "settings.json"
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    backup.write_text("{not json")
+    settings.write_text(
+        json.dumps(
+            {"statusLine": {"type": "command", "command": "ccmetrics statusline --passthrough 'my-tool --flag'"}}
+        )
+    )
+
+    plan.apply_setup(settings)
+
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    assert json.loads(backup.read_text())["statusLine"]["command"] == "my-tool --flag"
+    # and it is genuinely usable: revert hands the command back
+    plan.revert_setup(settings)
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "my-tool --flag"
+
+
+def test_apply_command_with_single_quotes_survives_into_the_backup(tmp_path):
     settings = tmp_path / "settings.json"
     original = "echo 'hi there' | some-tool"
     settings.write_text(json.dumps({"statusLine": {"type": "command", "command": original}}))
 
     plan.apply_setup(settings)
 
-    wrapped = json.loads(settings.read_text())["statusLine"]["command"]
-    assert plan._extract_passthrough(wrapped) == original
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    assert json.loads(backup.read_text())["statusLine"]["command"] == original
 
 
 def test_apply_unparseable_json_refused_and_file_untouched(tmp_path):
@@ -163,10 +239,49 @@ def test_apply_statusline_wrong_type_refused(tmp_path):
 # --- revert ---------------------------------------------------------------
 
 
-def test_revert_restores_the_original_wrapped_command(tmp_path):
+def test_revert_restores_the_displaced_command_from_the_backup(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
     plan.apply_setup(settings)
+
+    result = plan.revert_setup(settings)
+
+    assert result["changed"] is True
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "my-tool --flag"
+
+
+def test_apply_and_revert_twice_still_gives_the_third_party_command_back(tmp_path):
+    """The backup slot does double duty — it holds the displaced command and
+    it is the undo of the last write. Turning ccmetrics off and on again must
+    still hand the user's own command back the second time.
+
+    Two cycles, not one, because what makes this work is that revert_setup
+    reads the displaced command *before* it overwrites the backup with the
+    still-wired settings. Swap that order and the first revert already loses
+    `my-tool --flag`."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
+
+    plan.apply_setup(settings)
+    plan.revert_setup(settings)
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "my-tool --flag"
+
+    plan.apply_setup(settings)
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+
+    plan.revert_setup(settings)
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "my-tool --flag"
+
+
+def test_revert_restores_a_passthrough_command_left_by_an_older_build(tmp_path):
+    """Settings written by an older, chaining build revert straight from the
+    command itself — no backup file needed."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(
+        json.dumps(
+            {"statusLine": {"type": "command", "command": "ccmetrics statusline --passthrough 'my-tool --flag'"}}
+        )
+    )
 
     result = plan.revert_setup(settings)
 
@@ -184,7 +299,9 @@ def test_revert_removes_statusline_when_we_added_it_outright(tmp_path):
     assert "statusLine" not in json.loads(settings.read_text())
 
 
-def test_revert_works_without_the_backup_file(tmp_path):
+def test_revert_without_the_backup_file_removes_statusline(tmp_path):
+    """With no backup left there is nothing to put back, so the slot is
+    vacated rather than left pointing at ccmetrics."""
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool"}}))
     plan.apply_setup(settings)
@@ -193,7 +310,19 @@ def test_revert_works_without_the_backup_file(tmp_path):
     result = plan.revert_setup(settings)
 
     assert result["changed"] is True
-    assert json.loads(settings.read_text())["statusLine"]["command"] == "my-tool"
+    assert "statusLine" not in json.loads(settings.read_text())
+
+
+def test_revert_with_a_corrupt_backup_file_removes_statusline(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool"}}))
+    plan.apply_setup(settings)
+    (tmp_path / "settings.json.bak-ccmetrics").write_text("{not json")
+
+    result = plan.revert_setup(settings)
+
+    assert result["changed"] is True
+    assert "statusLine" not in json.loads(settings.read_text())
 
 
 def test_revert_when_not_wired_is_a_noop(tmp_path):

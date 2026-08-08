@@ -107,9 +107,11 @@ undo any time: ccmetrics setup --revert
 
 It tries this exactly once, ever. It stays out of the way when nobody is watching: piped output, `--json`, and the status-line hook itself never trigger it. `CCMETRICS_NO_SETUP=1` or `ccmetrics --no-setup` skips it entirely, and `ccmetrics setup --check` tells you where things stand, including when a plan % was last seen. Skipped it and changed your mind? `ccmetrics setup --apply` wires it by hand.
 
-What the wiring does: it opens `~/.claude/settings.json` (create `--settings <path>` to point at a different file, e.g. a project-level settings.json), saves a backup next to it (`settings.json.bak-ccmetrics`), and sets the status line to `ccmetrics statusline`. If you already had a status line command, it wraps yours instead of replacing it, so your status line still looks the same — ccmetrics just also records your plan %. It's safe to run more than once: if it's already wired up, it says so and changes nothing.
+What the wiring does: it opens `~/.claude/settings.json` (use `--settings <path>` to point at a different file, e.g. a project-level settings.json), saves a backup next to it (`settings.json.bak-ccmetrics`), and sets the status line to `ccmetrics statusline`. If you already had a status line command, ccmetrics takes the slot: Claude Code renders exactly one status line, so sharing it means two tools printing on one row, with the model name and the cost repeated. Your old command is not lost — the backup holds it, and `--revert` puts it back. It's safe to run more than once: if it's already wired up, it says so and changes nothing.
 
-Changed your mind? `ccmetrics setup --revert` puts your settings back the way they were — no need for the backup file, it reads its own state back out of the settings file.
+Changed your mind? `ccmetrics setup --revert` restores the command it displaced from the backup file, or removes the status line entirely if you had none before. Delete the backup and revert still works — it just leaves you with no status line rather than your old one.
+
+Want ccmetrics in one project only? Claude Code reads a project's `.claude/settings.json` ahead of `~/.claude/settings.json`, so `ccmetrics setup --apply --settings .claude/settings.json` wires it for that project alone and leaves every other project on whatever your global settings say.
 
 If `ccmetrics` isn't on your PATH, the wiring writes the full path to whichever `ccmetrics` you ran it with, so the status line keeps working either way. `--check` will tell you loudly if that ever stops being true.
 
@@ -141,7 +143,7 @@ One honesty rule: the `CLAUDE.md` lines and habits are safe to paste as-is; the 
 - **Local only.** No network egress of usage data, no account, no cloud, no telemetry.
 - **Metadata only.** Stores counts, byte sizes, timestamps, tool names, file paths, and hashes — **never** prompt text, file contents, or tool-result bodies.
 - **Read-only against `~/.claude`.** It cannot damage your Claude Code install or sessions.
-- **Proposes, never applies.** Every leak fix is yours to read and paste — ccmetrics edits none of your files. One exception, named here so it is never a surprise: on its very first run it adds its own status-line command to `~/.claude/settings.json`, which is how your plan percentages reach you without you doing anything. It copies that file first, keeps any status line you already had, and `ccmetrics setup --revert` puts it back. `CCMETRICS_NO_SETUP=1 ccmetrics` — or `ccmetrics --no-setup` — leaves the file untouched. Nothing else on your disk is ever written to.
+- **Proposes, never applies.** Every leak fix is yours to read and paste — ccmetrics edits none of your files. One exception, named here so it is never a surprise: on its very first run it adds its own status-line command to `~/.claude/settings.json`, which is how your plan percentages reach you without you doing anything. It copies that file first, so any status line you already had is preserved in the backup, and `ccmetrics setup --revert` puts it back. `CCMETRICS_NO_SETUP=1 ccmetrics` — or `ccmetrics --no-setup` — leaves the file untouched. Nothing else on your disk is ever written to.
 - One state file (SQLite, capped under 100 MB); delete it any time — nothing of yours is lost.
 
 ## Numbers you can defend
@@ -154,7 +156,7 @@ One honesty rule: the `CLAUDE.md` lines and habits are safe to paste as-is; the 
 
 ## Status
 
-**v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, localhost dashboard, and optional OTEL exact costs work end-to-end (76-test suite green; cold ingest of a 522 MB corpus in ~5 s). Next: PyPI release.
+**v0.2.0 — usable.** Ingest, cost floor, all 12 detectors, console summary, localhost dashboard, and optional OTEL exact costs work end-to-end (304-test suite green; cold ingest of a 522 MB corpus in ~5 s). Next: PyPI release.
 
 ## License
 

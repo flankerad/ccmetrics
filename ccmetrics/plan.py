@@ -824,9 +824,13 @@ def setup_text() -> str:
             fragment,
             "",
             "Already have a status line? Claude Code runs exactly one command, so",
-            "wrap yours instead of replacing it. ccmetrics reads the payload, records",
-            "your plan %, then runs your command on the same payload and prints ITS",
-            "output -- your status line looks exactly as it did:",
+            "`ccmetrics setup --apply` takes the slot: it backs up whatever command",
+            "was there to a `.bak-ccmetrics` file next to settings.json, then writes",
+            "the command above. `ccmetrics setup --revert` puts the old one back.",
+            "",
+            "Want yours to keep running too? Wrap it by hand with --passthrough:",
+            "ccmetrics reads the payload, records your plan %, then runs your",
+            "command on the same payload and prints ITS output:",
             "",
             chained,
             "",
@@ -1049,12 +1053,47 @@ def apply_setup(settings_path: Path) -> dict:
                 f"({current!r}) — leaving it untouched."
             )
         if _is_ours_command(current):
+            wrapped = _extract_passthrough(current)
+            if wrapped is None:
+                return {
+                    "changed": False,
+                    "message": f"already wired: {current!r} — nothing to change.",
+                }
+            # An older ccmetrics build wrapped a command instead of replacing
+            # it. Unwrap it now so only ccmetrics renders the status line.
+            backup_path = settings_path.with_name(settings_path.name + ".bak-ccmetrics")
+            # The backup slot records the command we displaced, never one of
+            # ours. If it already holds something usable, that's the
+            # displaced command from whenever the wrap was first applied —
+            # leave it alone, or we'd overwrite it with a now-wired (ours)
+            # settings file and lose the command for good. Only write a
+            # fresh backup, holding the unwrapped command, when there's
+            # nothing usable there yet.
+            if _read_backed_up_command(settings_path) is None:
+                backup_data = dict(data)
+                backup_data["statusLine"] = {"type": "command", "command": wrapped}
+                backup_path.write_text(json.dumps(backup_data, indent=2) + "\n")
+            data["statusLine"] = {"type": "command", "command": plain_command}
+            settings_path.write_text(json.dumps(data, indent=2) + "\n")
+            lines = []
+            if invocation_warning:
+                lines.append(invocation_warning)
+            lines += [
+                f"statusLine.command: {current!r} -> {plain_command!r}",
+                f"chained command moved to the backup: {wrapped!r}",
+                f"written to {settings_path}",
+                f"backup: {backup_path}",
+            ]
             return {
-                "changed": False,
-                "message": f"already wired: {current!r} — nothing to change.",
+                "changed": True,
+                "old": current,
+                "new": plain_command,
+                "backup": backup_path,
+                "invocation_warning": invocation_warning,
+                "message": "\n".join(lines),
             }
         old_desc = current
-        new_command = f"{invocation} statusline --passthrough {shlex.quote(current)}"
+        new_command = plain_command
 
     backup_path = _backup(settings_path, raw) if raw is not None else None
     settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1079,10 +1118,37 @@ def apply_setup(settings_path: Path) -> dict:
     }
 
 
+def _read_backed_up_command(settings_path: Path) -> str | None:
+    """The statusLine.command the `.bak-ccmetrics` sibling held, if any.
+
+    Anything short of a clean read counts as none: file missing, unreadable,
+    not JSON, not the shape we write, or a command that's ours already.
+    Never raises — callers fall back to just removing statusLine.
+    """
+    backup_path = settings_path.with_name(settings_path.name + ".bak-ccmetrics")
+    try:
+        data = json.loads(backup_path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sl = data.get("statusLine")
+    if not isinstance(sl, dict) or sl.get("type") != "command":
+        return None
+    command = sl.get("command")
+    if not isinstance(command, str) or not command.strip() or _is_ours_command(command):
+        return None
+    return command
+
+
 def revert_setup(settings_path: Path) -> dict:
-    """Undo apply_setup: restore a wrapped command, or drop statusLine if we
-    added it outright. Works from the settings file alone — does not depend
-    on the backup file still existing.
+    """Undo apply_setup.
+
+    A `--passthrough`-carrying command restores as-is — settings written by
+    an older ccmetrics build revert without needing the backup. Otherwise we
+    read the `.bak-ccmetrics` sibling for the command we displaced; a
+    missing, unreadable, or malformed backup never raises, it just means we
+    fall back to removing statusLine.
     """
     data, raw = _load_settings(settings_path)
     if raw is None:
@@ -1094,11 +1160,18 @@ def revert_setup(settings_path: Path) -> dict:
     if not isinstance(current, str) or not _is_ours_command(current):
         return {"changed": False, "message": "statusLine is not wired to ccmetrics — nothing to revert."}
 
-    backup_path = _backup(settings_path, raw)
     passthrough = _extract_passthrough(current)
+    # Read the backup before _backup() below overwrites it with the
+    # (still-wired) settings we're about to revert.
+    displaced = None if passthrough else _read_backed_up_command(settings_path)
+
+    backup_path = _backup(settings_path, raw)
     if passthrough:
         data["statusLine"]["command"] = passthrough
         new_desc = passthrough
+    elif displaced is not None:
+        data["statusLine"]["command"] = displaced
+        new_desc = displaced
     else:
         del data["statusLine"]
         new_desc = "(removed)"

@@ -100,7 +100,8 @@ def _build_parser() -> argparse.ArgumentParser:
     su.add_argument(
         "--apply",
         action="store_true",
-        help="wire ccmetrics into statusLine.command, wrapping any command already there",
+        help="wire ccmetrics into statusLine.command, saving any command already "
+        "there to the backup",
     )
     su.add_argument(
         "--print",
@@ -111,7 +112,8 @@ def _build_parser() -> argparse.ArgumentParser:
     su.add_argument(
         "--revert",
         action="store_true",
-        help="undo --apply: restore the wrapped command, or remove statusLine if we added it",
+        help="undo --apply: restore the displaced command from the backup, "
+        "or remove statusLine if there was nothing to restore",
     )
     su.add_argument(
         "--check",
@@ -171,10 +173,34 @@ def _first_run_statusline(conn, args) -> None:
             print(f"ccmetrics left your status line alone: {e}")
         else:
             if result.get("changed"):
-                print(
-                    "ccmetrics wired its status line into ~/.claude/settings.json — "
-                    "your plan usage (5h and weekly %) now shows there."
+                old = result.get("old")
+                wrapped = (
+                    plan_mod._extract_passthrough(old)
+                    if old and old != "(none)" and plan_mod._is_ours_command(old)
+                    else None
                 )
+                if not old or old == "(none)":
+                    print(
+                        "ccmetrics wired its status line into ~/.claude/settings.json — "
+                        "your plan usage (5h and weekly %) now shows there."
+                    )
+                elif wrapped is not None:
+                    # `old` is ours already (an older build's chained
+                    # command) -- the backup holds the chained command, not
+                    # `old` itself, so name that.
+                    print(
+                        "ccmetrics stopped running the status line command "
+                        "it was chaining."
+                    )
+                    print(f"that command was: {wrapped}")
+                    print(f"the backup next to settings.json is {result.get('backup')}")
+                else:
+                    print(
+                        "ccmetrics wired its status line into ~/.claude/settings.json, "
+                        "replacing the status line command that was already there."
+                    )
+                    print(f"your old command: {old}")
+                    print(f"your old command is saved in {result.get('backup')}")
                 print("undo any time: ccmetrics setup --revert")
                 warning = result.get("invocation_warning")
                 if warning:
