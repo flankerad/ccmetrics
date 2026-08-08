@@ -27,6 +27,20 @@ def test_report_contains_floor_dollar_figure(conn, cc_env):
     assert s["floor_priced"] is True
 
 
+def test_report_plan_hint_points_at_self_wiring_and_setup_check(conn, cc_env):
+    proj = make_project(cc_env["projects_dir"], "-Users-report-hint")
+    write_lines(
+        session_path(proj, "s1"),
+        [assistant_rec("s1", "m1", ts_at(BASE, 0), "claude-haiku-4-5", cw5m=1000, cread=200)],
+    )
+    ingest.ingest(conn, cc_env["projects_dir"])
+    s = report.summary(conn, "-Users-report-hint")
+    out = report.render(s, None, found=[], plan=None)
+    assert "the status line wires itself on first run" in out
+    assert "ccmetrics setup --check" in out
+    assert "statusline --setup" not in out
+
+
 def test_report_per_repo_scoping_matches_cwd(conn, cc_env, monkeypatch):
     # ingest.encode_project() turns an absolute cwd into the same '-'-joined
     # key Claude Code uses for its project directories.

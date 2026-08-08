@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 
 from . import __version__, constants, ingest, report, store
@@ -27,6 +28,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--global", dest="global_", action="store_true", help="report across all projects")
     p.add_argument("--no-ingest", action="store_true", help="report from the store as-is")
     p.add_argument("--no-setup", action="store_true", help="do not wire the status line on first run")
+    p.add_argument("--no-dash", action="store_true", help="do not open the dashboard on first run")
     p.add_argument("--json", action="store_true", help="machine-readable summary")
     p.add_argument(
         "--all-leaks",
@@ -157,6 +159,11 @@ def _first_run_statusline(conn, args) -> None:
 
     from . import plan as plan_mod
 
+    if not plan_mod.default_settings_path().parent.exists():
+        # No ~/.claude directory -- Claude Code was never installed/run here.
+        # Never mkdir it just to wire a status line for a tool that doesn't exist.
+        return
+
     try:
         try:
             result = plan_mod.apply_setup(plan_mod.default_settings_path())
@@ -178,6 +185,54 @@ def _first_run_statusline(conn, args) -> None:
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
         store.set_meta(conn, "statusline_autowire", now_iso)
         conn.commit()
+
+
+def _first_run_dash(conn, args) -> int | None:
+    """On the plain console report, first run only, launch our own dashboard
+    (and the floating widget, when Tk is available) unasked. Gated the same
+    way as `_first_run_statusline`. The meta key is set before serving starts
+    so a crash or ctrl-c never makes this fire twice."""
+    if getattr(args, "json", False):
+        return None
+    if not sys.stdout.isatty():
+        return None
+    if os.environ.get("CCMETRICS_NO_DASH"):
+        return None
+    if getattr(args, "no_dash", False):
+        return None
+    if store.get_meta(conn, "first_run_dash") is not None:
+        return None
+
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+    store.set_meta(conn, "first_run_dash", now_iso)
+    conn.commit()
+
+    print("opening your dashboard — press ctrl-c to stop it")
+
+    from . import dash
+
+    try:
+        import tkinter  # noqa: F401
+    except ImportError:
+        # No Tk on this Python build: serve exactly as `ccmetrics dash` does,
+        # nothing extra said about the missing widget.
+        try:
+            return dash.serve(port=7433)
+        except KeyboardInterrupt:
+            print("")
+            return 0
+
+    from . import widget
+
+    # Tk's mainloop must own the main thread on macOS, so the dash server
+    # runs in a daemon thread and the widget owns this one; closing the
+    # widget ends the run.
+    threading.Thread(target=dash.serve, kwargs={"port": 7433}, daemon=True).start()
+    try:
+        return widget.run(port=7433, scope=None)
+    except KeyboardInterrupt:
+        print("")
+        return 0
 
 
 def _render_live(t: dict) -> str:
@@ -333,6 +388,19 @@ def main(argv: list[str] | None = None) -> int:
                 return dash.serve(port=args.port, open_browser=not args.no_open, reingest_period=None)
             return dash.serve(port=args.port, open_browser=not args.no_open)
 
+        projects_dir = ingest.claude_projects_dir()
+        if not projects_dir.exists():
+            # Never wire the status line or open a dashboard for a Claude
+            # Code that was never installed/run here -- nothing may be
+            # written into ~/.claude on this path.
+            if args.json:
+                print(json.dumps({"error": "no_claude_code", "path": str(projects_dir)}, indent=2))
+            else:
+                print("ccmetrics found no Claude Code sessions on this machine.")
+                print(f"It reads {projects_dir}, the folder Claude Code writes as you work.")
+                print("Install Claude Code, use it once, then run ccmetrics again.")
+            return 0
+
         if not args.no_ingest:
             _run_ingest(conn)
 
@@ -378,7 +446,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         _first_run_statusline(conn, args)
-        return 0
+        result = _first_run_dash(conn, args)
+        return result if result is not None else 0
     finally:
         conn.close()
 

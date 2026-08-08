@@ -392,8 +392,9 @@ def render(
     # It disappears the moment a single snapshot exists.
     if not plan:
         lines.append(
-            "        plan %: `ccmetrics statusline --setup` shows your real "
-            "weekly/5-hour usage here and in the dash"
+            "        plan %: the status line wires itself on first run — "
+            "`ccmetrics setup --check` shows whether Claude Code has reported "
+            "a plan % yet"
         )
     lines.append("")
 
