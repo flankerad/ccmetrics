@@ -44,8 +44,14 @@ ccmetrics        # inside a repo → that repo's summary: top leaks + paste-read
 ccmetrics dash   # anywhere → global dashboard in your browser, per-project drill-down
 ccmetrics widget # optional → small always-on-top window with the week fuse (needs the dash running)
 ccmetrics otel   # optional → local OTEL receiver (127.0.0.1:4318) for exact costs
-ccmetrics setup --revert       # the status line wires itself on first run; this undoes it
+ccmetrics setup --revert  # the status line wires itself on first run; this undoes it
 ```
+
+### Your first run
+
+Type `ccmetrics` once and it sets itself up around you. It prints your summary, wires its own status line into Claude Code so your plan usage shows there, then opens the dashboard in your browser — and the small always-on-top window too, if your Python has Tk. Press ctrl-c when you have seen enough. It only does this the first time; every run after that just prints.
+
+Not the welcome you wanted? `ccmetrics --no-dash` skips the dashboard, `ccmetrics --no-setup` skips the status line, and the environment variables `CCMETRICS_NO_DASH=1` and `CCMETRICS_NO_SETUP=1` do the same for good. None of it happens when the output is piped, when you pass `--json`, or when Claude Code isn't installed — in that last case ccmetrics simply tells you it found no sessions and stops.
 
 ### The widget needs Tk
 
