@@ -316,20 +316,29 @@ function get(url) {
    own header, so no panel can show a filtered number without saying so.
    `PROJECTS` deliberately does not carry it -- that panel always lists them
    all, and tagging it would claim a filter it never applies. */
+/* state.scope is the project KEY -- a slugged absolute path, unreadable on
+   a chip. The PROJECTS row already worked out the short name and the
+   numbers, so look the row back up and reuse them rather than re-deriving
+   a name from the key. No row (scope set before projects loaded) falls back
+   to the key's last path segment. */
+function scopeName() {
+  var rows = (state.projects && state.projects.rows) || [];
+  var row = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].project === state.scope) { row = rows[i]; break; }
+  }
+  return row ? (baseName(row.cwd) || row.project) : (String(state.scope).split(/[\\/-]/).pop() || state.scope);
+}
+
 function scopeTag() {
   if (!state.scope) return "";
-  /* state.scope is the project KEY -- a slugged absolute path, unreadable on
-     a chip. The PROJECTS row already worked out the short name and the
-     numbers, so look the row back up and reuse them rather than re-deriving
-     a name from the key. No row (scope set before projects loaded) falls back
-     to the key's last path segment. */
   var rows = (state.projects && state.projects.rows) || [];
   var row = null;
   for (var i = 0; i < rows.length; i++) {
     if (rows[i].project === state.scope) { row = rows[i]; break; }
   }
   var days = (state.projects && state.projects.window_days) || 30;
-  var name = row ? (baseName(row.cwd) || row.project) : (String(state.scope).split(/[\\/-]/).pop() || state.scope);
+  var name = scopeName();
   var body = esc(name);
   if (row) body += ' <span style="color:var(--dim)">· ' + fmtTok(row.equiv) + " · " + days + "D</span>";
   return '<span class="cc-scope-chip" title="' + esc(name + " only, last " + days + " days" +
@@ -362,7 +371,7 @@ function renderHeader() {
   var host = document.getElementById("cc-header");
   var tier = state.windows && state.windows.tier;
   var tierLabel = tier ? tier.label : null;
-  var scopeLabel = state.scope ? state.scope : "all projects";
+  var scopeLabel = state.scope ? scopeName() : "all projects";
   var now = new Date();
   var hh = String(now.getHours()).padStart(2, "0"), mm = String(now.getMinutes()).padStart(2, "0");
   host.innerHTML =
