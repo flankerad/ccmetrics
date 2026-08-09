@@ -14,7 +14,7 @@
 ![deps](https://img.shields.io/badge/runtime%20deps-zero-8957e5)
 ![data](https://img.shields.io/badge/your%20data-never%20leaves%20your%20machine-8957e5)
 
-<sub>[Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy) · [Docs](#docs)</sub>
+<sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
 
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
@@ -40,6 +40,22 @@ TOP LEAKS (ranked by tokens saved vs how hard the fix is)
 run `ccmetrics --all-leaks` for every finding, `ccmetrics constants` for sources
 ```
 <sub>the shape of real `ccmetrics` output, with example numbers.</sub>
+
+## The dashboard
+
+`ccmetrics dash` opens the same data in your browser, on localhost, with no build step.
+
+![the ccmetrics dashboard: the week burning down as a fuse, limits left, the live session, and the top recoverable leaks](docs/assets/dash.png)
+
+The week is a fuse. The flame sits at what you have burnt, the clock at where the week actually is, and the gap between them tells you whether you are ahead or behind. Under it: what is left, when it empties at your current rate, the session running right now, and the leaks ranked by tokens you would get back.
+
+## The widget
+
+`ccmetrics widget` is a small always-on-top window with the same fuse, so you can see the week burn without switching to a browser.
+
+![the ccmetrics widget: a small always-on-top panel showing the week's fuse, the burn flame, the current 5-hour block, and the burn rate](docs/assets/widget.png)
+
+Drag it anywhere. The minimize button collapses it to a single line — the face, the percentage left, and the fuse with its flame. It needs Tk; see [docs/install.md](docs/install.md).
 
 ## Install
 
