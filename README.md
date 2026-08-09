@@ -57,6 +57,7 @@ ccmetrics dash   # anywhere → global dashboard in your browser, per-project dr
 ccmetrics widget # optional → small always-on-top window with the week fuse (needs the dash running)
 ccmetrics otel   # optional → local OTEL receiver (127.0.0.1:4318) for exact costs
 ccmetrics setup --revert  # the status line wires itself on first run; this undoes it
+ccmetrics autostart  # optional → register the dash and widget to open at login (--revert undoes it)
 ```
 
 ### Your first run
@@ -86,6 +87,12 @@ has it: `uv tool install --force --python $(which python3) .`
 Check yours with `python3 -c "import tkinter"` — silence means it works.
 
 The dashboard glance view, zero clicks: live session tiles (burn rate, context %, cache-hit, spend — a runaway session gets flagged *while it's running*), 30-day spend trend, token mix, top leaks ranked by `tokens saved ÷ effort` each with a copy button, and a per-project table.
+
+### It opens itself at login
+
+`ccmetrics autostart` registers the dashboard — and the always-on-top widget, when your Python has Tk — to start when you log in. On macOS it writes LaunchAgents and loads them with `launchctl`; on Linux it writes systemd user units. Your first `ccmetrics` run does this for you once, unless you pass `--no-autostart`.
+
+`ccmetrics autostart --check` reads back whether the login entries are actually installed, and `ccmetrics autostart --revert` removes exactly the ones ccmetrics registered and nothing else.
 
 ## Install
 
