@@ -203,6 +203,21 @@ def _cap_week_sub(left: float | None, week_left: float | None, tail: str) -> str
     return f"{body} {tail}" if tail else f"{body}."
 
 
+def _fuse_top(clock_pct: float | None, used_pct: float, source: str) -> int:
+    """The expanded panel's fuse bar top -- 82 normally, dropped 14px to 96
+    when the clock and the flame would land within 7 points of each other.
+
+    index.html's own fix for this exact collision (DECISIONS.md, 2026-08-06):
+    drop the bar rather than move either mark -- the clock's stem just
+    stretches to reach it (index.html:575, `Math.abs(clockPct - usedPct) <
+    7`). Lifted out of `draw` so the rule can be tested without a live Tk
+    canvas.
+    """
+    if clock_pct is not None and source == "cap" and abs(clock_pct - used_pct) < 7:
+        return 96
+    return 82
+
+
 def _verdict(hero: dict, caps_known: bool, hook_ran: bool) -> tuple[str, str]:
     """The page's ladder, in its own order -- staleness first, then absolute
     exhaustion, then pace. Reordering it would let a 2%-left week be described
@@ -744,7 +759,16 @@ class Widget:
         # which can sit at any point along the row, and stacking it above the
         # clock put three tight lines over a tall gap. The verdict above names
         # the week already, and only the block bar below needs saying which.
-        fuse_top, bar_h, pad = 82, 18, 16
+        bar_h, pad = 18, 16
+        # See _fuse_top: the bigger, s=3 flame's box now reaches the clock's
+        # stem at the old fixed 82, so this needs the same <7-point guard the
+        # page already carries. The divider below (fixed at y=116) and the
+        # block bar under it do NOT shift with the drop -- unlike the page's
+        # flow layout, everything below here is an absolute y -- so the <7
+        # case renders a tighter gap to the divider (2px instead of 16) than
+        # every other reading. Deliberate: matches the page's own "never move
+        # a mark" fix rather than growing the panel for a rare case.
+        fuse_top = _fuse_top(clock_pct, used_pct, source)
         self._bar(fuse_top, bar_h, used_pct, source == "cap", fuse=True)
 
         bar_l, bar_w = pad, WIDTH - pad * 2

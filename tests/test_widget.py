@@ -147,6 +147,24 @@ def test_cap_week_sub_both_unknown_falls_back_to_tail_only():
     assert widget._cap_week_sub(None, None, "— plenty of room.") == "— plenty of room."
 
 
+# --- _fuse_top: mirrors index.html:575's own fix for the clock-vs-flame
+# collision -- drop the bar 14px rather than move either mark.
+
+def test_fuse_top_stays_put_when_clock_and_flame_are_far_apart():
+    assert widget._fuse_top(clock_pct=10.0, used_pct=40.0, source="cap") == 82
+
+def test_fuse_top_drops_when_clock_and_flame_are_within_7_points():
+    assert widget._fuse_top(clock_pct=40.0, used_pct=44.0, source="cap") == 96
+
+def test_fuse_top_ignores_closeness_off_a_known_cap():
+    # source == "clock" means used_pct is just clock_pct's own fallback value
+    # -- always "close", but there is no flame in that case to collide with.
+    assert widget._fuse_top(clock_pct=40.0, used_pct=40.0, source="clock") == 82
+
+def test_fuse_top_stays_put_with_no_clock_reading():
+    assert widget._fuse_top(clock_pct=None, used_pct=40.0, source="cap") == 82
+
+
 # --- _verdict: exhaustion branches are the widget's own ladder -- the one
 # index.html's heroFuse (nearlyGone/nearlySpent/gettingTight, ~lines
 # 414-416) now follows, not the other way around. 25 is deliberately the
