@@ -677,6 +677,10 @@ class Widget:
             self.canvas.create_text(text_x, face_y, text=left_text, anchor="w",
                                     fill=INK, font=("Menlo", HEAD_SIZE))
             self._bar(44, 14, used_pct, source == "cap", fuse=True)
+            if source == "cap":
+                pad = 16
+                bar_l, bar_w = pad, WIDTH - pad * 2
+                self._flame(bar_l + bar_w * used_pct / 100, 44 + 14)
             return
 
         self.canvas.create_text(text_x, head_y, text=verdict.upper(), anchor="w", fill=INK,
