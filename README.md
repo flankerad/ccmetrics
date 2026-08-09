@@ -2,8 +2,8 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-  <img src="docs/assets/logo-light.svg" width="560"
-       alt="ccmetrics logo: a spend sparkline whose hottest bar leaks orange token drops — cc in Claude orange, metrics in the theme text color">
+  <img src="docs/assets/logo-light.svg" width="520"
+       alt="ccmetrics logo: four model-coloured bars, the tallest leaking clay-coloured token drops, beside the ccmetrics wordmark">
 </picture>
 
 **Find where Claude Code burns your tokens — and get a paste-ready fix for each leak.**

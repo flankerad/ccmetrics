@@ -1,33 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 170" width="640" height="170" role="img" aria-label="ccmetrics logo: a spend bar chart with tokens leaking from one bar">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 140" width="520" height="140" role="img" aria-label="ccmetrics logo: four model-coloured bars with tokens leaking from the tallest, beside the ccmetrics wordmark">
   <style>
-    /* the dashboard's own tokens. The mark wears the CHROME gold — the same
-       accent as the tabs, links and the spend line — so the mark, the UI and
-       the charts read as one system. (The data series carry a deeper gold
-       step, #cb8100 / #c27b00, which is what the palette validator cleared;
-       the bright #F0B90B is 1.8:1 on white, hence light mode's darker step.) */
-    .bar  { fill: #848e9c; }
-    .hot  { fill: #f0b90b; }
-    .word { font: 700 58px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .cc   { fill: #f0b90b; }
-    .rest { fill: #eaecef; }
-    .tag  { font: 400 17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #848e9c; }
+    /* the dashboard's own tokens, from dash/static/index.html :root
+       (--haiku, --sonnet, --opus, --fable, --clay, --ink, --dim). */
+    .haiku  { fill: #8f9cb0; }
+    .sonnet { fill: #5f9fa8; }
+    .opus   { fill: #7594c9; }
+    .fable  { fill: #a37fc9; }
+    .clay   { fill: #d9825a; }
+    .word { font: 700 56px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #ece7df; }
+    .tag  { font: 400 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #8f887c; }
   </style>
-  <!-- sparkline ▂▃▅▇▅▆█ · baseline y=108 · the ▇ bar leaks.
-       Same proportions as the inline header mark (bar 16 : gap 8 = 4 : 2;
-       heights 22/35/57/79/57/66/88 = the header's 5/8/13/18/13/15/20 × 4.4). -->
+  <!-- header mark, scaled: bars width 20, gap 10, rx 2, baseline y=96;
+       heights 30/50/70/40 = the header's 6/10/14/8 × 5. -->
   <g>
-    <rect class="bar" x="22"  y="86"  width="16" height="22" rx="2"/>
-    <rect class="bar" x="46"  y="73"  width="16" height="35" rx="2"/>
-    <rect class="bar" x="70"  y="51"  width="16" height="57" rx="2"/>
-    <rect class="hot" x="94"  y="29"  width="16" height="79" rx="2"/>
-    <rect class="bar" x="118" y="51"  width="16" height="57" rx="2"/>
-    <rect class="bar" x="142" y="42"  width="16" height="66" rx="2"/>
-    <rect class="bar" x="166" y="20"  width="16" height="88" rx="2"/>
-    <!-- tokens dripping from the hot bar -->
-    <path class="hot" d="M102 118 c2.6 3.9 5 6.5 5 9.6 a5 5 0 1 1 -10 0 c0 -3.1 2.4 -5.7 5 -9.6 z"/>
-    <path class="hot" opacity="0.65" d="M102 140 c1.9 2.9 3.7 4.8 3.7 7.1 a3.7 3.7 0 1 1 -7.4 0 c0 -2.3 1.8 -4.2 3.7 -7.1 z"/>
-    <path class="hot" opacity="0.35" d="M102 156 c1.3 2 2.6 3.4 2.6 5 a2.6 2.6 0 1 1 -5.2 0 c0 -1.6 1.3 -3 2.6 -5 z"/>
+    <rect class="haiku"  x="20"  y="66" width="20" height="30" rx="2"/>
+    <rect class="sonnet" x="50"  y="46" width="20" height="50" rx="2"/>
+    <rect class="opus"   x="80"  y="26" width="20" height="70" rx="2"/>
+    <rect class="fable"  x="110" y="56" width="20" height="40" rx="2"/>
+    <!-- tokens leaking from the tallest (opus) bar, centred at x=90 -->
+    <path class="clay" d="M90 104 c2.6 3.9 5 6.5 5 9.6 a5 5 0 1 1 -10 0 c0 -3.1 2.4 -5.7 5 -9.6 z"/>
+    <path class="clay" opacity="0.65" d="M90 118 c1.9 2.9 3.7 4.8 3.7 7.1 a3.7 3.7 0 1 1 -7.4 0 c0 -2.3 1.8 -4.2 3.7 -7.1 z"/>
+    <path class="clay" opacity="0.35" d="M90 130 c1.3 2 2.6 3.4 2.6 5 a2.6 2.6 0 1 1 -5.2 0 c0 -1.6 1.3 -3 2.6 -5 z"/>
   </g>
-  <text class="word" x="208" y="92"><tspan class="cc">cc</tspan><tspan class="rest">metrics</tspan></text>
-  <text class="tag" x="212" y="126">the token leak meter for Claude Code</text>
+  <text class="word" x="170" y="80">ccmetrics</text>
+  <text class="tag" x="173" y="110">the token leak meter for Claude Code</text>
 </svg>
