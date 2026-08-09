@@ -68,6 +68,13 @@ HEAD_SIZE = 13   # the verdict headline; the close X sizes off it too
 SUB_SIZE = 11    # the line under the headline
 LABEL_SIZE = 10  # the small-caps label over a bar or a footer cell
 VALUE_SIZE = 12  # the footer cells' numbers
+# The collapsed panel's height: `draw`'s sub-line sits at y=38, so this clears
+# that row, the sub-line's own text height at SUB_SIZE, and the 2px bottom
+# border -- face, headline and sub-line stay visible and nothing below them
+# does. Not iconify()d: `_show` strips the titlebar with `overrideredirect`,
+# and macOS will not reliably restore a borderless minimized window, so
+# minimizing here means collapsing the panel in place instead.
+MIN_HEIGHT = 38 + SUB_SIZE + 2
 
 
 def px_lvl(p: float) -> int:
@@ -238,6 +245,25 @@ def _hit_close(x: float, y: float) -> bool:
     return x0 <= x <= x1 and y0 <= y <= y1
 
 
+def _min_rect() -> tuple[float, float, float, float]:
+    """Hit box for the minimize button: the same HEAD_SIZE square as the
+    close 'X', sitting immediately to its left with an 8px gap between them.
+    Derived from `_close_rect()` rather than its own WIDTH offset, so the two
+    buttons can never drift apart.
+    """
+    cx0, cy0, cx1, cy1 = _close_rect()
+    gap = 8
+    x1 = cx0 - gap
+    x0 = x1 - (cx1 - cx0)
+    return x0, cy0, x1, cy1
+
+
+def _hit_min(x: float, y: float) -> bool:
+    """Whether a canvas point (e.g. a click) lands on the minimize button."""
+    x0, y0, x1, y1 = _min_rect()
+    return x0 <= x <= x1 and y0 <= y <= y1
+
+
 class Widget:
     """The window itself. Owns the canvas and the poll timer, nothing else."""
 
@@ -248,6 +274,7 @@ class Widget:
         self.data: dict | None = None
         self.error: str | None = None
         self._closing = False
+        self._minimized = False
         self._draw_timer: str | None = None
         self._poll_timer: str | None = None
 
@@ -282,6 +309,15 @@ class Widget:
         self.canvas.tag_bind("close", "<Enter>", lambda _e: self._close_hover(True))
         self.canvas.tag_bind("close", "<Leave>", lambda _e: self._close_hover(False))
 
+        # The minimize button: same tag-bind pattern as close, so it too
+        # survives every draw()'s delete("all"). Same after_idle deferral as
+        # close's handler, for the same reason -- _toggle_min's draw() does a
+        # delete("all") that would otherwise free the very item Tk is still
+        # dispatching this click from.
+        self.canvas.tag_bind("min", "<Button-1>", lambda _e: root.after_idle(self._toggle_min))
+        self.canvas.tag_bind("min", "<Enter>", lambda _e: self._min_hover(True))
+        self.canvas.tag_bind("min", "<Leave>", lambda _e: self._min_hover(False))
+
     def _icon(self):
         """The Dock tile: the same pixel flame the fuse burns, on the panel's
         own dark square. Built at runtime rather than shipped as a file --
@@ -308,11 +344,12 @@ class Widget:
         return img
 
     def _grab(self, e) -> None:
-        if _hit_close(e.x, e.y):
-            # The X handles its own click; this must not start a drag. Clear
-            # the anchor rather than just skipping the update -- a stale one
-            # would let a press-on-the-X-then-drag-off jump the window by the
-            # delta from whatever the *previous* click left behind.
+        if _hit_close(e.x, e.y) or _hit_min(e.x, e.y):
+            # The X and the minimize button handle their own clicks; this
+            # must not start a drag. Clear the anchor rather than just
+            # skipping the update -- a stale one would let a press-on-a-
+            # button-then-drag-off jump the window by the delta from
+            # whatever the *previous* click left behind.
             self._drag = None
             return
         self._drag = (e.x, e.y)
@@ -325,6 +362,24 @@ class Widget:
     def _close_hover(self, on: bool) -> None:
         self.canvas.itemconfigure("close_bg", fill=LINE if on else SURF)
         self.canvas.itemconfigure("close_x", fill=INK if on else DIM)
+
+    def _min_hover(self, on: bool) -> None:
+        self.canvas.itemconfigure("min_bg", fill=LINE if on else SURF)
+        self.canvas.itemconfigure("min_mark", fill=INK if on else DIM)
+
+    def _toggle_min(self) -> None:
+        if self._closing:
+            return
+        self._minimized = not self._minimized
+        # Canvas and toplevel both, and in that order: pack() sizes the
+        # toplevel off the canvas's own requested size, so resizing only the
+        # geometry leaves the canvas still asking for the old height and the
+        # window snapping back to it on some window managers.
+        panel_h = MIN_HEIGHT if self._minimized else HEIGHT
+        self.canvas.configure(height=panel_h)
+        # Size only, no +x+y -- the window keeps wherever the user dragged it.
+        self.root.geometry(f"{WIDTH}x{panel_h}")
+        self.draw()
 
     def _shutdown(self) -> None:
         """The one teardown path -- the X, Escape and the double-click all
@@ -421,6 +476,33 @@ class Widget:
                                 fill=DIM, width=2, tags=("close", "close_x"))
         self.canvas.create_line(x0 + m, y1 - m, x1 - m, y0 + m,
                                 fill=DIM, width=2, tags=("close", "close_x"))
+
+    def _draw_min(self) -> None:
+        """Minimize button, immediately left of the close 'X'. Tagged 'min'
+        for the click/hover bindings set up once in `__init__`, plus
+        'min_bg'/'min_mark' so hover can recolour box and mark separately.
+
+        The mark says which way the button goes: a bar across the lower
+        third when expanded (the standard minimize glyph), a hollow square
+        when already collapsed (restore).
+        """
+        x0, y0, x1, y1 = _min_rect()
+        self._px(x0, y0, x1 - x0, y1 - y0, SURF, tags=("min", "min_bg"))
+        m, w = 3, 2
+        if self._minimized:
+            # A hollow square built from four thin `_px` strips rather than
+            # `create_rectangle`'s outline: that item recolours on hover via
+            # `-outline`, not `-fill`, and the expanded mark below is a line
+            # that only has `-fill` -- two options on one tag, one of them
+            # always wrong. Four rects keep every 'min_mark' item on `-fill`,
+            # so `_min_hover` stays a plain itemconfigure(fill=...) like close.
+            ix0, iy0, ix1, iy1 = x0 + m, y0 + m, x1 - m, y1 - m
+            for rx, ry, rw, rh in ((ix0, iy0, ix1 - ix0, w), (ix0, iy1 - w, ix1 - ix0, w),
+                                   (ix0, iy0, w, iy1 - iy0), (ix1 - w, iy0, w, iy1 - iy0)):
+                self._px(rx, ry, rw, rh, DIM, tags=("min", "min_mark"))
+        else:
+            y = y0 + (y1 - y0) * 2 / 3
+            self._px(x0 + m, y - w / 2, (x1 - x0) - 2 * m, w, DIM, tags=("min", "min_mark"))
 
     def _flame(self, cx: float, bottom: float) -> None:
         s = 2  # 7x10 grid at 2px -> a 14x20 flame, the page's own footprint
@@ -534,16 +616,21 @@ class Widget:
     def draw(self) -> None:
         if self._closing:
             return
+        # The panel's current height -- MIN_HEIGHT when collapsed, HEIGHT
+        # otherwise -- pulled once so the background and every border strip
+        # draw against whichever one is actually on screen.
+        panel_h = MIN_HEIGHT if self._minimized else HEIGHT
         self.canvas.delete("all")
-        self._px(0, 0, WIDTH, HEIGHT, SURF)
-        for x, y, w, h in ((0, 0, WIDTH, 2), (0, HEIGHT - 2, WIDTH, 2),
-                           (0, 0, 2, HEIGHT), (WIDTH - 2, 0, 2, HEIGHT)):
+        self._px(0, 0, WIDTH, panel_h, SURF)
+        for x, y, w, h in ((0, 0, WIDTH, 2), (0, panel_h - 2, WIDTH, 2),
+                           (0, 0, 2, panel_h), (WIDTH - 2, 0, 2, panel_h)):
             self._px(x, y, w, h, LINE)
         self._draw_close()
+        self._draw_min()
 
         if self.data is None:
             self.canvas.create_text(
-                WIDTH / 2, HEIGHT / 2, text=self.error or "reading the week…",
+                WIDTH / 2, panel_h / 2, text=self.error or "reading the week…",
                 fill=DIM, font=("Menlo", HEAD_SIZE),
             )
             return
@@ -584,6 +671,11 @@ class Widget:
         self.canvas.create_text(text_x, head_y, text=verdict.upper(), anchor="w", fill=INK,
                                 font=("Menlo", HEAD_SIZE))
         self.canvas.create_text(text_x, sub_y, text=sub, anchor="w", fill=DIM, font=("Menlo", SUB_SIZE))
+
+        if self._minimized:
+            # Collapsed: face, headline and sub-line are the whole panel --
+            # stop here, before the week's fuse and everything under it.
+            return
 
         # No label over the week's bar. One would have to clear the clock,
         # which can sit at any point along the row, and stacking it above the
