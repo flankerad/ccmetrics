@@ -404,20 +404,25 @@ function heroFuse() {
      verdict below gate on `capsKnown && hero.used_pct` directly instead. */
   var pctLeft = (capsKnown && hero.used_pct !== null && hero.used_pct !== undefined)
     ? (100 - hero.used_pct) : null;
-  /* Verdict severity scale (PLAN-cap-and-chrome Part 2 #3): three stops, not
-     two -- single-digit percentages read as urgent on their own, not folded
-     into the same mild "getting tight" wording as the teens. <=15% left is
-     worth a glance; under 10% ("single digits") is worth acting on; <=5% is
-     the strongest wording, effectively out. */
+  /* Verdict severity scale: these three stops are the widget's ladder
+     (widget.py's VERDICT_EDGES), not this page's own -- the page follows it
+     rather than the other way around. <25% left ("getting tight") is worth
+     a glance and is deliberately the same edge where the 😬 face below
+     starts, so the verdict and the face begin together; under 12% ("nearly
+     spent") is worth acting on; <=5% is the strongest wording, effectively
+     out. */
   var nearlyGone = pctLeft !== null && pctLeft <= 5;    /* under ~5% of the cap left */
-  var singleDigits = pctLeft !== null && pctLeft < 10;  /* under 10% -- urgent, not just tight */
-  var gettingTight = pctLeft !== null && pctLeft <= 15; /* under ~15% left */
-  /* Calm -> alarmed emoji, gated the same way as the verdict below (cap
-     percent, not the clock-fallback usedPct) so a capless Sunday never
-     shows an alarmed face it hasn't earned. 5 stops read as a gradient
-     rather than a binary flip, mirrored off the same pctLeft thresholds:
+  var nearlySpent = pctLeft !== null && pctLeft < 12;   /* under 12% -- urgent, not just tight */
+  var gettingTight = pctLeft !== null && pctLeft < 25;  /* under 25% left */
+  /* Calm -> alarmed emoji, gated on cap percent (not the clock-fallback
+     usedPct) so a capless Sunday never shows an alarmed face it hasn't
+     earned -- but the faces keep their OWN 5/10/15/25 stops, not the
+     verdict's 5/12/25 above. 25 is shared with the verdict by design; 5 now
+     happens to line up too, and 10/15 are face-only. 6 stops read as a
+     gradient rather than a binary flip:
        unknown        relaxed        -- nothing to read into it yet
-       >15% left      mildly aware   -- still fine, just no longer empty
+       >25% left      mildly aware   -- still fine, just no longer empty
+       <=25% left     three-quarters burnt -- calm is no longer the honest read
        <=15% left     watching it    -- worth a glance, not yet urgent
        <=10% left     stressed       -- the cap is nearly spent
        <=5%  left     alarmed (🥵) -- effectively out; requested for the hot end */
@@ -429,10 +434,23 @@ function heroFuse() {
       face = "😰";
     } else if (pctLeft <= 15) {
       face = "😟";
+    } else if (pctLeft <= 25) {
+      face = "😬";
     } else {
       face = "🙂";
     }
   }
+  /* Points-ahead/behind-the-clock was dropped (not a quantifiable, useful
+     metric) in favour of the two figures a burn pace can actually be judged
+     against: how much of the cap is left, and how much of the week remains.
+     weekLeftPct reuses clockPct, the same reading the fuse's clock marker
+     already sits on -- just the remaining half of it. */
+  var weekLeftPct = clockKnown ? (100 - hero.clock_pct) : null;
+  var pctLeftClause = pctLeft !== null ? fmtPct(pctLeft) + " of the cap is left" : null;
+  var weekLeftClause = weekLeftPct !== null ? fmtPct(weekLeftPct) + " of the week to go" : null;
+  var capWeekSub = pctLeftClause && weekLeftClause
+    ? pctLeftClause + ", with " + weekLeftClause
+    : (pctLeftClause || weekLeftClause || "");
   var verdict, verdictSub;
   /* The percentage only moves when /usage is opened. Once the reading is
      hours old the week has burned on without it, so a confident verdict off
@@ -454,22 +472,22 @@ function heroFuse() {
     verdictSub = "Once a cap survives, the fuse, wick and runs-out time light up here with no other change.";
   } else if (nearlyGone) {
     verdict = "The week is almost gone.";
-    verdictSub = "Only " + pctLeft.toFixed(0) + "% of the week is left, no matter the pace.";
-  } else if (singleDigits) {
-    verdict = "Single digits left — the week is nearly spent.";
-    verdictSub = "Only " + pctLeft.toFixed(0) + "% of the week is left. Not the week to relax the pace.";
+    verdictSub = "Only " + pctLeft.toFixed(0) + "% of the cap is left, no matter the pace.";
+  } else if (nearlySpent) {
+    verdict = "Nearly spent.";
+    verdictSub = "Only " + pctLeft.toFixed(0) + "% of the cap is left. Not the week to relax the pace.";
   } else if (gettingTight) {
-    verdict = "Getting tight — most of the week is spent.";
-    verdictSub = pctLeft.toFixed(0) + "% of the week is left.";
+    verdict = "Getting tight.";
+    verdictSub = pctLeft.toFixed(0) + "% of the cap is left.";
   } else if (behind !== null && behind > 6) {
     verdict = "Burning faster than the week refills.";
-    verdictSub = "The flame is " + Math.round(behind) + " points ahead of the clock.";
+    verdictSub = capWeekSub + ".";
   } else if (behind !== null && behind > 0) {
     verdict = "A little ahead of the clock.";
-    verdictSub = behind.toFixed(0) + " points ahead \u2014 comfortable, worth a glance.";
+    verdictSub = capWeekSub + " \u2014 comfortable, worth a glance.";
   } else if (behind !== null) {
     verdict = "Comfortably inside the week.";
-    verdictSub = "The flame is " + Math.abs(Math.round(behind)) + " points behind the clock.";
+    verdictSub = capWeekSub + " \u2014 plenty of room.";
   } else {
     verdict = "Tracking the week.";
     verdictSub = "No reset time on the weekly reading yet, so there is no clock to compare against.";

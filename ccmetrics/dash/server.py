@@ -22,10 +22,18 @@ read-only in practice (queries only) and per thread.
 
 from __future__ import annotations
 
+import errno
 import json
+import os
+import signal
+import socket
 import sqlite3
+import subprocess
+import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -822,14 +830,138 @@ def _reingest_loop(period: float, stop: threading.Event) -> None:
             print(f"ccmetrics dash: re-ingest failed: {exc}", flush=True)
 
 
+def _probe_ccmetrics(port: int, timeout: float = 1.5) -> bool:
+    """True when whatever is already listening on `port` looks like our own
+    dash: GET /api/windows answers 200 with the JSON shape windows_payload
+    emits. Any other response (wrong shape, error, connection refused) means
+    it is not us. One retry on a raised exception (timeout, reset, ...) so a
+    live-but-momentarily-slow dash isn't misread as foreign and killed --
+    a wrong-shape response is decisive on the first try and never retried."""
+    url = f"http://{HOST}:{port}/api/windows"
+    attempts = 2
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (localhost only)
+                if resp.status != 200:
+                    return False
+                body = json.loads(resp.read().decode("utf-8"))
+                return isinstance(body, dict) and "scope" in body and "caps_known" in body
+        except Exception:
+            if attempt + 1 == attempts:
+                return False
+    return False
+
+
+def _port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.2)
+        return s.connect_ex((HOST, port)) != 0
+
+
+def _listening_pid(port: int) -> tuple[str, str] | None:
+    """(pid, command) of whatever holds `port`'s LISTEN socket, via `lsof`.
+    None when lsof is missing, finds nothing, its output can't be parsed, or
+    it lists more than one distinct pid (ambiguous) -- callers treat all of
+    that as "conflict we cannot identify", never a guess at which to kill."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    if len(lines) < 2:  # header only (or nothing) -- no listener found
+        return None
+    pids: dict[str, str] = {}
+    for row in lines[1:]:
+        fields = row.split()
+        if len(fields) < 2:
+            continue
+        command, pid = fields[0], fields[1]
+        pids.setdefault(pid, command)
+    if len(pids) != 1:
+        return None
+    pid, command = next(iter(pids.items()))
+    return pid, command
+
+
+def _kill_and_wait(pid: str, command: str, port: int) -> bool:
+    """SIGTERM the listener, wait for the port to free, escalate to SIGKILL
+    only if it hasn't. Returns True once `port` is free."""
+    print(
+        f"ccmetrics dash: port {port} is held by {command} (pid {pid}) -- stopping it",
+        flush=True,
+    )
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, ValueError):
+        return _port_free(port)
+    for _ in range(20):  # ~2s
+        if _port_free(port):
+            return True
+        time.sleep(0.1)
+    try:
+        os.kill(int(pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, ValueError):
+        pass
+    for _ in range(20):  # ~2s
+        if _port_free(port):
+            return True
+        time.sleep(0.1)
+    return _port_free(port)
+
+
 def serve(
     port: int = DEFAULT_PORT,
     open_browser: bool = True,
     reingest_period: float | None = DEFAULT_REINGEST_S,
 ) -> int:
-    httpd = ThreadingHTTPServer((HOST, port), Handler)
-    httpd.daemon_threads = True
     url = f"http://{HOST}:{port}/"
+    try:
+        httpd = ThreadingHTTPServer((HOST, port), Handler)
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            print(f"ccmetrics dash: could not bind {HOST}:{port} -- {exc}", flush=True)
+            return 1
+
+        if _probe_ccmetrics(port):
+            # This is the normal case once autostart exists: calm, not an
+            # error. Take the user to the page that's already serving.
+            print(f"ccmetrics dash already running: {url}", flush=True)
+            if open_browser:
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+            return 0
+
+        if sys.platform.startswith("win"):
+            print(
+                f"ccmetrics dash: port {port} is already in use and can't be freed "
+                "automatically on Windows",
+                flush=True,
+            )
+            return 1
+
+        found = _listening_pid(port)
+        if found is None:
+            print(f"ccmetrics dash: port {port} is already in use by another process", flush=True)
+            return 1
+        pid, command = found
+        if not _kill_and_wait(pid, command, port):
+            print(f"ccmetrics dash: port {port} is still held by {command} (pid {pid})", flush=True)
+            return 1
+
+        try:
+            httpd = ThreadingHTTPServer((HOST, port), Handler)
+        except OSError as exc2:
+            print(f"ccmetrics dash: could not bind {HOST}:{port} -- {exc2}", flush=True)
+            return 1
+
+    httpd.daemon_threads = True
     print(f"ccmetrics dash: {url}  (ctrl-c to stop)", flush=True)
     if open_browser:
         try:

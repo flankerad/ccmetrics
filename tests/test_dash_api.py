@@ -140,7 +140,11 @@ def test_api_windows_shape_no_cache(conn, cc_env, running_server):
 
 
 def test_api_windows_shape_with_cache(conn, cc_env, running_server):
-    """Cache present -- the four new fields are populated from it."""
+    """Cache present -- tier/credits still read it directly (session
+    2026-08-09, item 4: only those two, never window percentages -- see
+    windows._source_kind), but `source`/`fetched_at` no longer do: those come
+    only from the status-line feed (plan_snapshots), which nothing has
+    written here, so both stay None even though the cache file exists."""
     p = plan.usage_cache_path()
     p.write_text(json.dumps({
         "cachedUsageUtilization": {
@@ -165,8 +169,8 @@ def test_api_windows_shape_with_cache(conn, cc_env, running_server):
     assert body["tier"] == {"key": "default_claude_max_5x", "label": "Max (5×)",
                              "type": "claude_max"}
     assert body["credits"]["monthly_limit"] == 500
-    assert body["source"] == "cache"
-    assert body["fetched_at"] is not None
+    assert body["source"] is None
+    assert body["fetched_at"] is None
 
 
 def test_api_unknown_path_404(running_server):

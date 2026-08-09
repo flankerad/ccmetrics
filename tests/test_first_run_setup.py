@@ -82,7 +82,8 @@ def test_happy_path_wires_once_and_prints(cc_env, capsys, monkeypatch, conn, _se
     assert "that command was:" not in out
     assert _settings.exists()
     written = json.loads(_settings.read_text())
-    assert written["statusLine"] == {"type": "command", "command": "ccmetrics statusline"}
+    assert written["statusLine"] == {"type": "command", "command": "ccmetrics statusline",
+                                      "refreshInterval": 5}
     assert store.get_meta(conn, "statusline_autowire") is not None
 
     # second run: meta already set -- silent, plan.apply_setup not called again
@@ -150,7 +151,11 @@ def test_a_passthrough_flag_with_no_command_says_nothing(cc_env, capsys, monkeyp
     apply_setup is concerned, so first run stays silent. Pinned because the
     CLI works out the chained command a second time, on its own: if that
     early return ever moves, this branch starts telling the user their old
-    command was ccmetrics' own."""
+    command was ccmetrics' own.
+
+    The command itself never moves here, but apply_setup still adds a
+    missing refreshInterval (item 5) -- that alone must not break the
+    silence (cli._first_run_statusline only speaks when `old != new`)."""
     _make_tty(monkeypatch, True)
     original = json.dumps({"statusLine": {"type": "command", "command": "ccmetrics statusline --passthrough"}})
     _settings.write_text(original)
@@ -161,7 +166,9 @@ def test_a_passthrough_flag_with_no_command_says_nothing(cc_env, capsys, monkeyp
     assert "wired its status line" not in out
     assert "stopped running" not in out
     assert "your old command:" not in out
-    assert _settings.read_text() == original
+    written = json.loads(_settings.read_text())
+    assert written["statusLine"]["command"] == "ccmetrics statusline --passthrough"
+    assert written["statusLine"]["refreshInterval"] == 5
 
 
 def test_upgrade_names_the_backup_by_path_without_claiming_its_contents(

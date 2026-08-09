@@ -649,3 +649,189 @@ def test_setup_text_shows_both_the_plain_and_the_chained_fragment():
     assert chr(34) + "command" + chr(34) + ": " + chr(34) + "ccmetrics statusline" + chr(34) in text
     assert "--passthrough" in text
     assert "Claude Code runs exactly one command" in text
+
+
+# --- _ctx_bar: sub-cell resolution so the bar actually moves -----------------
+
+
+def test_ctx_bar_zero_percent_is_fully_dim_no_sliver():
+    assert _plain(plan._ctx_bar(0)) == "░░░░░░░░"
+
+
+def test_ctx_bar_one_percent_shows_a_visible_sliver():
+    bar = _plain(plan._ctx_bar(1))
+    assert bar != "░░░░░░░░"
+    assert bar[0] == "▏"
+    assert bar[1:] == "░░░░░░░"
+
+
+def test_ctx_bar_partial_cell_is_coloured_by_its_own_position_not_overall_pct(monkeypatch):
+    # 1% only fills cell 0 (its own heat stop is 12.5%), not _heat(1.0).
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    raw = plan._ctx_bar(1)
+    own_position_colour = plan._heat(1 / 8 * 100.0)
+    overall_pct_colour = plan._heat(1.0)
+    assert own_position_colour != overall_pct_colour
+    assert raw.startswith(own_position_colour)
+
+
+def test_ctx_bar_nan_is_treated_as_zero_not_a_crash():
+    assert _plain(plan._ctx_bar(float("nan"))) == "░░░░░░░░"
+
+
+def test_ctx_bar_boundary_just_below_one_full_cell_is_a_partial_glyph():
+    bar = _plain(plan._ctx_bar(11))
+    assert bar[0] == "▉"
+    assert bar[1:] == "░░░░░░░"
+
+
+def test_ctx_bar_boundary_at_or_above_one_full_cell_is_a_full_block():
+    bar = _plain(plan._ctx_bar(13))
+    assert bar[0] == "█"
+    assert bar[1:] == "░░░░░░░"
+
+
+def test_ctx_bar_fifty_percent_is_four_full_cells_no_partial():
+    assert _plain(plan._ctx_bar(50)) == "████░░░░"
+
+
+def test_ctx_bar_ninety_nine_percent_is_seven_full_and_a_near_full_sliver():
+    assert _plain(plan._ctx_bar(99)) == "███████▉"
+
+
+def test_ctx_bar_hundred_percent_is_eight_full_blocks_no_ninth_cell():
+    bar = _plain(plan._ctx_bar(100))
+    assert bar == "████████"
+    assert len(bar) == 8
+
+
+def test_ctx_bar_width_is_constant_across_the_full_range():
+    for tenth in range(0, 1001):
+        pct = tenth / 10.0
+        bar = _plain(plan._ctx_bar(pct))
+        assert len(bar) == 8, f"pct={pct} bar={bar!r}"
+
+
+def test_ctx_bar_fill_weight_never_decreases_as_pct_rises():
+    weight = {c: i for i, c in enumerate("░" + plan._EIGHTHS + "█")}
+
+    def total(pct):
+        return sum(weight[c] for c in _plain(plan._ctx_bar(pct)))
+
+    prev = -1
+    for tenth in range(0, 1001):
+        pct = tenth / 10.0
+        cur = total(pct)
+        assert cur >= prev, f"pct={pct} weight dropped from {prev} to {cur}"
+        prev = cur
+
+
+# --- render_line: window segments show what's LEFT, not what's used ----------
+
+
+def test_render_line_window_segments_show_percent_left_not_used():
+    line = _plain(plan.render_line({"windows": {"five_hour": {"used_pct": 70}, "seven_day": {"used_pct": 81}}}))
+    assert "5h 30% left" in line
+    assert "week 19% left" in line
+
+
+def test_render_line_zero_used_is_hundred_percent_left():
+    line = _plain(plan.render_line({"windows": {"five_hour": {"used_pct": 0}}}))
+    assert "5h 100% left" in line
+
+
+def test_render_line_hundred_used_is_zero_percent_left():
+    line = _plain(plan.render_line({"windows": {"five_hour": {"used_pct": 100}}}))
+    assert "5h 0% left" in line
+
+
+def test_render_line_seven_day_label_reads_week_not_wk():
+    line = _plain(plan.render_line({"windows": {"seven_day": {"used_pct": 50}}}))
+    assert "week 50% left" in line
+    assert "wk " not in line
+    # WINDOW_LABELS itself must stay untouched -- console/dash still say "wk".
+    assert plan.WINDOW_LABELS["seven_day"][0] == "wk"
+
+
+def test_render_line_missing_used_pct_skips_the_segment():
+    line = _plain(plan.render_line({"windows": {"five_hour": {}}}))
+    # No segment emitted -> parts stays empty -> same fallback as no data at all.
+    assert line == _plain(plan.render_line({}))
+
+
+def test_render_line_heat_stays_keyed_to_used_pct_not_left_pct():
+    """A window at 95% used has only 5% left to print, but the colour must
+    still be graded as nearly-exhausted (i.e. the same red _heat(95) would
+    give directly) -- not the near-empty green that _heat(5) would give."""
+    line = plan.render_line({"windows": {"five_hour": {"used_pct": 95}}})
+    assert plan._heat(95) in line
+    assert plan._heat(5) not in line
+
+
+# --- render_line: the bar tracks the weekly window, not context --------------
+
+def test_render_line_bar_sits_beside_the_week_segment_not_context():
+    """Item 1 follow-up, session 2026-08-09: the bar tracks the weekly plan
+    window's used_pct, and now sits where that number actually prints --
+    immediately before 'week NN% left', at the end of the line -- rather
+    than in the model/context area it never described. Context text stays
+    plain, no bar attached, no matter how low or high context itself is."""
+    line = _plain(plan.render_line({
+        "ctx_used": 60_000, "ctx_max": 1_000_000, "context_pct": 6,
+        "windows": {"seven_day": {"used_pct": 82}},
+    }))
+    assert f"{_plain(plan._ctx_bar(82))} week 18% left" in line
+    # No bar glyph anywhere near the context segment -- it moved, not copied.
+    ctx_segment = next(seg for seg in line.split("|") if "60k/1M" in seg)
+    assert ctx_segment.strip() == "60k/1M (6%)"
+
+
+def _no_bar_glyphs(line: str) -> bool:
+    return not any(g in line for g in plan._EIGHTHS + "█░")
+
+def test_render_line_no_bar_at_all_with_no_weekly_reading():
+    """A non-subscriber (or any payload with no seven_day window at all) has
+    no weekly number to feed the bar. It prints no bar anywhere on the line
+    -- it does NOT fall back to painting the context reading instead."""
+    line = _plain(plan.render_line({"ctx_used": 60_000, "ctx_max": 1_000_000, "context_pct": 6}))
+    assert _no_bar_glyphs(line)
+    ctx_segment = next(seg for seg in line.split("|") if "60k/1M" in seg)
+    assert ctx_segment.strip() == "60k/1M (6%)"
+
+
+def test_render_line_no_bar_when_week_present_but_five_hour_only_reading():
+    """The bar is keyed to the "week" LABEL, not the raw "seven_day" key --
+    but a five_hour-only reading has no window that prints as "week" at all,
+    so it still gets no bar, even though SOME window segment is present."""
+    line = _plain(plan.render_line({
+        "ctx_used": 60_000, "ctx_max": 1_000_000, "context_pct": 6,
+        "windows": {"five_hour": {"used_pct": 8}},
+    }))
+    assert _no_bar_glyphs(line)
+    assert "5h 92% left" in line
+
+
+def test_render_line_two_weekly_windows_each_get_their_own_bar():
+    """Scoping decision, session 2026-08-09: the label gate (short == "week")
+    lives inside the per-window loop with no once-only guard, so a payload
+    carrying more than one window that prints as "week" (seven_day AND
+    weekly_all both map to "wk"/"week" in WINDOW_LABELS) gets a bar on EACH
+    of those segments, not just the first. Each bar still describes only
+    its own row's used_pct -- deliberate, not a regression of the old
+    seven_day-only rule, which could only ever have had one weekly row to
+    begin with since the statusline hook feed never sends both at once."""
+    line = _plain(plan.render_line({"windows": {
+        "seven_day": {"used_pct": 82},
+        "weekly_all": {"used_pct": 59},
+    }}))
+    assert f"{_plain(plan._ctx_bar(82))} week 18% left" in line
+    assert f"{_plain(plan._ctx_bar(59))} week 41% left" in line
+
+
+def test_render_line_bar_attaches_to_any_window_that_prints_as_week():
+    """GAP 2 fix, session 2026-08-09: the bar is gated on the printed label
+    ("week"), not the literal "seven_day" key -- weekly_all (a name the
+    /usage-cache format uses, distinct from the statusline hook's
+    "seven_day") still gets the bar since it prints the same "week" label."""
+    line = _plain(plan.render_line({"windows": {"weekly_all": {"used_pct": 82}}}))
+    assert f"{_plain(plan._ctx_bar(82))} week 18% left" in line

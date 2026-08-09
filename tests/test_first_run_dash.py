@@ -125,7 +125,11 @@ def test_happy_path_with_tk_starts_dash_and_widget_once(
     _make_tty(monkeypatch, True)
     assert main(["--no-ingest"]) == 0
     out = capsys.readouterr().out
-    assert "opening your dashboard — press ctrl-c to stop it" in out
+    assert "opening your dashboard" in out
+    # serve() -- not this print -- is what actually knows whether ctrl-c
+    # applies (fresh bind) or not (reused / killed-and-rebound), so this
+    # message must never claim it up front.
+    assert "press ctrl-c" not in out
     assert len(fake_serve) == 1
     assert fake_serve[0]["port"] == 7433
     assert fake_serve[0]["open_browser"] is True  # dash's own browser-opening default, untouched
@@ -151,7 +155,7 @@ def test_tk_missing_serves_without_widget(cc_env, capsys, monkeypatch, conn, fak
     _make_tty(monkeypatch, True)
     assert main(["--no-ingest"]) == 0
     out = capsys.readouterr().out
-    assert "opening your dashboard — press ctrl-c to stop it" in out
+    assert "opening your dashboard" in out
     assert "Tk" not in out
     assert len(fake_serve) == 1
     assert fake_widget == []

@@ -102,16 +102,16 @@ def test_hero_verdict_covers_absolute_exhaustion(page_text):
     assert "gettingTight" in page_text
 
 
-def test_hero_verdict_single_digits_left_reads_as_urgent(page_text):
+def test_hero_verdict_nearly_spent_reads_as_urgent(page_text):
     """PLAN-cap-and-chrome Part 2 #3: at 9% left the old wording ("Getting
     tight -- most of the week is spent") was too mild for a tenth of a week
-    remaining. Single-digit percentages now get their own, more urgent tier
-    between "getting tight" (<=15%) and "almost gone" (<=5%), and the
+    remaining. A middle tier now gets its own, more urgent copy between
+    "getting tight" (<25%) and "almost gone" (<=5%), and the
     already-strongest "almost gone" wording is unchanged (source-presence
     guard; the branching itself is inline JS)."""
-    assert "singleDigits" in page_text
-    assert "pctLeft < 10" in page_text
-    assert "Single digits left" in page_text
+    assert "nearlySpent" in page_text
+    assert "pctLeft < 12" in page_text
+    assert "Nearly spent." in page_text
     assert "The week is almost gone." in page_text  # unchanged, still the strongest
 
 

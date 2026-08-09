@@ -29,6 +29,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-ingest", action="store_true", help="report from the store as-is")
     p.add_argument("--no-setup", action="store_true", help="do not wire the status line on first run")
     p.add_argument("--no-dash", action="store_true", help="do not open the dashboard on first run")
+    p.add_argument(
+        "--no-autostart", action="store_true", help="do not register login autostart on first run"
+    )
     p.add_argument("--json", action="store_true", help="machine-readable summary")
     p.add_argument(
         "--all-leaks",
@@ -127,6 +130,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="settings.json to edit (default: ~/.claude/settings.json)",
     )
 
+    au = sub.add_parser(
+        "autostart",
+        help="one-command installer for login autostart of the dashboard and widget "
+        "(no flags: applies)",
+    )
+    au.add_argument(
+        "--apply",
+        action="store_true",
+        help="register the dashboard (and widget, when Tk is available) to start at login",
+    )
+    au.add_argument(
+        "--revert",
+        action="store_true",
+        help="undo --apply: remove exactly the login services it registered",
+    )
+    au.add_argument(
+        "--check",
+        action="store_true",
+        help="read-only: is autostart installed",
+    )
+
     sub.add_parser("constants", help="print every constant with its source URL")
     det = sub.add_parser("detectors", help="re-run the leak detectors over the store")
     det.add_argument("--json", action="store_true", help="print findings as JSON")
@@ -172,7 +196,16 @@ def _first_run_statusline(conn, args) -> None:
         except plan_mod.SetupError as e:
             print(f"ccmetrics left your status line alone: {e}")
         else:
-            if result.get("changed"):
+            # `old == new` means apply_setup only added a missing
+            # refreshInterval to an already-wired command (item 5) -- the
+            # command itself never moved, so there is nothing here worth the
+            # loud first-run announcement; stay as silent as the
+            # already-wired/no-op case this refines. Relies on the
+            # invariant that every apply_setup() return with changed=True
+            # sets both "old" and "new" -- true of all four return sites
+            # today; a future one that changes settings without setting
+            # both would silently swallow the announcement here.
+            if result.get("changed") and result.get("old") != result.get("new"):
                 old = result.get("old")
                 wrapped = (
                     plan_mod._extract_passthrough(old)
@@ -213,6 +246,48 @@ def _first_run_statusline(conn, args) -> None:
         conn.commit()
 
 
+def _first_run_autostart(conn, args) -> None:
+    """On the plain console report, register login autostart for the dash
+    and widget exactly once, unasked. Gated exactly like
+    `_first_run_statusline`. Silent unless it acts."""
+    if getattr(args, "json", False):
+        return
+    if not sys.stdout.isatty():
+        return
+    if os.environ.get("CCMETRICS_NO_AUTOSTART"):
+        return
+    if getattr(args, "no_autostart", False):
+        return
+    if store.get_meta(conn, "autostart_autowire") is not None:
+        return
+
+    from . import autostart as autostart_mod
+
+    if autostart_mod._platform_kind() == "unsupported":
+        # Mirrors _first_run_statusline's ~/.claude guard: never burn the
+        # once-only meta key on a platform that can never succeed here, so a
+        # future ccmetrics build that adds support gets to try again.
+        return
+
+    try:
+        result = autostart_mod.apply()
+        if result.get("changed"):
+            if result.get("has_tk", True):
+                print("ccmetrics now starts its dashboard and widget automatically at login.")
+            else:
+                print(
+                    "ccmetrics now starts its dashboard automatically at login "
+                    "(skipping the widget -- this Python build has no tkinter)."
+                )
+            print("undo any time: ccmetrics autostart --revert")
+    except Exception:
+        pass
+    finally:
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+        store.set_meta(conn, "autostart_autowire", now_iso)
+        conn.commit()
+
+
 def _first_run_dash(conn, args) -> int | None:
     """On the plain console report, first run only, launch our own dashboard
     (and the floating widget, when Tk is available) unasked. Gated the same
@@ -233,7 +308,10 @@ def _first_run_dash(conn, args) -> int | None:
     store.set_meta(conn, "first_run_dash", now_iso)
     conn.commit()
 
-    print("opening your dashboard — press ctrl-c to stop it")
+    # `serve()` prints the line that actually describes what happened --
+    # freshly bound and ctrl-c stops it, already running elsewhere, or a
+    # conflict it had to clear -- so this only says what we're attempting.
+    print("opening your dashboard")
 
     from . import dash
 
@@ -364,6 +442,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         print(plan_mod.setup_text())  # print-only: no file is ever written
         return 0
+    if args.cmd == "autostart":
+        from . import autostart as autostart_mod
+
+        if args.revert:
+            print(autostart_mod.revert()["message"])
+            return 0
+        if args.check:
+            print(autostart_mod.check())
+            return 0
+        print(autostart_mod.apply()["message"])
+        return 0
     conn = store.connect()
     try:
         if args.cmd == "otel":
@@ -472,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         _first_run_statusline(conn, args)
+        _first_run_autostart(conn, args)
         result = _first_run_dash(conn, args)
         return result if result is not None else 0
     finally:

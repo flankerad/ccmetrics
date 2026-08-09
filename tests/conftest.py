@@ -38,6 +38,11 @@ def cc_env(tmp_path, monkeypatch):
     # bind a real socket or open real Tk just because a test drives `main()`
     # with a tty. Tests that specifically exercise that gate delenv this.
     monkeypatch.setenv("CCMETRICS_NO_DASH", "1")
+    # Same reasoning, for autostart: never let a test that drives `main()`
+    # with a tty write real LaunchAgent plists or systemd units into the
+    # developer's actual home directory. Tests that specifically exercise
+    # that gate delenv this.
+    monkeypatch.setenv("CCMETRICS_NO_AUTOSTART", "1")
     return {"projects_dir": projects_dir, "db_path": db_path}
 
 

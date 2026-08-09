@@ -766,12 +766,38 @@ def burn_equiv_per_hour(blocks, now=None, live_tiles=None) -> float:
     return total / 24.0
 
 
-def _burn_usd_per_hour(live_tiles):
-    """Only the live session can price burn: `turns` carries no dollar column,
-    so with no session open this is unknown rather than back-filled."""
+def _burn_usd_per_hour(blocks, live_tiles, now=None):
+    """Live-first, same trailing-24h fallback as `burn_equiv_per_hour`'s token
+    half, so RATE never shows one real figure next to a blank one.
+
+    A live session's floor $/hr is exact and wins outright. With no live
+    session, `turns` carries no dollar column to read a figure straight off,
+    so this prices the identical trailing-24h blocks the token average sums:
+    each block's `per_model` equivalent tokens times that model's own input
+    rate (`costs.py`'s floor arithmetic -- the block's own start time, so a
+    rate change mid-window is honoured, not a flat multiplier invented here).
+    None only when nothing in the window can be priced (e.g. every model in
+    it is unrated).
+    """
     if live_tiles and live_tiles.get("status") == "live":
-        return (live_tiles.get("burn") or {}).get("floor_usd_per_hour")
-    return None
+        v = (live_tiles.get("burn") or {}).get("floor_usd_per_hour")
+        if v is not None:
+            return float(v)
+    now = now or _now()
+    cutoff = now - _dt.timedelta(hours=24)
+    total = 0.0
+    priced = False
+    for b in (blocks or []):
+        start = parse_iso(b["start"])
+        if start is None or start < cutoff:
+            continue
+        for model, equiv in (b.get("per_model") or {}).items():
+            rate = costs.input_rate(model, b["start"])
+            if rate is None:
+                continue
+            total += equiv * rate / costs.PER_MILLION
+            priced = True
+    return (total / 24.0) if priced else None
 
 
 def projection(conn, blocks=None, caps=None, live_tiles=None, now=None) -> dict:
@@ -848,7 +874,7 @@ def projection(conn, blocks=None, caps=None, live_tiles=None, now=None) -> dict:
         "early_hours": early_hours,
         "resets_at": resets_at,
         "burn_equiv_per_hour": burn,
-        "burn_usd_per_hour": _burn_usd_per_hour(live_tiles),
+        "burn_usd_per_hour": _burn_usd_per_hour(blocks, live_tiles, now=now),
         "pct_of_block_per_hour": (burn / cap5 * 100.0) if cap5 else None,
     }
 
@@ -1071,27 +1097,25 @@ def _headroom(conn, caps, now, cache_windows=None):
         })
     return rows
 
-def _source_kind(conn, cache_present: bool, cache_windows: dict) -> str | None:
-    """"cache" | "hook" | "both" | None, resolved by availability (PLAN-dash-v2
-    5.4): keying on `session_id` (hook rows carry one, cache rows never do) is
-    too fragile -- a hook payload can omit `session_id` too. Instead: the
-    cache is present when it read something; the hook contributed something
-    when the store holds a window key the cache did not just write. (Known
-    edge case: if the cache is itself on its named-key fallback -- no `limits`
-    -- and the hook happens to write the same `five_hour`/`seven_day` name,
-    that overlap reads as cache-only; accepted, both sources still show up as
-    soon as either writes a key the other does not.)
+def _source_kind(conn) -> str | None:
+    """"hook" | None. Used to read "cache" | "hook" | "both", resolved by
+    availability of a second, optional local source: a snapshot Claude Code
+    wrote to ~/.claude.json's `cachedUsageUtilization` block. That source was
+    dropped (session 2026-08-09) -- it is a snapshot that only moves when
+    someone opens /usage, and a stale local copy was being read as if live.
+    Windows now come only from the status-line feed, so this collapses to
+    whether the store holds ANY window key at all.
     """
-    stored_keys = set(store.latest_plan_windows(conn))
-    cache_keys = set(cache_windows) if cache_present else set()
-    hook_present = bool(stored_keys - cache_keys)
-    if cache_present and hook_present:
-        return "both"
-    if cache_present:
-        return "cache"
-    if hook_present:
-        return "hook"
-    return None
+    return "hook" if store.latest_plan_windows(conn) else None
+
+
+def _hook_fetched_at(conn) -> str | None:
+    """Newest `ts` across every stored window, the status-line feed's own
+    answer to "how fresh is this" now that the /usage-cache's `fetched_at` is
+    no longer a source (see `_source_kind`)."""
+    stored = store.latest_plan_windows(conn)
+    timestamps = [w["ts"] for w in stored.values() if w.get("ts")]
+    return max(timestamps) if timestamps else None
 
 
 def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
@@ -1130,9 +1154,6 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
     # and 30-day strip fills (see `_score_week`) -- never touches `_score`'s
     # 5-hour-cap `pct_of_cap`/`dry`.
     cap7 = _pick(caps, *WEEKLY_KEYS).get("cap_equiv") if caps_known else None
-
-    cache = plan_mod.read_usage_cache()
-    cache_present = bool(cache) and bool(cache.get("windows"))
 
     hero = projection(conn, blocks=blocks, caps=caps, live_tiles=live_tiles, now=now)
 
@@ -1231,7 +1252,7 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
         "setup_cmd": SETUP_CMD,
         "anchor": anchor,
         "hero": hero,
-        "headroom": _headroom(conn, caps_for_headroom, now, cache_windows=(cache.get("windows") if cache else None)),
+        "headroom": _headroom(conn, caps_for_headroom, now),
         "week": week,
         "week_blocks": len(week_blocks),
         "current_block": current,
@@ -1253,9 +1274,17 @@ def windows_payload(conn, project=None, now=None, live_tiles=None) -> dict:
         "slot_labels": list(SLOT_LABELS),
         # PLAN-dash-v2 5: tier/credits/source/fetched_at, so the page can say
         # how fresh the quota numbers are. None when the source is absent --
-        # never a guess.
+        # never a guess. `source`/`fetched_at` used to also read the /usage
+        # cache (~/.claude.json's `cachedUsageUtilization`), but that file is
+        # a snapshot that only moves when someone opens /usage -- a stale
+        # local copy read as if live (session 2026-08-09: four days old
+        # against a ten-minute-old live number). Windows now come from the
+        # status-line feed alone (`plan_snapshots`, written by the hook on
+        # every statusline redraw); `tier`/`credits` still read the cache
+        # directly since those aren't window percentages and have no
+        # statusline equivalent to fall back to.
         "tier": plan_mod.plan_tier(),
         "credits": plan_mod.usage_credits(),
-        "source": _source_kind(conn, cache_present, cache.get("windows") if cache else {}),
-        "fetched_at": cache.get("fetched_at") if cache_present else None,
+        "source": _source_kind(conn),
+        "fetched_at": _hook_fetched_at(conn),
     }

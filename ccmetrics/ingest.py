@@ -29,7 +29,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from . import constants, costs, plan, store
+from . import constants, costs, store
 
 PROJECTS_DIRNAME = "projects"
 
@@ -601,14 +601,15 @@ def _finish(conn, run: _Run, started: float, projects_dir: Path, files_total: in
     det_stats = detectors.run_and_store(conn)
     det_stats["elapsed_s"] = round(time.time() - det_started, 3)
 
-    # PLAN-dash-v2 3.4: the /usage cache is a second, optional local source --
-    # a snapshot Claude Code writes to ~/.claude.json, never a stream. Every
-    # ingest folds in whatever it currently says; a missing/unreadable/stale
-    # cache must never fail an ingest.
-    try:
-        plan.record_usage_cache(conn)
-    except Exception:
-        pass
+    # PLAN-dash-v2 3.4 folded the /usage cache (~/.claude.json's
+    # `cachedUsageUtilization` snapshot) into `plan_snapshots` on every
+    # ingest. Dropped (session 2026-08-09): that file only moves when
+    # someone opens /usage, so a run could fold in a reading days stale
+    # while the live number was minutes old, and once written it was
+    # indistinguishable in `plan_snapshots` from a genuine status-line
+    # reading. `plan.record_usage_cache` still exists (tests call it
+    # directly) -- it is simply never invoked from the ingest path anymore,
+    # so `plan_snapshots` only ever holds what the status-line hook wrote.
 
     store.set_meta(conn, "last_ingest", now_iso)
     store.set_meta(conn, "corpus_dir", str(projects_dir))

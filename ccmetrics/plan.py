@@ -663,11 +663,51 @@ def _fmt_tokens(n: float) -> str:
     return f"{k:.0f}k" if abs(k - round(k)) < 0.05 else f"{k:.1f}k"
 
 
+_CTX_BAR_CELLS = 8
+
+# Eighth-width left blocks, thinnest to thickest, for the one partial cell.
+# A full cell renders "█" (the eighth ramp doesn't need its own full glyph).
+_EIGHTHS = "▏▎▍▌▋▊▉"
+
+
+def _ctx_bar(pct: float, cells: int = _CTX_BAR_CELLS) -> str:
+    """8-cell bar for context usage, sub-divided into eighths so it moves
+    about every 1.5% instead of every 12.5%: the one leading cell that isn't
+    fully filled renders as a partial Unicode block (▏▎▍▌▋▊▉) sized to the
+    remainder, cells behind it are full "█", cells ahead stay dim "░". Any
+    nonzero percentage lights at least the thinnest sliver; the bar is always
+    exactly `cells` characters wide, at 0% and at 100% alike. Green at the
+    left end and red at the right end no matter how full the bar is -- cell i
+    (partial or full) is heat-coloured by its own position, (i + 1) / cells,
+    not by the overall percentage.
+    """
+    pct = float(pct)
+    if pct != pct:  # NaN never satisfies < or >, so clamp it explicitly.
+        pct = 0.0
+    pct = max(0.0, min(100.0, pct))
+    total_eighths = cells * 8
+    filled_eighths = round(pct / 100.0 * total_eighths)
+    if pct > 0.0 and filled_eighths == 0:
+        filled_eighths = 1
+    filled_eighths = min(filled_eighths, total_eighths)
+    full_cells, partial = divmod(filled_eighths, 8)
+    out = []
+    for i in range(cells):
+        colour = _heat((i + 1) / cells * 100.0)
+        if i < full_cells:
+            out.append(_paint("█", colour))
+        elif i == full_cells and partial:
+            out.append(_paint(_EIGHTHS[partial - 1], colour))
+        else:
+            out.append(_paint("░", _DIM))
+    return "".join(out)
+
+
 def render_line(data: dict) -> str:
     """The one-line statusline. Only facts that arrived on stdin appear.
 
     Shape (statusline.sh 'Clean Claude'):
-        project > branch | * Model :: style 94.4k/200k (47%) | 5h 32% | wk 18%
+        project > branch | * Model :: style 94.4k/200k (47%) | $21.25 | 5h 68% left | [bar] week 82% left
     Every segment is optional; missing ones close up without leaving separators.
     """
     head = []
@@ -698,15 +738,45 @@ def render_line(data: dict) -> str:
     parts = [" ".join(head)] if head else []
     if mid:
         parts.append(" ".join(mid))
+    cost = data.get("cost_usd")
+    if cost is not None:
+        # Left uncoloured on purpose: unlike the heat-graded tokens and window
+        # figures around it, cost has no percentage scale to grade against.
+        parts.append(f"${cost:.2f}")
     windows = data.get("windows") or {}
+    # Status-line-only spelling for the short labels: the console summary and
+    # the dashboard still read WINDOW_LABELS directly and keep "wk" -- this
+    # map is local to render_line on purpose so it never touches that dict.
+    _STATUSLINE_LABEL = {"wk": "week"}
+    # The bar moved here from the context segment (session 2026-08-09,
+    # follow-up to item 1): it tracks the weekly plan window's used percent,
+    # so it now sits beside the segment it actually describes -- "week NN%
+    # left" -- with the bar preceding the number it describes. No weekly
+    # reading at all (a non-subscriber, or any payload with no window that
+    # prints as "week") means no bar anywhere on the line -- context's own
+    # text was always plain and stays that way.
     # shortest window first here, unlike the dashboard: the 5h number is the one
     # that bites soonest, so it reads left to right as urgency.
     for name in sorted(windows, key=lambda n: (-_window_sort(n)[0], n)):
-        pct = windows[name].get("used_pct")
-        if pct is None:
+        used_pct = windows[name].get("used_pct")
+        if used_pct is None:
             continue
         short, _long = window_labels(name)
-        parts.append(_paint(f"{short} {pct:.0f}%", _heat(pct)))
+        short = _STATUSLINE_LABEL.get(short, short)
+        left_pct = 100 - used_pct
+        # _heat grades by how much is SPENT, not how much is left -- keep
+        # feeding it used_pct even though the printed number is now the
+        # remainder, or a nearly-exhausted window (5% left) would paint
+        # green instead of red.
+        # Gated on the LABEL ("week"), not the raw key ("seven_day") -- any
+        # window WINDOW_LABELS maps to "wk"/"week" (seven_day, weekly_all)
+        # gets the bar, so it can never silently vanish just because a
+        # different weekly key won this row. A weekly_scoped_* window falls
+        # outside WINDOW_LABELS entirely (its own short label is the raw,
+        # de-underscored key, not "week") and so carries no bar -- a
+        # pre-existing labelling gap, not something this gate introduces.
+        bar = f"{_ctx_bar(used_pct)} " if short == "week" else ""
+        parts.append(bar + _paint(f"{short} {left_pct:.0f}% left", _heat(used_pct)))
     if not parts:
         # Nothing arrived on stdin: name where we are rather than name ourselves,
         # so the line still tells the user something true.
@@ -796,7 +866,12 @@ def run(stdin_text: str, passthrough: str | None = None) -> str:
 
 def setup_text() -> str:
     fragment = json.dumps(
-        {"statusLine": {"type": "command", "command": "ccmetrics statusline"}},
+        # `refreshInterval: 5` keeps the line refreshing while the session
+        # sits idle -- Claude Code's own updates are event-driven, and go
+        # quiet exactly when a coordinator is waiting on background
+        # subagents, which is when the plan % is most likely to have moved.
+        {"statusLine": {"type": "command", "command": "ccmetrics statusline",
+                         "refreshInterval": 5}},
         indent=2,
     )
     chained = json.dumps(
@@ -1025,6 +1100,17 @@ def _backup(settings_path: Path, raw: str) -> Path:
     return backup_path
 
 
+def _refresh_interval(sl) -> int | float:
+    """5, unless the settings file already sets its own refreshInterval --
+    that's the user's call, made deliberately, and setup must not clobber
+    it. Event-driven status-line updates go quiet exactly when a
+    coordinator is waiting on background subagents (documented Claude Code
+    behaviour), which is when the plan % is most likely to have moved since
+    the last render -- refreshInterval keeps the line polling regardless.
+    """
+    existing = sl.get("refreshInterval") if isinstance(sl, dict) else None
+    return existing if isinstance(existing, (int, float)) and not isinstance(existing, bool) else 5
+
 def apply_setup(settings_path: Path) -> dict:
     """Wire `ccmetrics statusline` into statusLine.command.
 
@@ -1035,6 +1121,7 @@ def apply_setup(settings_path: Path) -> dict:
     sl = data.get("statusLine")
     invocation, invocation_warning = resolve_invocation()
     plain_command = f"{invocation} statusline"
+    interval = _refresh_interval(sl)
 
     if sl is None:
         old_desc = "(none)"
@@ -1055,9 +1142,22 @@ def apply_setup(settings_path: Path) -> dict:
         if _is_ours_command(current):
             wrapped = _extract_passthrough(current)
             if wrapped is None:
+                if isinstance(sl, dict) and sl.get("refreshInterval") == interval:
+                    return {
+                        "changed": False,
+                        "message": f"already wired: {current!r} — nothing to change.",
+                    }
+                # Wired already, but this settings file predates
+                # refreshInterval (or holds a different one to respect) --
+                # the command itself is untouched, only the interval moves.
+                data["statusLine"] = {"type": "command", "command": current,
+                                       "refreshInterval": interval}
+                settings_path.write_text(json.dumps(data, indent=2) + "\n")
                 return {
-                    "changed": False,
-                    "message": f"already wired: {current!r} — nothing to change.",
+                    "changed": True,
+                    "old": current,
+                    "new": current,
+                    "message": f"statusLine.refreshInterval: -> {interval} (command unchanged: {current!r})",
                 }
             # An older ccmetrics build wrapped a command instead of replacing
             # it. Unwrap it now so only ccmetrics renders the status line.
@@ -1068,12 +1168,25 @@ def apply_setup(settings_path: Path) -> dict:
             # leave it alone, or we'd overwrite it with a now-wired (ours)
             # settings file and lose the command for good. Only write a
             # fresh backup, holding the unwrapped command, when there's
-            # nothing usable there yet.
+            # nothing usable there yet. (That means a PRE-EXISTING backup's
+            # own refreshInterval — present or absent — wins on revert by
+            # the same rule: it describes whatever settings state was
+            # current when the wrap first happened, not this apply. Only a
+            # backup synthesized HERE, just below, carries this call's
+            # current refreshInterval forward.)
             if _read_backed_up_command(settings_path) is None:
                 backup_data = dict(data)
                 backup_data["statusLine"] = {"type": "command", "command": wrapped}
+                # Whatever refreshInterval this (already-ours) block
+                # currently carries travels into the synthesized backup too
+                # -- otherwise a later revert has nothing to restore it
+                # from and silently drops it (GAP 1, session 2026-08-09).
+                existing_interval = sl.get("refreshInterval") if isinstance(sl, dict) else None
+                if isinstance(existing_interval, (int, float)) and not isinstance(existing_interval, bool):
+                    backup_data["statusLine"]["refreshInterval"] = existing_interval
                 backup_path.write_text(json.dumps(backup_data, indent=2) + "\n")
-            data["statusLine"] = {"type": "command", "command": plain_command}
+            data["statusLine"] = {"type": "command", "command": plain_command,
+                                   "refreshInterval": interval}
             settings_path.write_text(json.dumps(data, indent=2) + "\n")
             lines = []
             if invocation_warning:
@@ -1097,7 +1210,7 @@ def apply_setup(settings_path: Path) -> dict:
 
     backup_path = _backup(settings_path, raw) if raw is not None else None
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    data["statusLine"] = {"type": "command", "command": new_command}
+    data["statusLine"] = {"type": "command", "command": new_command, "refreshInterval": interval}
     settings_path.write_text(json.dumps(data, indent=2) + "\n")
 
     lines = []
@@ -1141,6 +1254,30 @@ def _read_backed_up_command(settings_path: Path) -> str | None:
     return command
 
 
+def _read_backed_up_refresh_interval(settings_path: Path):
+    """The refreshInterval the `.bak-ccmetrics` sibling's statusLine block
+    held before ccmetrics ever touched it, if any. `apply_setup` promises to
+    respect a user-set refreshInterval (see `_refresh_interval`); revert must
+    honour that same promise on the way back out, rather than always
+    stripping whatever value is currently there -- which would silently
+    delete a user's own setting the moment it happens to equal ours (5) or
+    anything else. None means "the user never set one" -- the field should
+    not exist on the restored command either.
+    """
+    backup_path = settings_path.with_name(settings_path.name + ".bak-ccmetrics")
+    try:
+        data = json.loads(backup_path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sl = data.get("statusLine")
+    if not isinstance(sl, dict):
+        return None
+    interval = sl.get("refreshInterval")
+    return interval if isinstance(interval, (int, float)) and not isinstance(interval, bool) else None
+
+
 def revert_setup(settings_path: Path) -> dict:
     """Undo apply_setup.
 
@@ -1162,15 +1299,28 @@ def revert_setup(settings_path: Path) -> dict:
 
     passthrough = _extract_passthrough(current)
     # Read the backup before _backup() below overwrites it with the
-    # (still-wired) settings we're about to revert.
+    # (still-wired) settings we're about to revert. The pre-apply
+    # refreshInterval (if the user had one) lives in that same backup, and
+    # must come back with the command rather than being stripped -- popping
+    # it unconditionally would silently delete a value _refresh_interval
+    # promised on the way in to leave alone (see `_read_backed_up_refresh_interval`).
     displaced = None if passthrough else _read_backed_up_command(settings_path)
+    old_interval = _read_backed_up_refresh_interval(settings_path)
 
     backup_path = _backup(settings_path, raw)
     if passthrough:
         data["statusLine"]["command"] = passthrough
+        if old_interval is None:
+            data["statusLine"].pop("refreshInterval", None)
+        else:
+            data["statusLine"]["refreshInterval"] = old_interval
         new_desc = passthrough
     elif displaced is not None:
         data["statusLine"]["command"] = displaced
+        if old_interval is None:
+            data["statusLine"].pop("refreshInterval", None)
+        else:
+            data["statusLine"]["refreshInterval"] = old_interval
         new_desc = displaced
     else:
         del data["statusLine"]

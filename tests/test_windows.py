@@ -55,6 +55,16 @@ def _write_cache(path, fetched_ms, pct):
     path.write_text(json.dumps(body))
 
 
+def test_source_kind_hook_or_none_never_cache_or_both(conn):
+    """Session 2026-08-09, item 4: the /usage cache was dropped as a source
+    entirely -- `_source_kind` no longer distinguishes cache/hook/both, just
+    whether the status-line feed (`plan_snapshots`) has written anything."""
+    assert windows._source_kind(conn) is None
+    _snap(conn, windows.iso(BASE), "five_hour", 10.0, None)
+    conn.commit()
+    assert windows._source_kind(conn) == "hook"
+
+
 def test_snapshot_written_once_unchanged_zero_newer_writes_new_row(conn):
     p = plan.usage_cache_path()
     _write_cache(p, 1785477153001, 20)
@@ -334,11 +344,14 @@ def test_projection_ignores_weekly_scoped_snapshot(conn):
 
 # --- headroom labelling: the parsed cache label must reach the row (6.4f) ---
 
-def test_headroom_scoped_label_comes_from_the_cache_not_the_key(conn):
+def test_headroom_scoped_key_falls_back_to_deunderscored_label(conn):
     """The store only ever holds a raw window_key; a scoped key's real label
-    ("This week . Fable") lives in the /usage cache's own parsed reading, not
-    in anything plan.window_labels() can derive from the key alone. Without
-    this, the row falls back to a de-underscored key ("weekly scoped fable")."""
+    ("This week . Fable") used to come from the /usage cache's own parsed
+    reading via `windows_payload`'s `cache_windows` lookup. That source is
+    gone (session 2026-08-09, item 4: the cache is stale and dropped
+    entirely) -- windows_payload no longer reads it, so a scoped row falls
+    back to whatever plan.window_labels()/`_headroom_short` can derive from
+    the raw key alone, same as any key `_headroom` has never seen labelled."""
     p = plan.usage_cache_path()
     p.write_text(json.dumps({
         "cachedUsageUtilization": {
@@ -361,8 +374,8 @@ def test_headroom_scoped_label_comes_from_the_cache_not_the_key(conn):
     rows = {r["key"]: r for r in payload["headroom"]}
     assert "weekly_scoped_fable" in rows
     row = rows["weekly_scoped_fable"]
-    assert row["label"] == "This week \u00b7 Fable"
-    assert row["short_label"] == "Week \u00b7 Fable only"  # 6.4h H5: distinct per scoped model
+    assert row["label"] == "weekly scoped fable"
+    assert row["short_label"] == "Week \u00b7 fable only"  # 6.4h H5: distinct per scoped model, key-derived now
 
 def test_headroom_falls_back_to_window_labels_when_key_not_in_current_cache(conn):
     """A key the CURRENT cache read does not cover (e.g. a legacy hook key,
@@ -474,6 +487,54 @@ def test_projection_early_hours_positive_when_runs_out_before_reset(conn):
     hero = windows.projection(conn, blocks=blocks, caps=caps, now=BASE)
     assert hero["early_hours"] is not None
     assert hero["early_hours"] > 0
+
+
+# --- RATE's dollar half: 24h fallback when no session is live --------------
+
+def test_burn_usd_per_hour_prices_trailing_blocks_with_no_live_session():
+    """No live session -> RATE's dollar half used to go blank even though the
+    token half kept averaging the trailing 24h of blocks. It now prices that
+    same window off each block's per_model equiv tokens, so both halves come
+    from the same basis."""
+    blocks = [{
+        "start": windows.iso(BASE - _dt.timedelta(hours=1)),
+        "equiv_tokens": 1000.0,
+        "per_model": {"claude-sonnet-5": 1000.0},
+    }]
+    usd = windows._burn_usd_per_hour(blocks, None, now=BASE)
+    assert usd is not None
+    assert usd > 0
+
+def test_burn_usd_per_hour_prefers_live_session_when_present():
+    live_tiles = {"status": "live", "burn": {"floor_usd_per_hour": 9.5}}
+    blocks = [{
+        "start": windows.iso(BASE - _dt.timedelta(hours=1)),
+        "equiv_tokens": 1000.0,
+        "per_model": {"claude-sonnet-5": 1000.0},
+    }]
+    assert windows._burn_usd_per_hour(blocks, live_tiles, now=BASE) == 9.5
+
+def test_burn_usd_per_hour_ignores_blocks_outside_the_trailing_24h():
+    old_block = {
+        "start": windows.iso(BASE - _dt.timedelta(hours=48)),
+        "equiv_tokens": 1000.0,
+        "per_model": {"claude-sonnet-5": 1000.0},
+    }
+    assert windows._burn_usd_per_hour([old_block], None, now=BASE) is None
+
+def test_burn_usd_per_hour_none_when_nothing_can_be_priced():
+    """An unrated model in every trailing block leaves nothing to price --
+    None, not a silently wrong $0/hr."""
+    blocks = [{
+        "start": windows.iso(BASE - _dt.timedelta(hours=1)),
+        "equiv_tokens": 1000.0,
+        "per_model": {"some-unrated-model": 1000.0},
+    }]
+    assert windows._burn_usd_per_hour(blocks, None, now=BASE) is None
+
+def test_burn_usd_per_hour_handles_no_blocks_without_exception():
+    assert windows._burn_usd_per_hour(None, None, now=BASE) is None
+    assert windows._burn_usd_per_hour([], None, now=BASE) is None
 
 
 # --- H1: a merged cell's denominator must scale with its block count -------

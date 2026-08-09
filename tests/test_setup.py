@@ -71,7 +71,11 @@ def test_apply_fresh_file_with_no_settings_creates_it(tmp_path):
 
     assert result["changed"] is True
     data = json.loads(settings.read_text())
-    assert data["statusLine"] == {"type": "command", "command": "ccmetrics statusline"}
+    # `refreshInterval: 5` (item 5, session 2026-08-09): keeps the line
+    # refreshing while Claude Code's own event-driven updates go quiet, e.g.
+    # a coordinator waiting on background subagents.
+    assert data["statusLine"] == {"type": "command", "command": "ccmetrics statusline",
+                                   "refreshInterval": 5}
     assert not (tmp_path / "settings.json.bak-ccmetrics").exists()  # nothing existed to back up
 
 
@@ -130,6 +134,73 @@ def test_apply_twice_is_idempotent(tmp_path):
     assert json.loads(backup.read_text())["statusLine"]["command"] == "my-tool --flag"
 
 
+def test_apply_respects_a_refresh_interval_the_user_already_set(tmp_path):
+    """Item 5, session 2026-08-09: refreshInterval defaults to 5, but never
+    overrides one the user already put there themselves."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps(
+        {"statusLine": {"type": "command", "command": "my-tool --flag", "refreshInterval": 30}}
+    ))
+
+    plan.apply_setup(settings)
+
+    assert json.loads(settings.read_text())["statusLine"]["refreshInterval"] == 30
+
+def test_apply_then_revert_restores_the_users_own_refresh_interval(tmp_path):
+    """Round-trip: apply() promises to leave a user-set refreshInterval
+    alone (previous test); revert() must not then silently drop that same
+    value on the way back out just because ccmetrics also uses that field
+    for its own 5."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps(
+        {"statusLine": {"type": "command", "command": "my-tool --flag", "refreshInterval": 30}}
+    ))
+
+    plan.apply_setup(settings)
+    plan.revert_setup(settings)
+
+    restored = json.loads(settings.read_text())["statusLine"]
+    assert restored["command"] == "my-tool --flag"
+    assert restored["refreshInterval"] == 30
+
+def test_apply_then_revert_drops_refresh_interval_the_user_never_set(tmp_path):
+    """The mirror case: no refreshInterval before apply() means none after
+    revert() either -- ccmetrics' own 5 must not leak into a restored
+    command that never had the field."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
+
+    plan.apply_setup(settings)
+    plan.revert_setup(settings)
+
+    restored = json.loads(settings.read_text())["statusLine"]
+    assert restored["command"] == "my-tool --flag"
+    assert "refreshInterval" not in restored
+
+def test_apply_sets_refresh_interval_five_by_default(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool --flag"}}))
+
+    plan.apply_setup(settings)
+
+    assert json.loads(settings.read_text())["statusLine"]["refreshInterval"] == 5
+
+def test_apply_already_wired_adds_a_missing_refresh_interval(tmp_path):
+    """A settings file wired to ccmetrics by a build that predates
+    refreshInterval gets it added on the next apply, without touching the
+    command -- and the second apply after that really is a no-op."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "ccmetrics statusline"}}))
+
+    result = plan.apply_setup(settings)
+    assert result["changed"] is True
+    assert json.loads(settings.read_text())["statusLine"] == {
+        "type": "command", "command": "ccmetrics statusline", "refreshInterval": 5,
+    }
+
+    result2 = plan.apply_setup(settings)
+    assert result2["changed"] is False
+
 def test_apply_unwraps_a_passthrough_command_left_by_an_older_build(tmp_path):
     """Older ccmetrics builds chained onto the command already there. Applying
     over one of those rewrites it to the plain command and says what it
@@ -146,6 +217,27 @@ def test_apply_unwraps_a_passthrough_command_left_by_an_older_build(tmp_path):
     assert result["changed"] is True
     assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
     assert "my-tool --flag" in result["message"]
+
+
+def test_apply_unwrap_then_revert_restores_the_chained_refresh_interval(tmp_path):
+    """GAP 1, session 2026-08-09: unwrapping an older build's chained
+    command synthesizes a backup on the fly (there is no pre-apply file to
+    copy, unlike the ordinary displaced-command case) -- that synthesized
+    backup must still carry whatever refreshInterval the wired block had,
+    or revert has nothing to restore it from and silently drops it."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "statusLine": {"type": "command",
+                        "command": "ccmetrics statusline --passthrough 'my-tool --flag'",
+                        "refreshInterval": 30},
+    }))
+
+    plan.apply_setup(settings)
+    plan.revert_setup(settings)
+
+    restored = json.loads(settings.read_text())["statusLine"]
+    assert restored["command"] == "my-tool --flag"
+    assert restored["refreshInterval"] == 30
 
 
 def test_apply_unwrapping_leaves_a_usable_backup_alone(tmp_path):
