@@ -701,6 +701,9 @@ function heroHeadroom() {
   }
   var advice = "";
   if (capsKnown) {
+    /* The model check can't be the only gate: the all-models week row
+       carries no `model` field, so a tight all-models week would otherwise
+       never raise a warning here at all. */
     var candidates = (w.headroom || []).filter(function (hr) {
       return hr.model && hr.resets_at && typeof hr.left_pct === "number" && hr.left_pct <= 25;
     });
@@ -709,7 +712,16 @@ function heroHeadroom() {
       var day = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][new Date(pick.resets_at).getDay()];
       advice = '<div style="margin-top:18px;padding:11px 13px;border:2px solid var(--line);color:var(--ink)">&gt; PUT <span style="color:' + modelColor(shortModel(pick.model)) + '">' + esc(shortModel(pick.model).toUpperCase()) + '</span> DOWN UNTIL ' + day + '</div>';
     } else {
-      advice = '<div style="margin-top:18px;padding:11px 13px;border:2px solid var(--line);color:var(--dim)">&gt; NOTHING TO PUT DOWN — EVERY LIMIT HAS ROOM</div>';
+      var rowCandidates = (w.headroom || []).filter(function (hr) {
+        return !hr.model && hr.resets_at && typeof hr.left_pct === "number" && hr.left_pct <= 25;
+      });
+      if (rowCandidates.length) {
+        var rowPick = rowCandidates.reduce(function (a, b) { return b.left_pct < a.left_pct ? b : a; });
+        var rowDay = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][new Date(rowPick.resets_at).getDay()];
+        advice = '<div style="margin-top:18px;padding:11px 13px;border:2px solid var(--line);color:var(--ink)">&gt; EASE OFF — ' + esc(String(rowPick.short_label || rowPick.label).toUpperCase()) + ' <span style="color:' + PX_LVL[pxLeftLvl(rowPick.left_pct)] + '">' + fmtPct(rowPick.left_pct) + '</span> LEFT UNTIL ' + rowDay + '</div>';
+      } else {
+        advice = '<div style="margin-top:18px;padding:11px 13px;border:2px solid var(--line);color:var(--dim)">&gt; NOTHING TO PUT DOWN — EVERY LIMIT HAS ROOM</div>';
+      }
     }
   }
   return '<div class="px-panel">' +
