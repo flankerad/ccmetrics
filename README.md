@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-  <img src="docs/assets/logo-light.svg" width="520"
+  <img src="docs/assets/logo-light.svg" width="560"
        alt="ccmetrics logo: four model-coloured bars, the tallest leaking clay-coloured token drops, beside the ccmetrics wordmark">
 </picture>
 
@@ -54,7 +54,7 @@ Every panel on that page, top to bottom:
 - **Burnt · Left · Empty at · Rate** — tokens spent and the percentage, tokens still available, the moment you run dry at today's pace, and that pace in tokens and dollars per hour.
 - **Live** — the session running right now: project, model, turns, block spend, burn rate, context used, cache-hit, and what this session has cost.
 - **Limits left** — one meter per limit Anthropic reports: the 5-hour block, the week across all models, and the week for any per-model cap. Each shows what is left, out of what, from how many readings, and when it resets. The line at the bottom names the one to ease off, or says nothing needs putting down.
-- **Recoverable** — every leak found, ranked by tokens you would get back against how hard the fix is. **Fix all three** projects where your week lands if you apply the top three. **Copy** puts the fix on your clipboard.
+- **Recoverable** — every leak found, ranked by tokens you would get back against how hard the fix is. **Fix all three** shows where your week would land if you applied the top three. **Copy** puts the fix on your clipboard.
 - **This week · 24 windows** — each day split into morning, afternoon, evening, and late. Colour is how tight that 5-hour block ran: room, half, tight, dry. The right column averages the day, and the legend names which model led the week.
 - **Month · 60 windows** — the same blocks for the last 60, so a bad week reads against a normal one.
 - **Projects · 30 days** — which repos absorbed the tokens, with each one's biggest leak beside it.
@@ -84,7 +84,9 @@ Repo, branch, model, output style, context used, what this session has cost, the
 
 ## Install
 
-Python 3.11+. Zero runtime dependencies.
+Python 3.11+. Zero runtime dependencies. You need [Claude Code](https://claude.com/claude-code) already installed — ccmetrics reads the session logs it writes.
+
+Not on PyPI yet — install from a clone:
 
 ```bash
 git clone https://github.com/flankerad/ccmetrics && cd ccmetrics
@@ -110,7 +112,7 @@ ccmetrics autostart   # login startup: --apply, --check, --revert
 
 ## What you get
 
-- **A dollar floor you can defend.** Every figure comes from the accurate cache fields × Anthropic's published multipliers, labelled a floor. Output cost appears as a separate range, never silently summed in.
+- **A dollar floor you can defend.** Every figure comes from the log's cache token fields — the ones that are actually accurate (see [Why](#why)) — × Anthropic's published multipliers, labelled a floor. Output cost appears as a separate range, never silently summed in.
 - **12 leak detectors, each with a fix.** Ranked by tokens saved ÷ how hard the fix is, filled in with your own numbers.
 - **A dashboard at a glance.** Live session tiles (burn rate, context %, cache-hit, spend — a runaway session is flagged *while it runs*), a 30-day spend trend, the token mix, top leaks with a copy button, and a per-project table.
 - **Your plan usage in the status line.** The 5-hour and weekly percentages Anthropic reports, plus an eight-cell bar for the week. See [docs/plan-limits.md](docs/plan-limits.md).
@@ -165,3 +167,5 @@ Every saving links its arithmetic: the hits it sums, the threshold it crossed, a
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
+
+<sub>Built with Claude Code — and pointed back at it.</sub>
