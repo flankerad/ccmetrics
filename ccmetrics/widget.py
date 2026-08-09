@@ -19,7 +19,10 @@ second reader would be a second answer to the same question.
 
 from __future__ import annotations
 
+import glob
 import json
+import os
+import sys
 import threading
 import urllib.error
 import urllib.parse
@@ -55,8 +58,16 @@ FLAME = [
 
 CELLS = 40
 POLL_SECONDS = 20
-WIDTH = 440
-HEIGHT = 198
+WIDTH = 470
+HEIGHT = 210
+# Every type size in the widget, in one place. They were inline literals two
+# points smaller, which read as fine print on a retina panel. Raising them
+# means the panel grows with them: WIDTH, HEIGHT and the footer column starts
+# below are sized to what these fonts now measure.
+HEAD_SIZE = 13   # the verdict headline; the close X sizes off it too
+SUB_SIZE = 11    # the line under the headline
+LABEL_SIZE = 10  # the small-caps label over a bar or a footer cell
+VALUE_SIZE = 12  # the footer cells' numbers
 
 
 def px_lvl(p: float) -> int:
@@ -121,6 +132,48 @@ def fmt_day_clock(iso: str | None) -> str:
     return d.strftime("%a %H:%M").upper()
 
 
+# Calm -> alarmed face, the same six-stop ladder as index.html's heroFuse,
+# gated on cap percent left rather than the clock fallback so a capless
+# widget never shows an alarmed face it hasn't earned. Kept in one obvious
+# place (not duplicated per-branch in _verdict) so the page and the widget
+# can only ever drift by someone forgetting to touch both.
+FACE_LADDER = ((5, "🥵"), (10, "😰"), (15, "😟"), (25, "😬"))
+
+# _verdict's exhaustion-branch edges -- the widget's own ladder, and the
+# contract index.html's heroFuse (nearlyGone/nearlySpent/gettingTight, ~lines
+# 414-416) now follows: 5, 12, 25. 25 is deliberately the same edge where
+# FACE_LADDER's 😬 starts, so the verdict and the face begin together. If one
+# side's ramp ever moves, this is the place to move it first.
+VERDICT_EDGES = (5, 12, 25)  # almost gone / nearly spent / getting tight
+
+
+def _face(pct_left: float | None) -> str:
+    if pct_left is None:
+        return "😐"
+    for edge, glyph in FACE_LADDER:
+        if pct_left <= edge:
+            return glyph
+    return "🙂"
+
+
+def _cap_week_sub(left: float | None, week_left: float | None, tail: str) -> str:
+    """Percent of the cap left and how much of the week remains -- the two
+    figures a burn pace can actually be judged against. Replaces the old
+    clock-lead/lag phrasing: not a metric that can be quantified or useful,
+    per the page's own change. `tail` distinguishes the branches so the
+    headline and this line never contradict each other.
+    """
+    parts = []
+    if left is not None:
+        parts.append(f"{left:.0f}% of the cap is left")
+    if week_left is not None:
+        parts.append(f"{week_left:.0f}% of the week to go")
+    if not parts:
+        return tail
+    body = parts[0] if len(parts) == 1 else f"{parts[0]}, with {parts[1]}"
+    return f"{body} {tail}" if tail else f"{body}."
+
+
 def _verdict(hero: dict, caps_known: bool, hook_ran: bool) -> tuple[str, str]:
     """The page's ladder, in its own order -- staleness first, then absolute
     exhaustion, then pace. Reordering it would let a 2%-left week be described
@@ -134,21 +187,46 @@ def _verdict(hero: dict, caps_known: bool, hook_ran: bool) -> tuple[str, str]:
                 "Open /usage once to light the fuse.")
     used = hero.get("used_pct")
     left = None if used is None else 100 - used
+    clock_pct = hero.get("clock_pct")
+    week_left = None if clock_pct is None else 100 - clock_pct
     behind = hero.get("behind")
-    if left is not None and left <= 3:
-        return ("The week is almost gone.", f"{left:.0f}% left, whatever the pace.")
-    if left is not None and left < 10:
-        return ("Single digits left.", f"{left:.0f}% of the week is left.")
-    if left is not None and left < 25:
-        return ("Getting tight.", f"{left:.0f}% of the week is left.")
+    if left is not None and left <= VERDICT_EDGES[0]:
+        return ("The week is almost gone.", f"{left:.0f}% of the cap is left, whatever the pace.")
+    if left is not None and left < VERDICT_EDGES[1]:
+        return ("Nearly spent.", f"{left:.0f}% of the cap is left.")
+    if left is not None and left < VERDICT_EDGES[2]:
+        return ("Getting tight.", f"{left:.0f}% of the cap is left.")
     if behind is not None and behind > 6:
-        return ("Burning faster than it refills.", f"{round(behind)} points ahead of the clock.")
+        return ("Burning faster than it refills.", _cap_week_sub(left, week_left, ""))
     if behind is not None and behind > 0:
-        return ("A little ahead of the clock.", f"{behind:.0f} points ahead — worth a glance.")
+        return ("A little ahead of the clock.",
+                _cap_week_sub(left, week_left, "— comfortable, worth a glance."))
     if behind is not None:
         return ("Comfortably inside the week.",
-                f"{abs(round(behind))} points behind the clock.")
+                _cap_week_sub(left, week_left, "— plenty of room."))
     return ("Tracking the week.", "No reset time yet, so no clock to compare.")
+
+
+def _close_rect() -> tuple[float, float, float, float]:
+    """Hit box for the top-right close 'X': a HEAD_SIZE-square inset from the
+    panel's 2px border by half the shared 16px `pad` every row already uses.
+    Derived from WIDTH/HEAD_SIZE rather than a pixel offset someone measured
+    once, so it stays put if the panel's size or font ever changes.
+    """
+    pad, border = 16, 2
+    margin = pad // 2
+    side = HEAD_SIZE
+    x1 = WIDTH - border - margin
+    y0 = border + margin
+    x0 = x1 - side
+    y1 = y0 + side
+    return x0, y0, x1, y1
+
+
+def _hit_close(x: float, y: float) -> bool:
+    """Whether a canvas point (e.g. a click) lands on the close 'X'."""
+    x0, y0, x1, y1 = _close_rect()
+    return x0 <= x <= x1 and y0 <= y <= y1
 
 
 class Widget:
@@ -160,6 +238,9 @@ class Widget:
         self.scope = scope
         self.data: dict | None = None
         self.error: str | None = None
+        self._closing = False
+        self._draw_timer: str | None = None
+        self._poll_timer: str | None = None
 
         root = tk.Tk()
         root.title("ccmetrics")
@@ -180,8 +261,17 @@ class Widget:
         self._drag = (0, 0)
         self.canvas.bind("<Button-1>", self._grab)
         self.canvas.bind("<B1-Motion>", self._move)
-        root.bind("<Escape>", lambda _e: root.destroy())
-        root.bind("<Double-Button-1>", lambda _e: root.destroy())
+        root.bind("<Escape>", lambda _e: self._shutdown())
+        root.bind("<Double-Button-1>", lambda _e: self._shutdown())
+
+        # The close 'X': tag_bind lives on the tag name, not an item id, so
+        # it survives every draw()'s delete("all") -- the next redraw just
+        # hands the same tag to a fresh item. The handler defers to
+        # after_idle rather than calling _shutdown directly -- see _shutdown
+        # for why destroying from inside this dispatch crashes.
+        self.canvas.tag_bind("close", "<Button-1>", lambda _e: root.after_idle(self._shutdown))
+        self.canvas.tag_bind("close", "<Enter>", lambda _e: self._close_hover(True))
+        self.canvas.tag_bind("close", "<Leave>", lambda _e: self._close_hover(False))
 
     def _icon(self):
         """The Dock tile: the same pixel flame the fuse burns, on the panel's
@@ -209,10 +299,60 @@ class Widget:
         return img
 
     def _grab(self, e) -> None:
+        if _hit_close(e.x, e.y):
+            # The X handles its own click; this must not start a drag. Clear
+            # the anchor rather than just skipping the update -- a stale one
+            # would let a press-on-the-X-then-drag-off jump the window by the
+            # delta from whatever the *previous* click left behind.
+            self._drag = None
+            return
         self._drag = (e.x, e.y)
 
     def _move(self, e) -> None:
+        if self._drag is None:
+            return
         self.root.geometry(f"+{e.x_root - self._drag[0]}+{e.y_root - self._drag[1]}")
+
+    def _close_hover(self, on: bool) -> None:
+        self.canvas.itemconfigure("close_bg", fill=LINE if on else SURF)
+        self.canvas.itemconfigure("close_x", fill=INK if on else DIM)
+
+    def _shutdown(self) -> None:
+        """The one teardown path -- the X, Escape and the double-click all
+        land here rather than each calling `root.destroy()` itself.
+
+        The X used to destroy the toplevel straight from its own canvas-item
+        binding. Tk was still inside that item's event dispatch when the
+        canvas -- and the item -- vanished under it, which is what macOS saw
+        as "python quit unexpectedly" rather than a clean exit. Escape never
+        crashed because it is bound on the toplevel, not an item, so nothing
+        is dispatching out of the thing being destroyed. `after_idle` in the
+        close binding gets the X the same safety: it defers this call until
+        Tk has finished dispatching the click.
+
+        `_closing` is set first and cancels the pending `after` timers before
+        destroying: `draw`/`_poll` can still be sitting in the event queue
+        when this runs, and firing into a canvas that `destroy()` just freed
+        is the same crash by a different path. The fetch thread itself never
+        touches Tk -- it only assigns to `self.data`/`self.error` -- but it
+        also checks `_closing` so a fetch that lands after teardown does not
+        queue another redraw. Do not simplify this back into a bare
+        `root.destroy()`.
+
+        No `WM_DELETE_WINDOW` binding: `_show` strips the window frame with
+        `overrideredirect(True)` before the widget is ever visible, so there
+        is no titlebar close button for the window manager to route here.
+        """
+        if self._closing:
+            return
+        self._closing = True
+        if self._draw_timer is not None:
+            self.root.after_cancel(self._draw_timer)
+            self._draw_timer = None
+        if self._poll_timer is not None:
+            self.root.after_cancel(self._poll_timer)
+            self._poll_timer = None
+        self.root.destroy()
 
     # ---- data ----------------------------------------------------------
 
@@ -223,25 +363,55 @@ class Widget:
     def _fetch(self) -> None:
         """Runs off the main thread -- Tk is not thread-safe, so this only ever
         assigns to `self.data`/`self.error` and lets the `after` timer redraw.
+
+        Checks `_closing` twice: once up front, so a fetch that never even
+        starts after `_shutdown` skips the request outright, and again after
+        `urlopen` returns, because a fetch already inside that call when the
+        X is clicked passed the first check seconds earlier and would still
+        write into `self.data`/`self.error` on the way out otherwise.
+        Harmless on its own -- these are plain attributes, not Tk -- but
+        nothing should be assigning into a widget that is going away.
         """
+        if self._closing:
+            return
         try:
             with urllib.request.urlopen(self._url(), timeout=4) as r:
-                self.data = json.loads(r.read().decode())
-                self.error = None
+                body, err = json.loads(r.read().decode()), None
         except (urllib.error.URLError, OSError, ValueError, TimeoutError):
             # Names the fix, not the fault: the widget is useless without the
             # dash serving, and "no dash on :7433" left the reader guessing.
-            self.error = f"nothing on :{self.port} — run  ccmetrics dash"
+            body, err = None, f"nothing on :{self.port} — run  ccmetrics dash"
+        if self._closing:
+            return
+        if err is None:
+            self.data = body
+        self.error = err
 
     def _poll(self) -> None:
+        if self._closing:
+            return
         threading.Thread(target=self._fetch, daemon=True).start()
-        self.root.after(400, self.draw)
-        self.root.after(POLL_SECONDS * 1000, self._poll)
+        self._draw_timer = self.root.after(400, self.draw)
+        self._poll_timer = self.root.after(POLL_SECONDS * 1000, self._poll)
 
     # ---- drawing -------------------------------------------------------
 
-    def _px(self, x: float, y: float, w: float, h: float, fill: str) -> None:
-        self.canvas.create_rectangle(x, y, x + w, y + h, fill=fill, outline="")
+    def _px(self, x: float, y: float, w: float, h: float, fill: str,
+            tags: tuple[str, ...] = ()) -> None:
+        self.canvas.create_rectangle(x, y, x + w, y + h, fill=fill, outline="", tags=tags)
+
+    def _draw_close(self) -> None:
+        """Top-right close 'X', dim until hovered (`_close_hover`). Tagged
+        'close' for the click/hover bindings set up once in `__init__`, plus
+        'close_bg'/'close_x' so hover can recolour box and mark separately.
+        """
+        x0, y0, x1, y1 = _close_rect()
+        self._px(x0, y0, x1 - x0, y1 - y0, SURF, tags=("close", "close_bg"))
+        m = 3
+        self.canvas.create_line(x0 + m, y0 + m, x1 - m, y1 - m,
+                                fill=DIM, width=2, tags=("close", "close_x"))
+        self.canvas.create_line(x0 + m, y1 - m, x1 - m, y0 + m,
+                                fill=DIM, width=2, tags=("close", "close_x"))
 
     def _flame(self, cx: float, bottom: float) -> None:
         s = 2  # 7x10 grid at 2px -> a 14x20 flame, the page's own footprint
@@ -323,9 +493,9 @@ class Widget:
         label_c, value_c = DIM, INK
         if not block:
             self.canvas.create_text(16, top, text="5H BLOCK", anchor="w",
-                                    fill=label_c, font=("Menlo", 8))
+                                    fill=label_c, font=("Menlo", LABEL_SIZE))
             self.canvas.create_text(WIDTH - 16, top, text="—", anchor="e",
-                                    fill=label_c, font=("Menlo", 8))
+                                    fill=label_c, font=("Menlo", LABEL_SIZE))
             self._bar(top + 12, 12, 0, False)
             return
 
@@ -342,9 +512,9 @@ class Widget:
         show_lands = known and lands is not None and lands > pct
         tail = (fmt_pct(pct) + (f" → {fmt_pct(lands)}" if show_lands else "")) if known else "no cap known"
 
-        self.canvas.create_text(16, top, text=head, anchor="w", fill=label_c, font=("Menlo", 8))
+        self.canvas.create_text(16, top, text=head, anchor="w", fill=label_c, font=("Menlo", LABEL_SIZE))
         self.canvas.create_text(WIDTH - 16, top, text=tail, anchor="e",
-                                fill=value_c if known else label_c, font=("Menlo", 8))
+                                fill=value_c if known else label_c, font=("Menlo", LABEL_SIZE))
         self._bar(top + 12, 12, pct if known else 0, known,
                   ghost_to=lands if show_lands else None)
         if show_lands:
@@ -353,16 +523,19 @@ class Widget:
             self._px(x - 1, top + 9, 2, 18, CLAY)
 
     def draw(self) -> None:
+        if self._closing:
+            return
         self.canvas.delete("all")
         self._px(0, 0, WIDTH, HEIGHT, SURF)
         for x, y, w, h in ((0, 0, WIDTH, 2), (0, HEIGHT - 2, WIDTH, 2),
                            (0, 0, 2, HEIGHT), (WIDTH - 2, 0, 2, HEIGHT)):
             self._px(x, y, w, h, LINE)
+        self._draw_close()
 
         if self.data is None:
             self.canvas.create_text(
                 WIDTH / 2, HEIGHT / 2, text=self.error or "reading the week…",
-                fill=DIM, font=("Menlo", 11),
+                fill=DIM, font=("Menlo", HEAD_SIZE),
             )
             return
 
@@ -384,15 +557,30 @@ class Widget:
             used_pct, source = 0.0, "none"
 
         verdict, sub = _verdict(hero, caps_known, bool(w.get("hook_ran")))
-        self.canvas.create_text(16, 18, text=verdict.upper(), anchor="w", fill=INK,
-                                font=("Menlo", 11))
-        self.canvas.create_text(16, 34, text=sub, anchor="w", fill=DIM, font=("Menlo", 9))
+        pct_left = (100 - used) if caps_known and used is not None else None
+        # Face size scales off the headline's own font size rather than a
+        # fixed pixel value, so the two move together if the headline text
+        # size ever changes.
+        face_size = HEAD_SIZE * 2
+        head_y, sub_y = 20, 38  # the headline and sub-line rows' own y
+        # The page centres the face against the whole headline-plus-sub
+        # block (heroFuse's flex row, align-items:center). Here that block
+        # is exactly these two text rows, so the face's y is their midpoint
+        # -- derived from head_y/sub_y rather than a third, separately
+        # measured pixel that could drift out of line with either row.
+        face_y = (head_y + sub_y) / 2
+        self.canvas.create_text(16, face_y, text=_face(pct_left), anchor="w",
+                                fill=CLAY, font=("Menlo", face_size))
+        text_x = 16 + face_size + 8
+        self.canvas.create_text(text_x, head_y, text=verdict.upper(), anchor="w", fill=INK,
+                                font=("Menlo", HEAD_SIZE))
+        self.canvas.create_text(text_x, sub_y, text=sub, anchor="w", fill=DIM, font=("Menlo", SUB_SIZE))
 
         # No label over the week's bar. One would have to clear the clock,
         # which can sit at any point along the row, and stacking it above the
         # clock put three tight lines over a tall gap. The verdict above names
         # the week already, and only the block bar below needs saying which.
-        fuse_top, bar_h, pad = 78, 18, 16
+        fuse_top, bar_h, pad = 82, 18, 16
         self._bar(fuse_top, bar_h, used_pct, source == "cap", fuse=True)
 
         bar_l, bar_w = pad, WIDTH - pad * 2
@@ -401,8 +589,8 @@ class Widget:
         if source == "cap":
             self._flame(bar_l + bar_w * used_pct / 100, fuse_top + bar_h)
 
-        self._px(pad, 112, bar_w, 2, LINE)
-        self._block(122, w.get("current_block"), caps_known)
+        self._px(pad, 116, bar_w, 2, LINE)
+        self._block(126, w.get("current_block"), caps_known)
 
         # The page's four footer cells, field for field (index.html's burntLine,
         # wick, runsOut, RATE). They are gated on `caps_known` the same way:
@@ -437,12 +625,12 @@ class Widget:
         # Measured column starts, not four equal thirds: the rate cell needs
         # roughly twice the width of the left cell, so an even split either
         # clipped the rate or wasted half the row.
-        starts = (0, 104, 170, 258)
-        self._px(pad, 160, bar_w, 2, LINE)
+        starts = (0, 112, 184, 280)
+        self._px(pad, 166, bar_w, 2, LINE)
         for (label, value, colour), dx in zip(cells, starts):
             x = pad + dx
-            self.canvas.create_text(x, 172, text=label, anchor="w", fill=DIM, font=("Menlo", 8))
-            self.canvas.create_text(x, 186, text=value, anchor="w", fill=colour, font=("Menlo", 10))
+            self.canvas.create_text(x, 180, text=label, anchor="w", fill=DIM, font=("Menlo", LABEL_SIZE))
+            self.canvas.create_text(x, 196, text=value, anchor="w", fill=colour, font=("Menlo", VALUE_SIZE))
 
     def _show(self) -> None:
         """Map the window first, strip the titlebar second.
@@ -467,6 +655,30 @@ class Widget:
         self.root.mainloop()
 
 
+def _fix_tcl_tk_env() -> None:
+    """Point Tcl/Tk at the interpreter's own lib dir, not a build-machine path.
+
+    uv installs python-build-standalone interpreters, and those bake the
+    absolute path of the machine that built them into tkinter's compiled-in
+    defaults -- something like `/tools/deps/lib/tcl8.6` from a CI box that
+    doesn't exist here. `import tkinter` never touches that path, so it
+    always succeeds; only `Tk()` looks up `init.tcl` there and fails. The
+    interpreter ships its own copies of the Tcl/Tk runtime under
+    `sys.base_prefix/lib`, so if the user hasn't already set TCL_LIBRARY /
+    TK_LIBRARY (respect that -- they know their own setup), find those
+    directories and point the env vars at them before Tk() ever runs.
+    """
+    base = sys.base_prefix
+    if "TCL_LIBRARY" not in os.environ:
+        found = sorted(glob.glob(os.path.join(base, "lib", "tcl8.*")))
+        if found:
+            os.environ["TCL_LIBRARY"] = found[-1]
+    if "TK_LIBRARY" not in os.environ:
+        found = sorted(glob.glob(os.path.join(base, "lib", "tk8.*")))
+        if found:
+            os.environ["TK_LIBRARY"] = found[-1]
+
+
 def run(port: int = 7433, scope: str | None = None) -> int:
     try:
         import tkinter as tk
@@ -479,6 +691,7 @@ def run(port: int = 7433, scope: str | None = None) -> int:
               "  Debian/Ubuntu:    sudo apt install python3-tk\n"
               "  Fedora:           sudo dnf install python3-tkinter")
         return 1
+    _fix_tcl_tk_env()
     try:
         Widget(tk, port, scope).run()
     except tk.TclError as e:
