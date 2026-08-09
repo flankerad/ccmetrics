@@ -14,7 +14,7 @@
 ![deps](https://img.shields.io/badge/runtime%20deps-zero-8957e5)
 ![data](https://img.shields.io/badge/your%20data-never%20leaves%20your%20machine-8957e5)
 
-<sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
+<sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Status line](#the-status-line) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
 
 `/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
@@ -45,9 +45,20 @@ run `ccmetrics --all-leaks` for every finding, `ccmetrics constants` for sources
 
 `ccmetrics dash` opens the same data in your browser, on localhost, with no build step.
 
-![the ccmetrics dashboard: the week burning down as a fuse, limits left, the live session, and the top recoverable leaks](docs/assets/dash.png)
+![the ccmetrics dashboard, full page: the week fuse, limits left, the live session, recoverable leaks, this week's windows, the month, projects, and value absorbed](docs/assets/dash.png)
 
-The week is a fuse. The flame sits at what you have burnt, the clock at where the week actually is, and the gap between them tells you whether you are ahead or behind. Under it: what is left, when it empties at your current rate, the session running right now, and the leaks ranked by tokens you would get back.
+Every panel on that page, top to bottom:
+
+- **Header** — your plan tier, which project is showing, and how fresh the numbers are. Click any project row further down to narrow the whole page to it.
+- **The week fuse** — the big bar is your weekly limit burning left to right. The flame sits at what you have spent. The clock sits at where the week actually is. Flame ahead of clock means you are burning faster than the week is passing. Day markers run underneath, and the verdict up top says it in words.
+- **Burnt · Left · Empty at · Rate** — tokens spent and the percentage, tokens still available, the moment you run dry at today's pace, and that pace in tokens and dollars per hour.
+- **Live** — the session running right now: project, model, turns, block spend, burn rate, context used, cache-hit, and what this session has cost.
+- **Limits left** — one meter per limit Anthropic reports: the 5-hour block, the week across all models, and the week for any per-model cap. Each shows what is left, out of what, from how many readings, and when it resets. The line at the bottom names the one to ease off, or says nothing needs putting down.
+- **Recoverable** — every leak found, ranked by tokens you would get back against how hard the fix is. **Fix all three** projects where your week lands if you apply the top three. **Copy** puts the fix on your clipboard.
+- **This week · 24 windows** — each day split into morning, afternoon, evening, and late. Colour is how tight that 5-hour block ran: room, half, tight, dry. The right column averages the day, and the legend names which model led the week.
+- **Month · 60 windows** — the same blocks for the last 60, so a bad week reads against a normal one.
+- **Projects · 30 days** — which repos absorbed the tokens, with each one's biggest leak beside it.
+- **Value absorbed · 30 days** — what those tokens would have cost at API prices. It is not a bill; it is what your subscription covered.
 
 ## The widget
 
@@ -56,6 +67,16 @@ The week is a fuse. The flame sits at what you have burnt, the clock at where th
 ![the ccmetrics widget: a small always-on-top panel showing the week's fuse, the burn flame, the current 5-hour block, and the burn rate](docs/assets/widget.png)
 
 Drag it anywhere. The minimize button collapses it to a single line — the face, the percentage left, and the fuse with its flame. It needs Tk; see [docs/install.md](docs/install.md).
+
+## The status line
+
+ccmetrics wires itself into Claude Code's status line on first run, so the plan numbers reach you without opening anything:
+
+```
+web-app > main | ✳ Opus 5 :: default 620k/1M (62%) | $21.25 | 5h 24% left | ████▌░░░ week 26% left
+```
+
+Repo, branch, model, output style, context used, what this session has cost, then the 5-hour and weekly limits with a bar for the week. Segments you have no data for simply disappear. Full detail, including how to undo it: [docs/plan-limits.md](docs/plan-limits.md).
 
 ## Install
 
