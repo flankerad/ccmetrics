@@ -68,13 +68,14 @@ HEAD_SIZE = 13   # the verdict headline; the close X sizes off it too
 SUB_SIZE = 11    # the line under the headline
 LABEL_SIZE = 10  # the small-caps label over a bar or a footer cell
 VALUE_SIZE = 12  # the footer cells' numbers
-# The collapsed panel's height: `draw`'s sub-line sits at y=38, so this clears
-# that row, the sub-line's own text height at SUB_SIZE, and the 2px bottom
-# border -- face, headline and sub-line stay visible and nothing below them
-# does. Not iconify()d: `_show` strips the titlebar with `overrideredirect`,
-# and macOS will not reliably restore a borderless minimized window, so
-# minimizing here means collapsing the panel in place instead.
-MIN_HEIGHT = 38 + SUB_SIZE + 2
+# The collapsed panel's height: the week's fuse bar sits at top=44, height=14,
+# so its bottom edge lands at 58; 10px of clearance below that gives 68 --
+# face, a percentage-left line and the bar stay visible and nothing below
+# them does. Not iconify()d: `_show` strips the titlebar with
+# `overrideredirect`, and macOS will not reliably restore a borderless
+# minimized window, so minimizing here means collapsing the panel in place
+# instead.
+MIN_HEIGHT = 68
 
 
 def px_lvl(p: float) -> int:
@@ -668,14 +669,19 @@ class Widget:
         self.canvas.create_text(16, face_y, text=_face(pct_left), anchor="w",
                                 fill=CLAY, font=("Menlo", face_size))
         text_x = 16 + face_size + 8
+
+        if self._minimized:
+            # Collapsed: face, a short percentage-left line and the week's
+            # fuse bar -- no headline, no sub-line, nothing below the bar.
+            left_text = f"{round(pct_left)}% left" if pct_left is not None else sub
+            self.canvas.create_text(text_x, face_y, text=left_text, anchor="w",
+                                    fill=INK, font=("Menlo", HEAD_SIZE))
+            self._bar(44, 14, used_pct, source == "cap", fuse=True)
+            return
+
         self.canvas.create_text(text_x, head_y, text=verdict.upper(), anchor="w", fill=INK,
                                 font=("Menlo", HEAD_SIZE))
         self.canvas.create_text(text_x, sub_y, text=sub, anchor="w", fill=DIM, font=("Menlo", SUB_SIZE))
-
-        if self._minimized:
-            # Collapsed: face, headline and sub-line are the whole panel --
-            # stop here, before the week's fuse and everything under it.
-            return
 
         # No label over the week's bar. One would have to clear the clock,
         # which can sit at any point along the row, and stacking it above the
