@@ -153,23 +153,31 @@ def test_capsknown_renders_numbers(tmp_path):
     assert "%" in stat_row
 
 
+def _week_row(left_pct):
+    return {
+        "model": None, "label": "week all models", "short_label": "week",
+        "left_pct": left_pct, "resets_at": "2024-01-08T00:00:00Z",
+        "cap_equiv": 1_000_000, "used_pct": 100 - left_pct, "note": "",
+    }
+
+
 def test_tight_all_models_week_row_advises_ease_off(tmp_path):
     """A headroom row with no `model` (the all-models week row) still has to
     raise a warning when it's the only thing that's tight -- otherwise the
     panel falsely claims every limit has room."""
-    windows = {
-        **CAPS_KNOWN_WINDOWS,
-        "headroom": [
-            {
-                "model": None, "label": "week all models", "short_label": "week",
-                "left_pct": 8, "resets_at": "2024-01-08T00:00:00Z",
-                "cap_equiv": 1_000_000, "used_pct": 92, "note": "",
-            }
-        ],
-    }
+    windows = {**CAPS_KNOWN_WINDOWS, "headroom": [_week_row(8)]}
     rendered = _render(tmp_path, dict(COMMON, windows=windows))
     hero = rendered["cc-hero"]
     assert "NOTHING TO PUT DOWN" not in hero
-    assert "EASE OFF — WEEK" in hero
-    assert "8%" in hero
-    assert "MON" in hero
+    assert "&gt; EASE OFF — WEEK <span" in hero
+    assert ">8%</span> LEFT UNTIL MON<" in hero
+
+
+def test_all_models_week_row_with_room_still_says_nothing_to_put_down(tmp_path):
+    """The negative case: a modelless row that has plenty of room must not
+    trip the new branch -- "nothing to put down" still has to be honest."""
+    windows = {**CAPS_KNOWN_WINDOWS, "headroom": [_week_row(80)]}
+    rendered = _render(tmp_path, dict(COMMON, windows=windows))
+    hero = rendered["cc-hero"]
+    assert "NOTHING TO PUT DOWN — EVERY LIMIT HAS ROOM" in hero
+    assert "EASE OFF" not in hero
