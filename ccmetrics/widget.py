@@ -514,27 +514,27 @@ class Widget:
                     self._px(left + c * s, top + r * s, s, s, FLAME_C[ch])
 
     def _clock(self, cx: float, top: float, fuse_top: float) -> None:
-        """21 columns wide at a 2px pitch, digits on a 4-column pitch. Drawn
+        """23 columns wide at a 2px pitch, digits on a 4-column pitch. Drawn
         case -> face -> digits, the reverse of the page's shadow order, because
         a canvas paints later shapes on top where box-shadow paints earlier
         ones on top. Same picture, opposite order.
         """
         s = 2
-        left = cx - (21 * s) / 2
-        self._px(left, top, 21 * s, 11 * s, DIM)
-        self._px(left + s, top + s, 19 * s, 9 * s, INK)
+        left = cx - (23 * s) / 2
+        self._px(left, top, 23 * s, 11 * s, DIM)
+        self._px(left + s, top + s, 21 * s, 9 * s, INK)
         now = datetime.now()
         text = f"{now.hour:02d}{now.minute:02d}"
-        for glyph_i, col in enumerate((2, 6, 12, 16)):
+        for glyph_i, col in enumerate((3, 7, 13, 17)):
             glyph = PX_DIGIT[int(text[glyph_i])]
             for gr in range(5):
                 for gc in range(3):
                     if glyph[gr * 3 + gc] == "1":
                         self._px(left + (col + gc) * s, top + (gr + 3) * s, s, s, BG)
         for row in (4, 6):  # the colon, between the two pairs
-            self._px(left + 10 * s, top + row * s, s, s, BG)
+            self._px(left + 11 * s, top + row * s, s, s, BG)
         # feet, and the stem down to the bar it marks
-        for foot in (2, 4, 16, 18):
+        for foot in (3, 5, 17, 19):
             self._px(left + foot * s, top + 11 * s, s, s, DIM)
         self._px(cx - 1, top + 12 * s, 2, fuse_top - (top + 12 * s), INK)
 
