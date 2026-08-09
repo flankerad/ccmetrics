@@ -107,13 +107,27 @@ def fmt_pct(p: float | None) -> str:
     return "—" if p is None else f"{p:.0f}%"
 
 
-def fmt_clock(iso: str | None) -> str:
+def _local(iso: str | None) -> datetime | None:
+    """Parse an API timestamp and move it to this machine's clock.
+
+    The server sends UTC (`...Z`), which `fromisoformat` reads as a UTC-aware
+    datetime; `strftime` on that prints the UTC clock. The page converts to
+    local (index.html's `new Date(iso).getHours()`), so a widget that printed
+    the raw UTC named a reset hours off from the page's -- and, near midnight,
+    the wrong weekday. Naive timestamps are already local and pass through.
+    """
     if not iso:
-        return "—"
+        return None
     try:
-        return datetime.fromisoformat(iso).strftime("%H:%M")
+        d = datetime.fromisoformat(iso)
     except ValueError:
-        return "—"
+        return None
+    return d.astimezone() if d.tzinfo is not None else d
+
+
+def fmt_clock(iso: str | None) -> str:
+    d = _local(iso)
+    return "—" if d is None else d.strftime("%H:%M")
 
 
 def fmt_day_clock(iso: str | None) -> str:
@@ -123,13 +137,8 @@ def fmt_day_clock(iso: str | None) -> str:
     days ahead, and a bare `15:41` under EMPTY AT reads as tonight. The page
     has always carried the weekday (index.html's DAY_UP); this now matches it.
     """
-    if not iso:
-        return "—"
-    try:
-        d = datetime.fromisoformat(iso)
-    except ValueError:
-        return "—"
-    return d.strftime("%a %H:%M").upper()
+    d = _local(iso)
+    return "—" if d is None else d.strftime("%a %H:%M").upper()
 
 
 # Calm -> alarmed face, the same six-stop ladder as index.html's heroFuse,
