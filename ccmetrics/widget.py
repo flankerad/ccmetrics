@@ -44,16 +44,28 @@ PX_DIGIT = [
     "111101111101111", "111101111001111",
 ]
 
-# The flame, one frame of the page's three, on a 7x10 grid. The page animates
-# its tip; a widget that redraws every 20 seconds does not, so it keeps the
-# frame with the tip centred and drops the flicker.
+# The flame, all three frames of the page's own animation, each on a 7x10
+# grid, transcribed from the three box-shadow lists in index.html's `flame`
+# (only the tip -- the top rows -- differs between them). A `Widget.after`
+# timer cycles `self._flame_frame` through these at the page's own 140ms-a-
+# frame rate, so the widget's flame flickers the same way the page's does.
 FLAME_C = {
     "R": "#c9341f", "O": "#e0512a", "Y": "#f07f2c",
     "W": "#ffe6b0", "C": "#ffc65e", "D": "#a82a18",
 }
-FLAME = [
-    "...R...", "...R...", "..OOO..", "..OOO..", ".YYWYY.",
-    ".YYWYY.", ".YYWYY.", "OOCCCOO", "OOCCCOO", ".DDDDD.",
+FLAME_FRAMES = [
+    [
+        "...R...", "...R...", "..OOO..", "..OOO..", ".YYWYY.",
+        ".YYWYY.", ".YYWYY.", "OOCCCOO", "OOCCCOO", ".DDDDD.",
+    ],
+    [
+        "....R..", "...RR..", "..OOO..", "..OOO..", ".YYWYY.",
+        ".YYWYY.", "YYYWYYY", "OOCCCOO", "OOCCCOO", ".DDDDD.",
+    ],
+    [
+        "...R...", "..RR...", "..OOO..", ".OOOO..", ".YYWYY.",
+        ".YYWYY.", ".YYWYY.", "OOCCCOO", "OOCCCOO", ".DDDDD.",
+    ],
 ]
 
 CELLS = 40
@@ -68,14 +80,14 @@ HEAD_SIZE = 13   # the verdict headline; the close X sizes off it too
 SUB_SIZE = 11    # the line under the headline
 LABEL_SIZE = 10  # the small-caps label over a bar or a footer cell
 VALUE_SIZE = 12  # the footer cells' numbers
-# The collapsed panel's height: the week's fuse bar sits at top=44, height=14,
-# so its bottom edge lands at 58; 10px of clearance below that gives 68 --
-# face, a percentage-left line and the bar stay visible and nothing below
-# them does. Not iconify()d: `_show` strips the titlebar with
-# `overrideredirect`, and macOS will not reliably restore a borderless
-# minimized window, so minimizing here means collapsing the panel in place
-# instead.
-MIN_HEIGHT = 68
+# The collapsed panel's height: the week's fuse bar sits at top=52, height=14,
+# so its bottom edge lands at 66; 10px of clearance below that gives 76 --
+# face, a percentage-left line and the bar (plus the flame riding it) stay
+# visible and nothing below them does. Not iconify()d: `_show` strips the
+# titlebar with `overrideredirect`, and macOS will not reliably restore a
+# borderless minimized window, so minimizing here means collapsing the panel
+# in place instead.
+MIN_HEIGHT = 76
 
 
 def px_lvl(p: float) -> int:
@@ -278,6 +290,13 @@ class Widget:
         self._minimized = False
         self._draw_timer: str | None = None
         self._poll_timer: str | None = None
+        # The flame's own animation state: which of FLAME_FRAMES is current,
+        # a timer that just cycles it, and the (cx, bottom) `draw()` last
+        # placed a flame at -- None when no flame is showing (no known cap) --
+        # so the timer can redraw just the flame without a full repaint.
+        self._flame_frame = 0
+        self._flame_timer: str | None = None
+        self._flame_pos: tuple[float, float] | None = None
 
         root = tk.Tk()
         root.title("ccmetrics")
@@ -328,12 +347,13 @@ class Widget:
         `put` takes a row-major list of colour rows, so the flame is scaled by
         repeating each pixel `s` times across and each row `s` times down.
         """
-        size, grid = 64, len(FLAME)
+        frame = FLAME_FRAMES[0]
+        size, grid = 64, len(frame)
         s = 5  # 7x10 flame at 5x -> 35x50 inside a 64px tile
-        pad_x = (size - len(FLAME[0]) * s) // 2
+        pad_x = (size - len(frame[0]) * s) // 2
         pad_y = (size - grid * s) // 2
         rows = [[SURF] * size for _ in range(size)]
-        for r, row in enumerate(FLAME):
+        for r, row in enumerate(frame):
             for c, ch in enumerate(row):
                 if ch == ".":
                     continue
@@ -417,6 +437,9 @@ class Widget:
         if self._poll_timer is not None:
             self.root.after_cancel(self._poll_timer)
             self._poll_timer = None
+        if self._flame_timer is not None:
+            self.root.after_cancel(self._flame_timer)
+            self._flame_timer = None
         self.root.destroy()
 
     # ---- data ----------------------------------------------------------
@@ -458,6 +481,21 @@ class Widget:
         threading.Thread(target=self._fetch, daemon=True).start()
         self._draw_timer = self.root.after(400, self.draw)
         self._poll_timer = self.root.after(POLL_SECONDS * 1000, self._poll)
+
+    def _flame_tick(self) -> None:
+        """Cycles `self._flame_frame` at the page's own rate -- 0.42s over
+        three frames is 140ms each -- and redraws just the flame at its last
+        known position, rather than a full `draw()`, so the fuse bar, the
+        clock and the rest of the panel do not repaint 7x a second along
+        with it.
+        """
+        if self._closing:
+            return
+        self._flame_frame = (self._flame_frame + 1) % len(FLAME_FRAMES)
+        if self._flame_pos is not None:
+            self.canvas.delete("flame")
+            self._flame(*self._flame_pos)
+        self._flame_timer = self.root.after(140, self._flame_tick)
 
     # ---- drawing -------------------------------------------------------
 
@@ -506,13 +544,20 @@ class Widget:
             self._px(x0 + m, y - w / 2, (x1 - x0) - 2 * m, w, DIM, tags=("min", "min_mark"))
 
     def _flame(self, cx: float, bottom: float) -> None:
-        s = 2  # 7x10 grid at 2px -> a 14x20 flame, the page's own footprint
-        left = cx - (len(FLAME[0]) * s) / 2
-        top = bottom - len(FLAME) * s
-        for r, row in enumerate(FLAME):
+        """Centres on `cx`, sits bottom-down from `bottom`. Draws whichever
+        of FLAME_FRAMES `self._flame_frame` is currently on, tagged 'flame'
+        so `_flame_tick` can erase and redraw just this without touching the
+        rest of the panel. `draw()` records the position it called this with
+        on `self._flame_pos` -- the tick has no other way to know it.
+        """
+        s = 3  # 7x10 grid at 3px -> a 21x30 flame
+        frame = FLAME_FRAMES[self._flame_frame]
+        left = cx - (len(frame[0]) * s) / 2
+        top = bottom - len(frame) * s
+        for r, row in enumerate(frame):
             for c, ch in enumerate(row):
                 if ch != ".":
-                    self._px(left + c * s, top + r * s, s, s, FLAME_C[ch])
+                    self._px(left + c * s, top + r * s, s, s, FLAME_C[ch], tags=("flame",))
 
     def _clock(self, cx: float, top: float, fuse_top: float) -> None:
         """23 columns wide at a 2px pitch, digits on a 4-column pitch. Drawn
@@ -630,6 +675,7 @@ class Widget:
         self._draw_min()
 
         if self.data is None:
+            self._flame_pos = None
             self.canvas.create_text(
                 WIDTH / 2, panel_h / 2, text=self.error or "reading the week…",
                 fill=DIM, font=("Menlo", HEAD_SIZE),
@@ -665,7 +711,11 @@ class Widget:
         # is exactly these two text rows, so the face's y is their midpoint
         # -- derived from head_y/sub_y rather than a third, separately
         # measured pixel that could drift out of line with either row.
-        face_y = (head_y + sub_y) / 2
+        # Collapsed has no headline/sub-line row to centre against, and the
+        # bar (with the now-30px flame riding its bottom edge) sits lower
+        # than expanded's -- 18 keeps the face and the '% left' line clear
+        # of the flame's tip instead of inheriting expanded's lower face_y.
+        face_y = 18 if self._minimized else (head_y + sub_y) / 2
         self.canvas.create_text(16, face_y, text=_face(pct_left), anchor="w",
                                 fill=CLAY, font=("Menlo", face_size))
         text_x = 16 + face_size + 8
@@ -676,11 +726,14 @@ class Widget:
             left_text = f"{round(pct_left)}% left" if pct_left is not None else sub
             self.canvas.create_text(text_x, face_y, text=left_text, anchor="w",
                                     fill=INK, font=("Menlo", HEAD_SIZE))
-            self._bar(44, 14, used_pct, source == "cap", fuse=True)
+            self._bar(52, 14, used_pct, source == "cap", fuse=True)
             if source == "cap":
                 pad = 16
                 bar_l, bar_w = pad, WIDTH - pad * 2
-                self._flame(bar_l + bar_w * used_pct / 100, 44 + 14)
+                self._flame_pos = (bar_l + bar_w * used_pct / 100, 52 + 14)
+                self._flame(*self._flame_pos)
+            else:
+                self._flame_pos = None
             return
 
         self.canvas.create_text(text_x, head_y, text=verdict.upper(), anchor="w", fill=INK,
@@ -698,7 +751,10 @@ class Widget:
         if clock_pct is not None:
             self._clock(bar_l + bar_w * clock_pct / 100, 48, fuse_top)
         if source == "cap":
-            self._flame(bar_l + bar_w * used_pct / 100, fuse_top + bar_h)
+            self._flame_pos = (bar_l + bar_w * used_pct / 100, fuse_top + bar_h)
+            self._flame(*self._flame_pos)
+        else:
+            self._flame_pos = None
 
         self._px(pad, 116, bar_w, 2, LINE)
         self._block(126, w.get("current_block"), caps_known)
@@ -763,6 +819,7 @@ class Widget:
         self.draw()
         self._show()
         self._poll()
+        self._flame_timer = self.root.after(140, self._flame_tick)
         self.root.mainloop()
 
 

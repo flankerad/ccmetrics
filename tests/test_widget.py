@@ -311,10 +311,11 @@ def test_shutdown_cancels_both_timers_then_destroys():
     w._closing = False
     w._draw_timer = "draw_id"
     w._poll_timer = "poll_id"
+    w._flame_timer = "flame_id"
     w.root = _StubRoot()
     widget.Widget._shutdown(w)
     assert w._closing is True
-    assert w.root.cancelled == ["draw_id", "poll_id"]
+    assert w.root.cancelled == ["draw_id", "poll_id", "flame_id"]
     assert w.root.destroyed is True
 
 
@@ -323,6 +324,7 @@ def test_shutdown_tolerates_no_pending_timers():
     w._closing = False
     w._draw_timer = None
     w._poll_timer = None
+    w._flame_timer = None
     w.root = _StubRoot()
     widget.Widget._shutdown(w)
     assert w.root.cancelled == []
