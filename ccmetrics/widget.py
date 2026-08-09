@@ -503,6 +503,13 @@ class Widget:
         known position, rather than a full `draw()`, so the fuse bar, the
         clock and the rest of the panel do not repaint 7x a second along
         with it.
+
+        Re-arms unconditionally, for the widget's life -- unlike the page's
+        CSS `steps(3)` keyframe, which the browser composites and pauses
+        itself, this keeps firing (and, once a flame is showing, keeps
+        deleting/recreating its ~24 rects) even while `self._flame_pos` is
+        `None` or the panel sits idle all day. Accepted cost of a stdlib-only
+        Tk port having no such backstop of its own.
         """
         if self._closing:
             return
