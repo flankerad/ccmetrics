@@ -121,11 +121,11 @@ ccmetrics autostart   # login startup: --apply, --check, --revert
 
 ## Why
 
-Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/`. Almost nobody reads it, and the tools that do get the numbers wrong:
+Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/`. Almost nobody reads it, and the fields that look like the answer are the wrong ones:
 
-- **The obvious token fields lie.** `usage.input_tokens` / `output_tokens` are streaming placeholders that undercount by 100–174×. Most dashboards sum them anyway.
+- **The obvious token fields undercount.** `usage.input_tokens` / `output_tokens` are unfinalized streaming placeholders, low by 17–174× ([claude-code#28197](https://github.com/anthropics/claude-code/issues/28197)). ccmetrics stores them raw and never prices them.
 - **The cache fields are accurate.** Every dollar here is built from them, never from a guess dressed up as a fact.
-- **Nobody closes the loop.** Other tools show charts. None detect leak *patterns* and attach a fix you can paste.
+- **A chart is not a fix.** Knowing you spent $41 changes nothing on its own. ccmetrics names the pattern behind the spend and hands you the line that stops it.
 
 ## The 12 leak detectors
 
