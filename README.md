@@ -66,7 +66,11 @@ Every panel on that page, top to bottom:
 
 ![the ccmetrics widget: a small always-on-top panel showing the week's fuse, the burn flame, the current 5-hour block, and the burn rate](docs/assets/widget.png)
 
-Drag it anywhere. The minimize button collapses it to a single line — the face, the percentage left, and the fuse with its flame. It needs Tk; see [docs/install.md](docs/install.md).
+Drag it anywhere. It needs Tk; see [docs/install.md](docs/install.md).
+
+The minimize button collapses it to one line — the face, the percentage left, and the same fuse with its flame:
+
+![the collapsed ccmetrics widget: one line with the face, the percentage left, and the week's fuse with its flame](docs/assets/widget-min.png)
 
 ## The status line
 
