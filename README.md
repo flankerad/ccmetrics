@@ -88,13 +88,40 @@ Repo, branch, model, output style, context used, what this session has cost, the
 
 ## The Claude Code skill
 
-Ask Claude Code itself. The repo ships a skill at [.claude/skills/ccmetrics/SKILL.md](.claude/skills/ccmetrics/SKILL.md) — copy that folder into `~/.claude/skills/` and questions like *"will my plan last the week?"*, *"what's burning tokens?"*, or *"any leaks?"* make Claude run the right `ccmetrics` command and answer from the real numbers instead of guessing:
+Ask Claude Code itself, in your own words — the repo ships a skill at
+[.claude/skills/ccmetrics/SKILL.md](.claude/skills/ccmetrics/SKILL.md) that turns the
+question into the right `ccmetrics` command and answers from real numbers.
+
+**Install it globally** — one copy, works in every repo:
 
 ```bash
 mkdir -p ~/.claude/skills && cp -r .claude/skills/ccmetrics ~/.claude/skills/
 ```
 
-Answering a question only ever reads. Asking Claude to keep the numbers fresh lets it run the installers too — `setup` saves whatever status line you already had, and `ccmetrics setup --revert` restores it from that backup — or, if there is no usable backup, removes ours and leaves the slot empty. `autostart` installs two login services: one keeping the dash alive, one opening the widget. Every command the skill documents is checked against the real CLI by `tests/test_skill_doc.py`, so a flag that moves cannot reach you as a broken instruction.
+**Then just ask:**
+
+| You say | Claude runs |
+|---|---|
+| *"will my plan last the week?"* | `ccmetrics`, reads the PLAN line |
+| *"what's burning tokens?"* | `ccmetrics --all-leaks` |
+| *"show me everything, all projects"* | `ccmetrics --global` |
+| *"open the dashboard"* | `ccmetrics dash` |
+
+**What it changes on your machine.** On the first question of a session, the skill checks
+whether the numbers are set up to refresh themselves, and wires what is missing:
+
+| Command | Effect | Undo |
+|---|---|---|
+| `ccmetrics setup --apply` | puts plan % in your status line; a status line already there is saved to `~/.claude/settings.json.bak-ccmetrics` first | `ccmetrics setup --revert` — restores the saved one, or clears the slot if there was none |
+| `ccmetrics autostart --apply` | two login services: one keeps the dash alive, one opens the widget | `ccmetrics autostart --revert` |
+
+Answering a question never writes. If a status line you already use would be displaced,
+Claude names it and asks first; decline and you still get every answer, just from the last
+stored reading.
+
+Every command the skill documents is parsed against the real CLI by
+[tests/test_skill_doc.py](tests/test_skill_doc.py), so a flag that moves fails a test here
+instead of reaching you as a broken instruction.
 
 ## Install
 
