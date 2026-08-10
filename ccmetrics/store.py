@@ -589,7 +589,10 @@ def latest_plan_windows(conn: sqlite3.Connection, now_iso: str | None = None) ->
 
     `now_iso` lets a caller with its own clock (`windows.projection`) keep the
     hero and the store from disagreeing about "now"; callers with no opinion
-    get the real wall clock.
+    get the real wall clock. Comparison against `resets_at` is a plain string
+    compare, so `now_iso` must already be in the store's own
+    `%Y-%m-%dT%H:%M:%SZ` shape (`windows.iso`) -- a `+00:00`/fractional-second
+    ISO string would sort wrong and silently invert the comparison.
     """
     if now_iso is None:
         now_iso = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
