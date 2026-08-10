@@ -115,7 +115,7 @@ whether the numbers are set up to refresh themselves, and wires what is missing:
 | `ccmetrics setup --apply` | puts plan % in your status line; a status line already there is saved to `~/.claude/settings.json.bak-ccmetrics` first | `ccmetrics setup --revert` — restores the saved one, or clears the slot if there was none |
 | `ccmetrics autostart --apply` | two login services: one keeps the dash alive, one opens the widget | `ccmetrics autostart --revert` |
 
-Answering a question never writes. If a status line you already use would be displaced,
+Past that first check, answering a question never writes. If a status line you already use would be displaced,
 Claude names it and asks first; decline and you still get every answer, just from the last
 stored reading.
 
@@ -193,7 +193,7 @@ Every saving links its arithmetic: the hits it sums, the threshold it crossed, a
 - **Local only.** No network egress of usage data, no account, no cloud, no telemetry.
 - **Metadata only.** Counts, byte sizes, timestamps, tool names, file paths, hashes — **never** prompt text, file contents, or tool-result bodies.
 - **Read-only against your session logs.** It never modifies your Claude Code sessions; its only writes are the two named below.
-- **Proposes, never applies.** ccmetrics edits none of your files. Two exceptions, named so they are never a surprise: on first run it adds its own status-line command to `~/.claude/settings.json` (backing up whatever was there; `ccmetrics setup --revert` puts it back, `--no-setup` skips it), and it drops login-autostart entries for the dashboard and widget (`ccmetrics autostart --revert` removes them, `--no-autostart` skips it).
+- **Two writes outside its own state, both undoable.** ccmetrics edits none of your other files. It adds its status-line command to `~/.claude/settings.json`, backing up whatever was there (`ccmetrics setup --revert` puts it back, `--no-setup` skips it), and it drops login-autostart entries for the dashboard and widget (`ccmetrics autostart --revert` removes them, `--no-autostart` skips it). Both happen on the CLI's first run, and the skill wires the same two on its first question of a session — a status line belonging to another tool is never taken without asking.
 - **One state file.** SQLite, capped under 100 MB, delete it any time.
 - **Unknown stays unknown.** Anything not derivable is shown as unknown. Wrong-but-confident is the failure mode this tool exists to avoid.
 
