@@ -6,7 +6,7 @@
        alt="ccmetrics logo: four model-coloured bars, the tallest leaking clay-coloured token drops, beside the ccmetrics wordmark">
 </picture>
 
-**Find where Claude Code burns your tokens — and get a paste-ready fix for each leak.**
+**Will your plan last the week? ccmetrics races your burn against the clock, finds where Claude Code leaks the tokens, and gives you a concrete fix for each leak — most of them paste-ready.**
 
 ![python](https://img.shields.io/badge/python-3.11%2B-3572A5)
 ![license](https://img.shields.io/badge/license-Apache--2.0-3fb950)
@@ -16,7 +16,7 @@
 
 <sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Status line](#the-status-line) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
 
-`/cost` tells you how much you spent. `ccmetrics` tells you *why*, tracks it over time, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
+`/cost` tells you how much you spent. `ccmetrics` tells you whether the week and the current 5-hour block will last at today's pace, *why* the tokens go, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
 ```
 ccmetrics · your-project · last 30 days
@@ -93,7 +93,7 @@ git clone https://github.com/flankerad/ccmetrics && cd ccmetrics
 uv tool install .            # or: pipx install . / pip install -e .
 ```
 
-Then run `ccmetrics` once. It prints your summary, wires its own status line into Claude Code so your plan usage shows there, opens the dashboard, and registers both to start at login. It does that on the first run only — every run after that just prints.
+Then run `ccmetrics` once. It prints your summary, wires its own status line into Claude Code so your plan usage shows there, opens the dashboard, and registers the dashboard — and the widget, when Tk is present — to start at login. It does that on the first run only — every run after that just prints.
 
 Skip any of it with `--no-dash`, `--no-setup`, or `--no-autostart`. Full notes, including the Tk requirement for the widget: [docs/install.md](docs/install.md).
 
@@ -112,7 +112,8 @@ ccmetrics autostart   # login startup: --apply, --check, --revert
 
 ## What you get
 
-- **A dollar floor you can defend.** Every figure comes from the log's cache token fields — the ones that are actually accurate (see [Why](#why)) — × Anthropic's published multipliers, labelled a floor. Output cost appears as a separate range, never silently summed in.
+- **An answer to "will it last?".** The fuse races your burn against the clock — flame ahead of the clock means you run dry before the reset. *Empty at* names that moment at today's pace, and the limits panel names which cap to ease off first.
+- **A dollar floor you can defend.** Every figure comes from the log's cache token fields — the ones that hold up (see [Why](#why)) — × Anthropic's published multipliers, labelled a floor. Output cost appears as a separate range, never silently summed in.
 - **12 leak detectors, each with a fix.** Ranked by tokens saved ÷ how hard the fix is, filled in with your own numbers.
 - **A dashboard at a glance.** Live session tiles (burn rate, context %, cache-hit, spend — a runaway session is flagged *while it runs*), a 30-day spend trend, the token mix, top leaks with a copy button, and a per-project table.
 - **Your plan usage in the status line.** The 5-hour and weekly percentages Anthropic reports, plus an eight-cell bar for the week. See [docs/plan-limits.md](docs/plan-limits.md).
@@ -124,7 +125,7 @@ ccmetrics autostart   # login startup: --apply, --check, --revert
 Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/`. Almost nobody reads it, and the fields that look like the answer are the wrong ones:
 
 - **The obvious token fields undercount.** `usage.input_tokens` / `output_tokens` are unfinalized streaming placeholders, low by 17–174× ([claude-code#28197](https://github.com/anthropics/claude-code/issues/28197)). ccmetrics stores them raw and never prices them.
-- **The cache fields are accurate.** Every dollar here is built from them, never from a guess dressed up as a fact.
+- **The cache fields hold up.** Every dollar here is built from them, never from a guess dressed up as a fact — and the optional OTEL receiver exists to cross-check them against exact costs.
 - **A chart is not a fix.** Knowing you spent $41 changes nothing on its own. ccmetrics names the pattern behind the spend and hands you the line that stops it.
 
 ## The 12 leak detectors
@@ -144,14 +145,14 @@ Claude Code writes a detailed JSONL log of every session to `~/.claude/projects/
 | 11 | Runaway live session (burn ≫ your own p90) | live warning |
 | 12 | File re-read waste (same file read 3×+, unchanged) | read-discipline line |
 
-Every saving links its arithmetic: the hits it sums, the threshold it crossed, and the pricing constant it used. The `CLAUDE.md` lines are safe to paste as-is. The `settings.json` suggestions are starting points — only you know which model choices and permission denials are deliberate.
+Every saving links its arithmetic: the hits it sums, the threshold it crossed, and the pricing constant it used. The `CLAUDE.md` lines are written to be safe to paste as-is. The `settings.json` suggestions are starting points — only you know which model choices and permission denials are deliberate.
 
 ## Privacy
 
 - **Local only.** No network egress of usage data, no account, no cloud, no telemetry.
 - **Metadata only.** Counts, byte sizes, timestamps, tool names, file paths, hashes — **never** prompt text, file contents, or tool-result bodies.
-- **Read-only against `~/.claude`.** It cannot damage your Claude Code install or sessions.
-- **Proposes, never applies.** ccmetrics edits none of your files. The one exception, named so it is never a surprise: on first run it adds its own status-line command to `~/.claude/settings.json`, backing up whatever was there. `ccmetrics setup --revert` puts it back, and `--no-setup` skips it.
+- **Read-only against your session logs.** It never modifies your Claude Code sessions; its only writes are the two named below.
+- **Proposes, never applies.** ccmetrics edits none of your files. Two exceptions, named so they are never a surprise: on first run it adds its own status-line command to `~/.claude/settings.json` (backing up whatever was there; `ccmetrics setup --revert` puts it back, `--no-setup` skips it), and it drops login-autostart entries for the dashboard and widget (`ccmetrics autostart --revert` removes them, `--no-autostart` skips it).
 - **One state file.** SQLite, capped under 100 MB, delete it any time.
 - **Unknown stays unknown.** Anything not derivable is shown as unknown. Wrong-but-confident is the failure mode this tool exists to avoid.
 
