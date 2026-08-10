@@ -438,7 +438,7 @@ def _wait_port_silent(port: int) -> None:
         time.sleep(RESTART_WAIT_STEP)
 
 
-def restart_if_outdated(port: int = 7433, timeout: float = 1.5) -> None:
+def restart_if_outdated(port: int = 7433, timeout: float = 1.5) -> bool:
     """D60's other reader: the plain `ccmetrics` summary never opens the
     widget, so `Widget._check_version`'s poll-driven check never runs for
     it. Same stale-dash problem (module docstring), same D59 pid-file
@@ -449,32 +449,39 @@ def restart_if_outdated(port: int = 7433, timeout: float = 1.5) -> None:
     keep the summary the user actually asked for from printing. The short
     `timeout` bounds the one network round trip; the kill+respawn below is
     fire-and-forget, so a slow-to-die old dash does not hold up the CLI.
+
+    Returns True in exactly the D62 gap: a dash answered, it is outdated,
+    and no usable pid file names it, so no restart could be attempted. The
+    caller uses that to tell the user this run could not self-heal. Every
+    other outcome (current, unreachable, or a restart actually attempted)
+    returns False -- those cases must stay silent.
     """
     try:
         url = f"http://127.0.0.1:{port}/api/windows"
         with urllib.request.urlopen(url, timeout=timeout) as r:
             if r.status != 200:
-                return
+                return False
             body = json.loads(r.read().decode())
         if not isinstance(body, dict) or body.get("server_version") == __version__:
-            return
+            return False
         info = _read_pid_file(_pid_path())
         if info is None:
-            return
+            return True
         pid, pid_port = info
         if pid_port != port or not _pid_alive(pid):
-            return
+            return True
         try:
             os.kill(pid, signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
-            return
+            return False
         _wait_port_silent(pid_port)
         subprocess.Popen(
             [sys.executable, "-m", "ccmetrics", "dash", "--no-open", "--port", str(pid_port)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
         )
+        return False
     except Exception:
-        return
+        return False
 
 
 class Widget:

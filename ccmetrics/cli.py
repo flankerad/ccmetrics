@@ -524,10 +524,21 @@ def main(argv: list[str] | None = None) -> int:
         # opens it. Short timeout inside, and any failure here -- nothing
         # running, a restart that itself fails -- must never stop the
         # summary this command exists to print.
+        #
+        # D62: a dash started before D59 (no pid file) or before D60 (no
+        # `server_version`) is outdated but cannot be self-healed here --
+        # `restart_if_outdated` returns True in exactly that gap so the
+        # user learns the update needs a manual nudge instead of getting
+        # silently stuck on old code forever.
         try:
             from . import widget as widget_mod
 
-            widget_mod.restart_if_outdated()
+            if widget_mod.restart_if_outdated():
+                print(
+                    "ccmetrics dash is running an older version and couldn't "
+                    "be restarted automatically -- stop it and run `ccmetrics "
+                    "dash` again (or click the widget's ↻ button)."
+                )
         except Exception:
             pass
 
