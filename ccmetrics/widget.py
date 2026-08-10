@@ -22,6 +22,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -30,6 +31,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
+from pathlib import Path
+
+from . import store
 
 BG = "#191714"
 SURF = "#221e1a"
@@ -81,6 +85,17 @@ DASH_SPAWN_COOLDOWN = 30
 # that can never bind the port (bad install, a port nothing can free) must
 # not turn into a respawn every `DASH_SPAWN_COOLDOWN` seconds for good.
 DASH_SPAWN_ATTEMPTS = 2
+# The pid file `dash/server.py`'s `serve()` writes on startup (and removes on
+# clean shutdown), read here by the restart button so it can signal the exact
+# process the widget's numbers are coming from -- never a process found by
+# scanning ports or matching a command name.
+DASH_PID_FILENAME = "dash.pid"
+# Bounded wait, after signalling the old dash, for its port to stop
+# answering -- roughly the same order as `_kill_and_wait`'s own ~2s budget in
+# dash/server.py, with a little headroom since this also has to notice a
+# SIGTERM that took a beat to land.
+RESTART_WAIT_SECONDS = 3
+RESTART_WAIT_STEP = 0.1
 WIDTH = 470
 HEIGHT = 210
 # Every type size in the widget, in one place. They were inline literals two
@@ -303,6 +318,93 @@ def _hit_min(x: float, y: float) -> bool:
     return x0 <= x <= x1 and y0 <= y <= y1
 
 
+def _restart_rect() -> tuple[float, float, float, float]:
+    """Hit box for the restart '↻' button, immediately left of minimize --
+    same HEAD_SIZE square, same 8px gap, derived from `_min_rect()` so all
+    three buttons can never drift apart from one another.
+    """
+    mx0, my0, mx1, my1 = _min_rect()
+    gap = 8
+    x1 = mx0 - gap
+    x0 = x1 - (mx1 - mx0)
+    return x0, my0, x1, my1
+
+
+def _hit_restart(x: float, y: float) -> bool:
+    """Whether a canvas point (e.g. a click) lands on the restart button."""
+    x0, y0, x1, y1 = _restart_rect()
+    return x0 <= x <= x1 and y0 <= y <= y1
+
+
+def _pid_path() -> Path:
+    """Where `dash/server.py`'s `serve()` records its own pid + port --
+    alongside the store's own data dir, so `CCMETRICS_DB` overrides it the
+    same way it overrides the store's db file. Reuses `store.db_path()`
+    rather than re-deriving that env-var lookup a second time.
+    """
+    return store.db_path().parent / DASH_PID_FILENAME
+
+
+def _read_pid_file(path: Path) -> tuple[int, int] | None:
+    """(pid, port) from the dash's own pid file, or None if it is missing,
+    unreadable, or not the {"pid": int, "port": int} shape `serve()` writes.
+    A malformed or absent file is never an error here -- it is exactly the
+    "dash started some other way" case the restart button has to fall back
+    from (see `Widget._restart_worker`).
+    """
+    try:
+        body = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    pid, port = body.get("pid"), body.get("port")
+    if not isinstance(pid, int) or not isinstance(port, int):
+        return None
+    return pid, port
+
+
+def _pid_alive(pid: int) -> bool:
+    """Signal 0: no delivery, just an existence/permission check."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, just not ours -- still alive
+    return True
+
+
+def _dash_answers(port: int, timeout: float = 1.5) -> bool:
+    """Same shape check as the dash's own `_probe_ccmetrics` (dash/server.py):
+    GET /api/windows answers 200 with the JSON windows_payload emits. Anything
+    else -- wrong shape, an error, a refused connection -- means whatever is
+    on this port is not (or is no longer) a ccmetrics dash. This, plus
+    `_pid_alive`, is the pid file's pid and port confirmed together before a
+    restart is ever allowed to signal it.
+    """
+    url = f"http://127.0.0.1:{port}/api/windows"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            if r.status != 200:
+                return False
+            body = json.loads(r.read().decode())
+    except Exception:
+        return False
+    return isinstance(body, dict) and "scope" in body and "caps_known" in body
+
+
+def _wait_port_silent(port: int) -> None:
+    """Bounded ~RESTART_WAIT_SECONDS poll for a just-signalled dash's port to
+    stop answering, so the respawn that follows does not race a process
+    still tearing down. Always called from `Widget._restart_worker`, off the
+    main thread, so this sleeping loop never blocks the Tk event loop.
+    """
+    deadline = time.monotonic() + RESTART_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if not _dash_answers(port, timeout=0.3):
+            return
+        time.sleep(RESTART_WAIT_STEP)
+
+
 class Widget:
     """The window itself. Owns the canvas and the poll timer, nothing else."""
 
@@ -323,6 +425,9 @@ class Widget:
         self._dash_proc: subprocess.Popen | None = None
         self._dash_spawn_at: float | None = None
         self._dash_fails = 0
+        # True while `_restart_worker` is running off-thread; `_poll_restart`
+        # watches it on the main thread to know when to draw the outcome.
+        self._restarting = False
         # The flame's own animation state: which of FLAME_FRAMES is current,
         # a timer that just cycles it, and the (cx, bottom) `draw()` last
         # placed a flame at -- None when no flame is showing (no known cap) --
@@ -371,6 +476,14 @@ class Widget:
         self.canvas.tag_bind("min", "<Enter>", lambda _e: self._min_hover(True))
         self.canvas.tag_bind("min", "<Leave>", lambda _e: self._min_hover(False))
 
+        # The restart '↻' button: same tag-bind pattern as close and min, so
+        # it too survives every draw()'s delete("all"). Same after_idle
+        # deferral, for the same reason -- _restart_dash's own draw() must
+        # not run while Tk is still dispatching the click that triggered it.
+        self.canvas.tag_bind("restart", "<Button-1>", lambda _e: root.after_idle(self._restart_dash))
+        self.canvas.tag_bind("restart", "<Enter>", lambda _e: self._restart_hover(True))
+        self.canvas.tag_bind("restart", "<Leave>", lambda _e: self._restart_hover(False))
+
     def _icon(self):
         """The Dock tile: the same pixel flame the fuse burns, on the panel's
         own dark square. Built at runtime rather than shipped as a file --
@@ -398,12 +511,12 @@ class Widget:
         return img
 
     def _grab(self, e) -> None:
-        if _hit_close(e.x, e.y) or _hit_min(e.x, e.y):
-            # The X and the minimize button handle their own clicks; this
-            # must not start a drag. Clear the anchor rather than just
-            # skipping the update -- a stale one would let a press-on-a-
-            # button-then-drag-off jump the window by the delta from
-            # whatever the *previous* click left behind.
+        if _hit_close(e.x, e.y) or _hit_min(e.x, e.y) or _hit_restart(e.x, e.y):
+            # The X, the minimize button and the restart button all handle
+            # their own clicks; this must not start a drag. Clear the anchor
+            # rather than just skipping the update -- a stale one would let
+            # a press-on-a-button-then-drag-off jump the window by the delta
+            # from whatever the *previous* click left behind.
             self._drag = None
             return
         self._drag = (e.x, e.y)
@@ -420,6 +533,10 @@ class Widget:
     def _min_hover(self, on: bool) -> None:
         self.canvas.itemconfigure("min_bg", fill=LINE if on else SURF)
         self.canvas.itemconfigure("min_mark", fill=INK if on else DIM)
+
+    def _restart_hover(self, on: bool) -> None:
+        self.canvas.itemconfigure("restart_bg", fill=LINE if on else SURF)
+        self.canvas.itemconfigure("restart_mark", fill=INK if on else DIM)
 
     def _toggle_min(self) -> None:
         if self._closing:
@@ -591,6 +708,86 @@ class Widget:
                 return f"starting dash on :{self.port}…"
         return f"nothing on :{self.port} — run  ccmetrics dash"
 
+    # ---- restart ---------------------------------------------------------
+
+    def _restart_dash(self) -> None:
+        """↻: restart the *dash server* the widget reads from, never the
+        widget itself -- the window sits wherever the user dragged it, and
+        re-execing this process would lose that spot. Every number on the
+        panel comes from that server's own `/api/windows` (module
+        docstring), which holds old code in memory until its process is
+        killed and a fresh one takes its place; this drives exactly that.
+
+        Only sets the transient placeholder and hands off to the worker
+        thread -- the pid read, the signal, the bounded wait and the
+        respawn all happen there, off this (the Tk) thread.
+        """
+        if self._closing:
+            return
+        self.data = None
+        self.error = "restarting dash…"
+        self._restarting = True
+        self.draw()
+        threading.Thread(target=self._restart_worker, daemon=True).start()
+        self._poll_restart()
+
+    def _poll_restart(self) -> None:
+        """Watches `self._restarting` every 200ms on the main thread rather
+        than blocking it -- the bounded wait for the old dash's port to go
+        quiet happens inside `_restart_worker`, off this thread entirely;
+        this only notices when that thread flips the flag back off, then
+        draws once with whatever it left behind.
+        """
+        if self._closing:
+            return
+        if self._restarting:
+            self.root.after(200, self._poll_restart)
+            return
+        self.draw()
+
+    def _restart_worker(self) -> None:
+        """Runs off the main thread -- same discipline as `_fetch`: only
+        ever assigns to self.data/self.error/self._dash_proc/
+        self._dash_spawn_at/self._dash_fails/self._restarting, never touches
+        the canvas. `self._closing` is re-checked at every step a user could
+        have closed the widget mid-restart, so a slow kill+respawn can
+        never resurrect (or spawn) a dash after the window is gone.
+        """
+        try:
+            if self._closing:
+                return
+            info = _read_pid_file(_pid_path())
+            if info is None:
+                # No pid file: dash was started some other way (or hasn't
+                # written one yet). Never hunt for a process to kill by name
+                # or by scanning ports -- a plain refetch is all that is
+                # safe, and the placeholder says so rather than claiming a
+                # restart that never happened.
+                self.error = f"no pid file — refreshing :{self.port}…"
+                self._fetch()
+                return
+            pid, port = info
+            if _pid_alive(pid) and _dash_answers(port):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    pass
+                else:
+                    _wait_port_silent(port)
+            # else: the pid is dead, or alive but not answering as a
+            # ccmetrics dash on the recorded port -- a stale or unrelated
+            # pid file must never be signalled.
+            if self._closing:
+                return
+            # A restart the user explicitly asked for must not be refused by
+            # the D54 cooldown/strike cap meant to stop silent auto-spawns.
+            self._dash_spawn_at = None
+            self._dash_fails = 0
+            self._maybe_spawn_dash()
+            self._fetch()
+        finally:
+            self._restarting = False
+
     def _poll(self) -> None:
         if self._closing:
             return
@@ -665,6 +862,22 @@ class Widget:
         else:
             y = y0 + (y1 - y0) * 2 / 3
             self._px(x0 + m, y - w / 2, (x1 - x0) - 2 * m, w, DIM, tags=("min", "min_mark"))
+
+    def _draw_restart(self) -> None:
+        """Restart button, immediately left of minimize. Tagged 'restart'
+        for the click/hover bindings set up once in `__init__`, plus
+        'restart_bg'/'restart_mark' so hover can recolour box and mark
+        separately, same split as close and min.
+
+        The mark is the '↻' glyph itself rather than a pixel-grid drawing --
+        unlike the flame and the digits, this has no page-side pixel art to
+        stay in lockstep with, so there is nothing gained by hand-drawing it.
+        """
+        x0, y0, x1, y1 = _restart_rect()
+        self._px(x0, y0, x1 - x0, y1 - y0, SURF, tags=("restart", "restart_bg"))
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        self.canvas.create_text(cx, cy, text="↻", fill=DIM, font=("Menlo", HEAD_SIZE),
+                                tags=("restart", "restart_mark"))
 
     def _flame(self, cx: float, bottom: float) -> None:
         """Centres on `cx`, sits bottom-down from `bottom`. Draws whichever
@@ -796,6 +1009,7 @@ class Widget:
             self._px(x, y, w, h, LINE)
         self._draw_close()
         self._draw_min()
+        self._draw_restart()
 
         if self.data is None:
             self._flame_pos = None

@@ -914,6 +914,38 @@ def _kill_and_wait(pid: str, command: str, port: int) -> bool:
     return _port_free(port)
 
 
+def pid_path() -> Path:
+    """Where `serve()` records its own pid + port -- alongside the store's
+    own data dir, so `CCMETRICS_DB` overrides it the same way it overrides
+    the store's db file (`store.db_path()` already honours that env var;
+    this just reuses its directory rather than re-deriving one)."""
+    return store.db_path().parent / "dash.pid"
+
+
+def _write_pid_file(port: int) -> None:
+    """Written once the port is actually bound, so a widget's restart button
+    (widget.py's `_restart_worker`) has a pid + port to confirm against
+    before ever signalling anything -- never just a bare pid to trust."""
+    try:
+        path = pid_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"pid": os.getpid(), "port": port}))
+    except OSError as exc:
+        print(f"ccmetrics dash: could not write {pid_path()} -- {exc}", flush=True)
+
+
+def _remove_pid_file() -> None:
+    """Only clean shutdown removes it; a crash leaves it behind on purpose --
+    the widget's own liveness + `/api/windows` check (see widget.py) is what
+    tells a stale file from a live one, not whether the file exists."""
+    try:
+        path = pid_path()
+        if json.loads(path.read_text()).get("pid") == os.getpid():
+            path.unlink()
+    except (OSError, ValueError):
+        pass
+
+
 def serve(
     port: int = DEFAULT_PORT,
     open_browser: bool = True,
@@ -963,6 +995,7 @@ def serve(
 
     httpd.daemon_threads = True
     print(f"ccmetrics dash: {url}  (ctrl-c to stop)", flush=True)
+    _write_pid_file(port)
     if open_browser:
         try:
             webbrowser.open(url)
@@ -978,4 +1011,5 @@ def serve(
     finally:
         stop.set()  # wake the re-ingest thread so it exits without lingering
         httpd.server_close()
+        _remove_pid_file()
     return 0
