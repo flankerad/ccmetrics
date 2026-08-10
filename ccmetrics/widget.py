@@ -22,8 +22,10 @@ from __future__ import annotations
 import glob
 import json
 import os
+import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -70,6 +72,10 @@ FLAME_FRAMES = [
 
 CELLS = 40
 POLL_SECONDS = 20
+# How long a spawned `dash` gets to bind the port before another attempt is
+# allowed (or, past that window with the port still silent, before the
+# error text stops crediting it as "starting" and calls it broken instead).
+DASH_SPAWN_COOLDOWN = 30
 WIDTH = 470
 HEIGHT = 210
 # Every type size in the widget, in one place. They were inline literals two
@@ -305,6 +311,10 @@ class Widget:
         self._minimized = False
         self._draw_timer: str | None = None
         self._poll_timer: str | None = None
+        # Set the first time `_fetch` finds nothing on `self.port`; see
+        # `_maybe_spawn_dash` and `_fetch_error_text`.
+        self._dash_proc: subprocess.Popen | None = None
+        self._dash_spawn_at: float | None = None
         # The flame's own animation state: which of FLAME_FRAMES is current,
         # a timer that just cycles it, and the (cx, bottom) `draw()` last
         # placed a flame at -- None when no flame is showing (no known cap) --
@@ -465,30 +475,89 @@ class Widget:
 
     def _fetch(self) -> None:
         """Runs off the main thread -- Tk is not thread-safe, so this only ever
-        assigns to `self.data`/`self.error` and lets the `after` timer redraw.
+        assigns to `self.data`/`self.error`/`self._dash_proc`/`self._dash_spawn_at`
+        and lets the `after` timer redraw. `subprocess.Popen` and the plain
+        attribute writes in `_maybe_spawn_dash` are as thread-safe as the
+        `self.data`/`self.error` writes already made from here.
 
         Checks `_closing` twice: once up front, so a fetch that never even
         starts after `_shutdown` skips the request outright, and again after
         `urlopen` returns, because a fetch already inside that call when the
         X is clicked passed the first check seconds earlier and would still
-        write into `self.data`/`self.error` on the way out otherwise.
-        Harmless on its own -- these are plain attributes, not Tk -- but
-        nothing should be assigning into a widget that is going away.
+        write into `self.data`/`self.error` (and, worse, spawn a dash for a
+        widget that is going away) on the way out otherwise.
         """
         if self._closing:
             return
+        body, failed, conn_refused = None, False, False
         try:
             with urllib.request.urlopen(self._url(), timeout=4) as r:
-                body, err = json.loads(r.read().decode()), None
-        except (urllib.error.URLError, OSError, ValueError, TimeoutError):
-            # Names the fix, not the fault: the widget is useless without the
-            # dash serving, and "no dash on :7433" left the reader guessing.
-            body, err = None, f"nothing on :{self.port} — run  ccmetrics dash"
+                body = json.loads(r.read().decode())
+        except urllib.error.URLError as exc:
+            # `reason` is the raw OSError urlopen was retrying underneath --
+            # a bare ConnectionRefusedError means nothing is listening on
+            # the port at all, distinct from a live server timing out below.
+            failed, conn_refused = True, isinstance(exc.reason, ConnectionRefusedError)
+        except (OSError, ValueError, TimeoutError):
+            failed = True
         if self._closing:
             return
-        if err is None:
+        if not failed:
             self.data = body
-        self.error = err
+            self.error = None
+            return
+        # Only a refused connection is a "nothing is serving" case worth
+        # auto-starting a dash for -- a live server that merely timed out
+        # is left alone.
+        if conn_refused:
+            self._maybe_spawn_dash()
+        self.error = self._fetch_error_text()
+
+    def _maybe_spawn_dash(self) -> None:
+        """Connection refused on `self.port` means no dash is serving it --
+        start one rather than leave the widget polling a dead port until the
+        user notices and runs `ccmetrics dash` by hand.
+
+        `python -m ccmetrics` is used over the `ccmetrics` console script:
+        `__main__.py` already exists for exactly this fallback (see its own
+        docstring), so this adds no new packaging surface. `--port` is
+        passed through since the `dash` subparser already takes one --
+        without it a widget pointed at a non-default port would spawn a
+        dash on the wrong one. `start_new_session=True` so the dash outlives
+        this widget process if the widget is closed first.
+
+        Guarded twice against respawn storms: `_dash_proc.poll() is None`
+        skips a second spawn while the first is still alive (started but not
+        yet bound, or bound and serving happily), and the cooldown on
+        `_dash_spawn_at` covers a spawn that already exited (crashed) or the
+        gap right after Popen returns but before the new process has bound
+        the port.
+        """
+        if self._dash_proc is not None and self._dash_proc.poll() is None:
+            return
+        now = time.monotonic()
+        if self._dash_spawn_at is not None and now - self._dash_spawn_at < DASH_SPAWN_COOLDOWN:
+            return
+        self._dash_spawn_at = now
+        self._dash_proc = subprocess.Popen(
+            [sys.executable, "-m", "ccmetrics", "dash", "--no-open", "--port", str(self.port)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+
+    def _fetch_error_text(self) -> str:
+        """The "starting..." text holds for as long as a spawn from `_maybe_spawn_dash` is
+        within its cooldown window, so the reader sees a fuse about to
+        resolve itself rather than a dead end. Past that window with the
+        port still silent -- a genuinely broken dash, not just one still
+        booting -- back to naming the manual fix.
+        """
+        spawned_recently = (
+            self._dash_spawn_at is not None
+            and time.monotonic() - self._dash_spawn_at < DASH_SPAWN_COOLDOWN
+        )
+        if spawned_recently:
+            return f"starting dash on :{self.port}…"
+        return f"nothing on :{self.port} — run  ccmetrics dash"
 
     def _poll(self) -> None:
         if self._closing:
