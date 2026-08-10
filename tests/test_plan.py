@@ -594,6 +594,9 @@ def test_record_usage_cache_writes_rows_and_skips_unchanged(conn):
 
     n = plan.record_usage_cache(conn)
     assert n == 1
+    # No now_iso: fine here because the row's resets_at is None (never
+    # "expired") and it's the only candidate for "session" -- rank is a
+    # no-op with one row. Add now_iso if this ever grows a second row.
     latest = store.latest_plan_windows(conn)
     assert latest["session"]["used_pct"] == pytest.approx(20.0)
 
@@ -613,6 +616,7 @@ def test_record_usage_cache_newer_fetch_writes_a_new_row(conn):
     }, fetched_ms=1785477153001 + 60000)
     n = plan.record_usage_cache(conn)
     assert n == 1
+    # Same as above -- one row for "session", resets_at None, no now_iso needed.
     latest = store.latest_plan_windows(conn)
     assert latest["session"]["used_pct"] == pytest.approx(33.0)
 
@@ -679,6 +683,8 @@ def test_passthrough_is_handed_the_same_stdin_and_the_snapshot_is_still_stored(c
 
     seen = _plain(out).split(" | ")[0]
     assert json.loads(seen) == json.loads(payload)  # the child saw the payload
+    # One row for "five_hour" -- rank/now_iso irrelevant with a single candidate,
+    # even though `reset` (BASE + 2h) reads as expired against the real clock.
     latest = store.latest_plan_windows(conn)       # and ccmetrics still recorded it
     assert latest["five_hour"]["used_pct"] == pytest.approx(31.0)
 
