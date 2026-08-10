@@ -814,7 +814,9 @@ def projection(conn, blocks=None, caps=None, live_tiles=None, now=None) -> dict:
     if blocks is None:
         blocks = _bucket(conn, None, TURN_DAYS, now)[0]
 
-    wk = _pick(collapse_windows(store.latest_plan_windows(conn)), *WEEKLY_KEYS)
+    wk = _pick(
+        collapse_windows(store.latest_plan_windows(conn, now_iso=iso(now))), *WEEKLY_KEYS
+    )
     used_pct = wk.get("used_pct")
     resets_at = wk.get("resets_at")
     reset_dt = parse_iso(resets_at)

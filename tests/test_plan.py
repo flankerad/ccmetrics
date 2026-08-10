@@ -310,14 +310,20 @@ def _insert_snapshot(conn, ts: str, window_key: str, used_pct, resets_at=None):
 
 
 # --- latest_plan_windows: a reset window never outranks the current one (D58) -
+#
+# `now_iso` is passed explicitly in every test below (BASE is 2026-07-31, long
+# before the real wall clock the store defaults to) so "expired" is judged
+# against the fabricated scenario's own clock, not whatever day the test
+# happens to run on.
 
 def test_latest_plan_windows_expired_but_newer_ts_loses_to_the_fresh_window(conn):
     """The exact bug: one session keeps rewriting a pre-reset snapshot every
     ~20s (newest `ts`, but its own window already reset); another session
     reports the true post-reset reading with an older `ts`. The fresh
     window must win regardless of which `ts` is newer."""
-    fresh_reset = BASE + _dt.timedelta(days=7)
-    stale_reset = BASE - _dt.timedelta(hours=4)  # already in the past
+    now = BASE
+    fresh_reset = BASE + _dt.timedelta(days=7)  # still ahead of `now` -- live
+    stale_reset = BASE - _dt.timedelta(hours=4)  # already behind `now` -- expired
 
     _insert_snapshot(conn, _iso(BASE), "seven_day", 1.0, resets_at=_iso(fresh_reset))
     _insert_snapshot(
@@ -326,31 +332,55 @@ def test_latest_plan_windows_expired_but_newer_ts_loses_to_the_fresh_window(conn
     )
     conn.commit()
 
-    latest = store.latest_plan_windows(conn)
+    latest = store.latest_plan_windows(conn, now_iso=_iso(now))
     assert latest["seven_day"]["used_pct"] == pytest.approx(1.0)
     assert latest["seven_day"]["resets_at"] == _iso(fresh_reset)
 
 
 def test_latest_plan_windows_all_null_resets_at_still_picks_max_ts(conn):
     """No `resets_at` at all on either row (plan.extract kept them anyway) --
-    falls back to the old max-`ts` behaviour."""
+    neither is ever "expired", so it falls back to plain max-`ts`."""
     _insert_snapshot(conn, _iso(BASE), "five_hour", 10.0)
     _insert_snapshot(conn, _iso(BASE + _dt.timedelta(minutes=1)), "five_hour", 25.0)
     conn.commit()
 
-    latest = store.latest_plan_windows(conn)
+    latest = store.latest_plan_windows(conn, now_iso=_iso(BASE))
     assert latest["five_hour"]["used_pct"] == pytest.approx(25.0)
+
+
+def test_latest_plan_windows_fresh_null_resets_at_beats_a_stale_dated_row(conn):
+    """GAP 1: sorting NULL `resets_at` last unconditionally was itself a bug --
+    a stale-but-dated row must not bury a fresher NULL one. Session A writes
+    the true current reading but its resets_at epoch didn't parse; session B
+    holds an older, already-expired dated reading. A wins on `ts` alone,
+    same tier as any other live row."""
+    now = BASE
+    stale_reset = BASE - _dt.timedelta(hours=6)  # already behind `now` -- expired
+
+    _insert_snapshot(  # session B: stale, dated, older ts
+        conn, _iso(BASE - _dt.timedelta(hours=6)), "seven_day", 12.0,
+        resets_at=_iso(stale_reset),
+    )
+    _insert_snapshot(  # session A: fresh, no resets_at, newer ts
+        conn, _iso(BASE), "seven_day", 90.0, resets_at=None,
+    )
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn, now_iso=_iso(now))
+    assert latest["seven_day"]["used_pct"] == pytest.approx(90.0)
+    assert latest["seven_day"]["resets_at"] is None
 
 
 def test_latest_plan_windows_returns_a_lone_expired_reading(conn):
     """The store still reports an expired reading when nothing fresher has
     arrived yet -- withholding it as 'unknown' is windows._headroom's H4
     call to make, not the store's."""
+    now = BASE
     expired = BASE - _dt.timedelta(hours=4)
     _insert_snapshot(conn, _iso(BASE), "seven_day", 96.0, resets_at=_iso(expired))
     conn.commit()
 
-    latest = store.latest_plan_windows(conn)
+    latest = store.latest_plan_windows(conn, now_iso=_iso(now))
     assert latest["seven_day"]["used_pct"] == pytest.approx(96.0)
     assert latest["seven_day"]["resets_at"] == _iso(expired)
 

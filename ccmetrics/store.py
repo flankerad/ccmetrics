@@ -6,6 +6,7 @@ only counts, byte sizes, timestamps, tool names, paths and digests.
 
 from __future__ import annotations
 
+import datetime as _dt
 import os
 import sqlite3
 from pathlib import Path
@@ -568,24 +569,31 @@ def insert_plan_snapshot(
     return len(rows)
 
 
-def latest_plan_windows(conn: sqlite3.Connection) -> dict:
+def latest_plan_windows(conn: sqlite3.Connection, now_iso: str | None = None) -> dict:
     """The freshest snapshot of each window: {window: {used_pct, resets_at, ts}}.
 
     Each window is carried independently — Claude Code may report one and not
     the other — so each keeps its own timestamp and its own age.
 
-    "Freshest" is picked by `resets_at` first and `ts` only as a tiebreak:
-    two sessions can both be polling the same window, and one of them can be
-    holding a snapshot from before that window's own reset, rewriting it
-    every ~20s. Ranking by `ts` alone lets that stale-but-frequently-written
-    row permanently bury the other session's post-reset reading, which is
-    how the widget can show a used_pct from a window hours in the past. A
-    row whose window has already reset must never outrank a row from the
-    current window, no matter how recently it was written. `resets_at` is an
-    ISO-8601 `...Z` string, so string comparison is chronological; `NULL`
-    sorts last (rank 0 vs 1), and among an all-`NULL` group the max-`ts` row
-    still wins, same as before.
+    The one invariant that matters: a row whose window has already reset must
+    never outrank a row from the still-live window, no matter how recently it
+    was written -- two sessions can both be polling the same window_key, and
+    one of them can be holding a snapshot from before that window's own
+    reset, rewriting it every ~20s. So expired rows (`resets_at` in the past)
+    sort last; everything else -- a live dated row AND a row with no
+    `resets_at` at all (plan.extract keeps a row as soon as used_pct parses,
+    even when the reset epoch did not) -- competes only on `ts`, freshest
+    wins. A `resets_at` that outranks unconditionally on its own value would
+    let a stale-but-dated row bury a fresher NULL one, which is its own
+    version of the same bug.
+
+    `now_iso` lets a caller with its own clock (`windows.projection`) keep the
+    hero and the store from disagreeing about "now"; callers with no opinion
+    get the real wall clock.
     """
+    if now_iso is None:
+        now_iso = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     try:
         rows = conn.execute(
             "SELECT window_key, used_pct, resets_at, ts FROM plan_snapshots"
@@ -595,7 +603,8 @@ def latest_plan_windows(conn: sqlite3.Connection) -> dict:
 
     def rank(r):
         resets_at = r["resets_at"]
-        return (1 if resets_at is not None else 0, resets_at or "", r["ts"] or "")
+        expired = resets_at is not None and resets_at < now_iso
+        return (0 if expired else 1, r["ts"] or "")
 
     best: dict[str, sqlite3.Row] = {}
     for r in rows:
