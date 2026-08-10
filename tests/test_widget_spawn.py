@@ -71,6 +71,13 @@ def test_maybe_spawn_dash_holds_off_within_cooldown_after_a_dead_spawn(monkeypat
     # strike -- otherwise `_dash_fails` would never see repeated failures
     # that are each caught mid-cooldown.
     assert w._dash_fails == 1
+    # ...but the corpse is retired the moment it is counted, so a second
+    # poll landing on the same still-cooling-down window does not count the
+    # very same dead process twice.
+    assert w._dash_proc is None
+    widget.Widget._maybe_spawn_dash(w)
+    assert calls == []
+    assert w._dash_fails == 1
 
 
 def test_maybe_spawn_dash_spawns_again_once_the_cooldown_has_passed(monkeypatch):

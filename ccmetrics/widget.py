@@ -550,6 +550,12 @@ class Widget:
         if self._dash_proc is not None:
             # The previous spawn is confirmed dead (poll() above returned an
             # exit code, not None) -- one more strike against this port.
+            # Cleared immediately so a still-cooling-down poll that sees the
+            # same corpse again does not count it a second time: without
+            # this, one dead spawn gets re-counted on every poll until
+            # DASH_SPAWN_COOLDOWN passes, tripping DASH_SPAWN_ATTEMPTS on
+            # far fewer than that many actual spawns.
+            self._dash_proc = None
             self._dash_fails += 1
         if self._dash_fails >= DASH_SPAWN_ATTEMPTS:
             return
