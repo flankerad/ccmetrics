@@ -14,7 +14,7 @@
 ![deps](https://img.shields.io/badge/runtime%20deps-zero-8957e5)
 ![data](https://img.shields.io/badge/your%20data-never%20leaves%20your%20machine-8957e5)
 
-<sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Status line](#the-status-line) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
+<sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Status line](#the-status-line) · [Skill](#the-claude-code-skill) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
 
 `/cost` tells you how much you spent. `ccmetrics` tells you whether the week and the current 5-hour block will last at today's pace, *why* the tokens go, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
 
@@ -85,6 +85,16 @@ web-app > main | ✳ Opus 5 :: default 620k/1M (62%) | $21.25 | 5h 24% left | �
 ```
 
 Repo, branch, model, output style, context used, what this session has cost, then the 5-hour and weekly limits with a bar for the week. Segments you have no data for simply disappear. Full detail, including how to undo it: [docs/plan-limits.md](docs/plan-limits.md).
+
+## The Claude Code skill
+
+Ask Claude Code itself. The repo ships a skill at [.claude/skills/ccmetrics/SKILL.md](.claude/skills/ccmetrics/SKILL.md) — copy that folder into `~/.claude/skills/` and questions like *"will my plan last the week?"*, *"what's burning tokens?"*, or *"any leaks?"* make Claude run the right `ccmetrics` command and answer from the real numbers instead of guessing:
+
+```bash
+mkdir -p ~/.claude/skills && cp -r .claude/skills/ccmetrics ~/.claude/skills/
+```
+
+The skill is read-only by definition: it maps questions to the reporting commands and never runs the installers unless you ask.
 
 ## Install
 
