@@ -5,7 +5,7 @@ description: Answer questions about Claude Code plan pacing, token usage, costs,
 
 # ccmetrics skill
 
-ccmetrics is this repo's tool: a read-only leak meter for Claude Code sessions. It is already installed as the `ccmetrics` command. Run it; never re-implement its analysis.
+ccmetrics is this repo's tool: a leak meter for Claude Code sessions. Reporting only reads; the `setup` and `autostart` commands install things. It is already installed as the `ccmetrics` command. Run it; never re-implement its analysis.
 
 ## Pick the command from the question
 
@@ -26,7 +26,7 @@ Default to the plain output — it carries the PLAN line and the leak fix templa
 
 ## Rules
 
-- `ingest` runs automatically. `setup` and `autostart` are how plan % keeps refreshing — run them when the user wants that. `setup` replaces the current status line command (the old one is kept at `~/.claude/settings.json.bak-ccmetrics`, `ccmetrics setup --revert` restores it); `autostart` installs a login agent.
+- `ingest` runs automatically. `setup` and `autostart` are how plan % keeps refreshing — run them when the user wants that. `setup` replaces the current status line command (the old one is kept at `~/.claude/settings.json.bak-ccmetrics`, `ccmetrics setup --revert` restores it); `autostart` installs two login services — one keeps the dash alive, one opens the widget.
 - Report numbers only from this turn's command output — never from memory.
 - Lead with the pacing verdict (will the week / 5-hour block last), then the one or two biggest leaks with their fix templates from detector output.
 - The database lives at `~/.local/share/ccmetrics/state.db` (`CCMETRICS_DB` overrides). If a command fails, show the error; do not guess at data.

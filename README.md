@@ -16,7 +16,7 @@
 
 <sub>[Dashboard](#the-dashboard) · [Widget](#the-widget) · [Status line](#the-status-line) · [Skill](#the-claude-code-skill) · [Install](#install) · [Use](#use) · [What you get](#what-you-get) · [Detectors](#the-12-leak-detectors) · [Privacy](#privacy)</sub>
 
-`/cost` tells you how much you spent. `ccmetrics` tells you whether the week and the current 5-hour block will last at today's pace, *why* the tokens go, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local, private, read-only.
+`/cost` tells you how much you spent. `ccmetrics` tells you whether the week and the current 5-hour block will last at today's pace, *why* the tokens go, and hands you the exact `CLAUDE.md` line, `settings.json` fragment, or habit that stops the bleed. Local and private: it reads your session files and never sends them anywhere. The only things it ever writes are its own database and, if you install them, the status line and login services.
 
 ```
 ccmetrics · your-project · last 30 days
@@ -94,7 +94,7 @@ Ask Claude Code itself. The repo ships a skill at [.claude/skills/ccmetrics/SKIL
 mkdir -p ~/.claude/skills && cp -r .claude/skills/ccmetrics ~/.claude/skills/
 ```
 
-The skill is read-only by definition: it maps questions to the reporting commands and never runs the installers unless you ask.
+Answering a question only ever reads. Asking Claude to keep the numbers fresh lets it run the installers too — `setup` saves whatever status line you already had, and `ccmetrics setup --revert` restores it from that backup — or, if there is no usable backup, removes ours and leaves the slot empty. `autostart` installs two login services: one keeping the dash alive, one opening the widget. Every command the skill documents is checked against the real CLI by `tests/test_skill_doc.py`, so a flag that moves cannot reach you as a broken instruction.
 
 ## Install
 
