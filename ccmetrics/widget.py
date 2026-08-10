@@ -76,6 +76,11 @@ POLL_SECONDS = 20
 # allowed (or, past that window with the port still silent, before the
 # error text stops crediting it as "starting" and calls it broken instead).
 DASH_SPAWN_COOLDOWN = 30
+# Consecutive spawns allowed to exit without ever answering a fetch, before
+# giving up and naming the manual fix instead of retrying forever -- a dash
+# that can never bind the port (bad install, a port nothing can free) must
+# not turn into a respawn every `DASH_SPAWN_COOLDOWN` seconds for good.
+DASH_SPAWN_ATTEMPTS = 2
 WIDTH = 470
 HEIGHT = 210
 # Every type size in the widget, in one place. They were inline literals two
@@ -312,9 +317,12 @@ class Widget:
         self._draw_timer: str | None = None
         self._poll_timer: str | None = None
         # Set the first time `_fetch` finds nothing on `self.port`; see
-        # `_maybe_spawn_dash` and `_fetch_error_text`.
+        # `_maybe_spawn_dash` and `_fetch_error_text`. `_dash_fails` counts
+        # spawns that exited without ever answering a fetch and resets to 0
+        # the moment a fetch succeeds.
         self._dash_proc: subprocess.Popen | None = None
         self._dash_spawn_at: float | None = None
+        self._dash_fails = 0
         # The flame's own animation state: which of FLAME_FRAMES is current,
         # a timer that just cycles it, and the (cx, bottom) `draw()` last
         # placed a flame at -- None when no flame is showing (no known cap) --
@@ -475,10 +483,10 @@ class Widget:
 
     def _fetch(self) -> None:
         """Runs off the main thread -- Tk is not thread-safe, so this only ever
-        assigns to `self.data`/`self.error`/`self._dash_proc`/`self._dash_spawn_at`
-        and lets the `after` timer redraw. `subprocess.Popen` and the plain
-        attribute writes in `_maybe_spawn_dash` are as thread-safe as the
-        `self.data`/`self.error` writes already made from here.
+        assigns to `self.data`/`self.error`/`self._dash_proc`/`self._dash_spawn_at`/
+        `self._dash_fails` and lets the `after` timer redraw. `subprocess.Popen`
+        and the plain attribute writes in `_maybe_spawn_dash` are as
+        thread-safe as the `self.data`/`self.error` writes already made here.
 
         Checks `_closing` twice: once up front, so a fetch that never even
         starts after `_shutdown` skips the request outright, and again after
@@ -505,6 +513,7 @@ class Widget:
         if not failed:
             self.data = body
             self.error = None
+            self._dash_fails = 0  # a live dash answered; forgive whatever came before
             return
         # Only a refused connection is a "nothing is serving" case worth
         # auto-starting a dash for -- a live server that merely timed out
@@ -526,14 +535,23 @@ class Widget:
         dash on the wrong one. `start_new_session=True` so the dash outlives
         this widget process if the widget is closed first.
 
-        Guarded twice against respawn storms: `_dash_proc.poll() is None`
+        Guarded three ways against respawn storms: `_dash_proc.poll() is None`
         skips a second spawn while the first is still alive (started but not
-        yet bound, or bound and serving happily), and the cooldown on
+        yet bound, or bound and serving happily); the cooldown on
         `_dash_spawn_at` covers a spawn that already exited (crashed) or the
         gap right after Popen returns but before the new process has bound
-        the port.
+        the port; and `_dash_fails` reaching `DASH_SPAWN_ATTEMPTS` stops
+        spawning altogether once a dash has proved it cannot stay up --
+        without that cap a dash that can never bind the port would get
+        relaunched every `DASH_SPAWN_COOLDOWN` seconds forever.
         """
         if self._dash_proc is not None and self._dash_proc.poll() is None:
+            return
+        if self._dash_proc is not None:
+            # The previous spawn is confirmed dead (poll() above returned an
+            # exit code, not None) -- one more strike against this port.
+            self._dash_fails += 1
+        if self._dash_fails >= DASH_SPAWN_ATTEMPTS:
             return
         now = time.monotonic()
         if self._dash_spawn_at is not None and now - self._dash_spawn_at < DASH_SPAWN_COOLDOWN:
@@ -545,18 +563,22 @@ class Widget:
         )
 
     def _fetch_error_text(self) -> str:
-        """The "starting..." text holds for as long as a spawn from `_maybe_spawn_dash` is
-        within its cooldown window, so the reader sees a fuse about to
-        resolve itself rather than a dead end. Past that window with the
-        port still silent -- a genuinely broken dash, not just one still
-        booting -- back to naming the manual fix.
+        """The "starting..." text holds for as long as a spawn from
+        `_maybe_spawn_dash` is within its cooldown window and has not yet
+        used up its `DASH_SPAWN_ATTEMPTS`, so the reader sees a fuse about to
+        resolve itself rather than a dead end. Once attempts run out --
+        whether the cooldown has simply lapsed on a dash still booting, or
+        `_maybe_spawn_dash` has already given up -- back to naming the
+        manual fix, which is reachable again because `_dash_fails` caps the
+        retries instead of letting them run forever.
         """
-        spawned_recently = (
-            self._dash_spawn_at is not None
-            and time.monotonic() - self._dash_spawn_at < DASH_SPAWN_COOLDOWN
-        )
-        if spawned_recently:
-            return f"starting dash on :{self.port}…"
+        if self._dash_fails < DASH_SPAWN_ATTEMPTS:
+            spawned_recently = (
+                self._dash_spawn_at is not None
+                and time.monotonic() - self._dash_spawn_at < DASH_SPAWN_COOLDOWN
+            )
+            if spawned_recently:
+                return f"starting dash on :{self.port}…"
         return f"nothing on :{self.port} — run  ccmetrics dash"
 
     def _poll(self) -> None:
