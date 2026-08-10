@@ -179,14 +179,20 @@ def test_fetch_resets_dash_fails_on_a_successful_read(monkeypatch):
             return False
 
         def read(self):
-            return b'{"ok": true}'
+            # D60: a matching server_version, so `_check_version` (which
+            # `_fetch` now calls on every successful read) takes its no-op
+            # path rather than this test tripping the version-mismatch
+            # restart it is not about.
+            return f'{{"ok": true, "server_version": "{widget.__version__}"}}'.encode()
 
     monkeypatch.setattr(widget.urllib.request, "urlopen", lambda *_a, **_k: _FakeResponse())
     w = _bare(scope=None, _dash_fails=widget.DASH_SPAWN_ATTEMPTS)
     w._closing = False
     w.data = None
     w.error = "starting dash on :7433…"
+    w._restarting = False
+    w._version_restarted = False
     widget.Widget._fetch(w)
-    assert w.data == {"ok": True}
+    assert w.data == {"ok": True, "server_version": widget.__version__}
     assert w.error is None
     assert w._dash_fails == 0

@@ -139,6 +139,17 @@ def test_api_windows_shape_no_cache(conn, cc_env, running_server):
     assert body["fetched_at"] is None
 
 
+def test_api_windows_carries_server_version(conn, cc_env, running_server):
+    """D60: the *running process's* own `__version__`, so a widget or the
+    plain CLI polling this endpoint can tell a stale long-running dash apart
+    from a freshly upgraded one and restart it (widget.py's
+    `_check_version` / `restart_if_outdated`)."""
+    _seed(conn, cc_env)
+    base, _ = running_server
+    body = _get_json(f"{base}/api/windows")
+    assert body["server_version"] == dash_server.__version__
+
+
 def test_api_windows_shape_with_cache(conn, cc_env, running_server):
     """Cache present -- tier/credits still read it directly (session
     2026-08-09, item 4: only those two, never window percentages -- see

@@ -15,6 +15,14 @@ so when the page's ramp moves, this moves with it.
 Numbers come from the dash server's `/api/windows`, never from the store
 directly: the projection lives in `windows.py` behind that endpoint, and a
 second reader would be a second answer to the same question.
+
+A widget running old code cannot know it is old -- it would have to be
+upgraded to notice the check that says so. The number that matters is the
+dash's own: `/api/windows` carries the `server_version` of the *process*
+that computed it, and `_check_version` (in `_fetch`) restarts that process,
+once, when it disagrees with `__version__` (D60). The ↻ button stays the
+manual escape hatch for everything this cannot catch -- a widget stuck on
+old code with no dash to compare against, say.
 """
 
 from __future__ import annotations
@@ -33,7 +41,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from . import store
+from . import __version__, store
 
 BG = "#191714"
 SURF = "#221e1a"
@@ -405,6 +413,45 @@ def _wait_port_silent(port: int) -> None:
         time.sleep(RESTART_WAIT_STEP)
 
 
+def restart_if_outdated(port: int = 7433, timeout: float = 1.5) -> None:
+    """D60's other reader: the plain `ccmetrics` summary never opens the
+    widget, so `Widget._check_version`'s poll-driven check never runs for
+    it. Same stale-dash problem (module docstring), same D59 pid-file
+    restart, called once per CLI invocation instead of on a timer.
+
+    Every failure mode here -- nothing listening, no pid file, a dead or
+    foreign pid, the kill itself failing -- is swallowed: this must never
+    keep the summary the user actually asked for from printing. The short
+    `timeout` bounds the one network round trip; the kill+respawn below is
+    fire-and-forget, so a slow-to-die old dash does not hold up the CLI.
+    """
+    try:
+        url = f"http://127.0.0.1:{port}/api/windows"
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            if r.status != 200:
+                return
+            body = json.loads(r.read().decode())
+        if not isinstance(body, dict) or body.get("server_version") == __version__:
+            return
+        info = _read_pid_file(_pid_path())
+        if info is None:
+            return
+        pid, pid_port = info
+        if pid_port != port or not _pid_alive(pid):
+            return
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            return
+        _wait_port_silent(pid_port)
+        subprocess.Popen(
+            [sys.executable, "-m", "ccmetrics", "dash", "--no-open", "--port", str(pid_port)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+    except Exception:
+        return
+
+
 class Widget:
     """The window itself. Owns the canvas and the poll timer, nothing else."""
 
@@ -428,6 +475,13 @@ class Widget:
         # True while `_restart_worker` is running off-thread; `_poll_restart`
         # watches it on the main thread to know when to draw the outcome.
         self._restarting = False
+        # D60: set the first (and only) time `_check_version` drives a
+        # restart for a `server_version` mismatch, so a dash that is a
+        # genuinely different install (not just stale) gets kicked once,
+        # never on every poll. `_version_notice` is the text `draw` shows
+        # once that one attempt still leaves the versions disagreeing.
+        self._version_restarted = False
+        self._version_notice: str | None = None
         # The flame's own animation state: which of FLAME_FRAMES is current,
         # a timer that just cycles it, and the (cx, bottom) `draw()` last
         # placed a flame at -- None when no flame is showing (no known cap) --
@@ -631,6 +685,7 @@ class Widget:
             self.data = body
             self.error = None
             self._dash_fails = 0  # a live dash answered; forgive whatever came before
+            self._check_version()
             return
         # Only a refused connection is a "nothing is serving" case worth
         # auto-starting a dash for -- a live server that merely timed out
@@ -800,6 +855,42 @@ class Widget:
             self._fetch()
         finally:
             self._restarting = False
+
+    def _check_version(self) -> None:
+        """D60: runs inside `_fetch`, off the main thread -- same discipline
+        as `_maybe_spawn_dash`: only plain attribute writes and starting a
+        thread, nothing that touches the canvas (a `draw()` call from here
+        would race the one `_poll`'s own `after` timer already has queued).
+
+        `self.data["server_version"]` is the *dash process's* own
+        `__version__`, never this widget's -- an upgrade replaces the file
+        on disk but not a dash already running (module docstring), so this
+        comparison is the only way the widget can tell. A missing key (a
+        dash too old to report one at all) reads as a mismatch the same way
+        a different value does.
+
+        Reuses the D59 pid-file restart (`_restart_worker`) rather than a
+        second mechanism, through the same `self._restarting` guard a ↻
+        click uses, so an automatic and a manual restart can never race.
+        `self._version_restarted` caps this to one attempt per mismatch --
+        two different ccmetrics installs on one machine, each pinned to its
+        own version, would otherwise restart on every single poll forever.
+        Once that attempt is spent and a later fetch still disagrees,
+        `_version_notice` says so instead of trying again; `draw` shows it
+        in place of the sub-line.
+        """
+        if self.data is None or self._restarting:
+            return
+        server_version = self.data.get("server_version")
+        if server_version == __version__:
+            self._version_notice = None
+            return
+        if self._version_restarted:
+            self._version_notice = f"dash is v{server_version or 'unknown'}, this is v{__version__}"
+            return
+        self._version_restarted = True
+        self._restarting = True
+        threading.Thread(target=self._restart_worker, daemon=True).start()
 
     def _poll(self) -> None:
         if self._closing:
@@ -1088,7 +1179,10 @@ class Widget:
 
         self.canvas.create_text(text_x, head_y, text=verdict.upper(), anchor="w", fill=INK,
                                 font=("Menlo", HEAD_SIZE))
-        self.canvas.create_text(text_x, sub_y, text=sub, anchor="w", fill=DIM, font=("Menlo", SUB_SIZE))
+        # D60: a still-mismatched-after-one-restart dash overrides the
+        # sub-line rather than adding a second row -- see `_check_version`.
+        self.canvas.create_text(text_x, sub_y, text=self._version_notice or sub, anchor="w",
+                                fill=DIM, font=("Menlo", SUB_SIZE))
 
         # No label over the week's bar. One would have to clear the clock,
         # which can sit at any point along the row, and stacking it above the

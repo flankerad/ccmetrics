@@ -640,8 +640,15 @@ def windows_payload(conn: sqlite3.Connection, project: str | None) -> dict:
     stays a pure function over the store. An open session reports its own
     trailing burn, which is fresher than anything the ingested blocks can say,
     so the projection prefers it when there is one.
+
+    `server_version` carries the `__version__` this *running process* loaded
+    -- not whatever a client's own package happens to be -- so a widget or
+    CLI polling this endpoint can tell a stale long-running dash apart from a
+    freshly upgraded one and restart it (see widget.py / cli.py).
     """
-    return windows.windows_payload(conn, project, live_tiles=live.tiles(conn, project))
+    payload = windows.windows_payload(conn, project, live_tiles=live.tiles(conn, project))
+    payload["server_version"] = __version__
+    return payload
 
 
 def live_payload(conn: sqlite3.Connection, project: str | None) -> dict:
@@ -925,11 +932,16 @@ def pid_path() -> Path:
 def _write_pid_file(port: int) -> None:
     """Written once the port is actually bound, so a widget's restart button
     (widget.py's `_restart_worker`) has a pid + port to confirm against
-    before ever signalling anything -- never just a bare pid to trust."""
+    before ever signalling anything -- never just a bare pid to trust.
+
+    `server_version` rides along too, the same value `windows_payload` puts
+    on `/api/windows` -- this file is on disk already for the restart path,
+    so anything inspecting it by hand can tell a stale dash without a
+    request (D60)."""
     try:
         path = pid_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"pid": os.getpid(), "port": port}))
+        path.write_text(json.dumps({"pid": os.getpid(), "port": port, "server_version": __version__}))
     except OSError as exc:
         print(f"ccmetrics dash: could not write {pid_path()} -- {exc}", flush=True)
 

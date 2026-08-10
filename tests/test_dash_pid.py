@@ -51,7 +51,7 @@ def test_write_pid_file_records_pid_and_port(cc_env, monkeypatch):
     monkeypatch.setattr(dash_server.os, "getpid", lambda: 4242)
     dash_server._write_pid_file(9991)
     body = json.loads(dash_server.pid_path().read_text())
-    assert body == {"pid": 4242, "port": 9991}
+    assert body == {"pid": 4242, "port": 9991, "server_version": dash_server.__version__}
 
 
 def test_write_pid_file_creates_a_missing_data_dir(tmp_path, monkeypatch):
@@ -64,6 +64,13 @@ def test_write_pid_file_creates_a_missing_data_dir(tmp_path, monkeypatch):
     dash_server._write_pid_file(9991)
     assert dash_server.pid_path().parent == nested.parent
     assert json.loads(dash_server.pid_path().read_text())["port"] == 9991
+
+
+def test_write_pid_file_records_server_version(cc_env):
+    # D60: the same value `/api/windows` reports (`server_version`), so the
+    # file alone can tell a stale dash without a request.
+    dash_server._write_pid_file(9991)
+    assert json.loads(dash_server.pid_path().read_text())["server_version"] == dash_server.__version__
 
 
 def test_remove_pid_file_clears_its_own_pid(cc_env, monkeypatch):

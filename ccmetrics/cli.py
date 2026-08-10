@@ -519,6 +519,18 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_ingest:
             _run_ingest(conn)
 
+        # D60: the widget's own poll already restarts an outdated dash
+        # (widget.py's module docstring); this covers the reader who never
+        # opens it. Short timeout inside, and any failure here -- nothing
+        # running, a restart that itself fails -- must never stop the
+        # summary this command exists to print.
+        try:
+            from . import widget as widget_mod
+
+            widget_mod.restart_if_outdated()
+        except Exception:
+            pass
+
         project = args.project
         if not project and not args.global_:
             here = report.current_project_key()
