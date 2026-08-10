@@ -569,26 +569,46 @@ def insert_plan_snapshot(
 
 
 def latest_plan_windows(conn: sqlite3.Connection) -> dict:
-    """The newest snapshot of each window: {window: {used_pct, resets_at, ts}}.
+    """The freshest snapshot of each window: {window: {used_pct, resets_at, ts}}.
 
     Each window is carried independently — Claude Code may report one and not
     the other — so each keeps its own timestamp and its own age.
+
+    "Freshest" is picked by `resets_at` first and `ts` only as a tiebreak:
+    two sessions can both be polling the same window, and one of them can be
+    holding a snapshot from before that window's own reset, rewriting it
+    every ~20s. Ranking by `ts` alone lets that stale-but-frequently-written
+    row permanently bury the other session's post-reset reading, which is
+    how the widget can show a used_pct from a window hours in the past. A
+    row whose window has already reset must never outrank a row from the
+    current window, no matter how recently it was written. `resets_at` is an
+    ISO-8601 `...Z` string, so string comparison is chronological; `NULL`
+    sorts last (rank 0 vs 1), and among an all-`NULL` group the max-`ts` row
+    still wins, same as before.
     """
     try:
         rows = conn.execute(
-            "SELECT p.window_key, p.used_pct, p.resets_at, p.ts FROM plan_snapshots p "
-            "JOIN (SELECT window_key, MAX(ts) mts FROM plan_snapshots GROUP BY window_key) m "
-            "ON m.window_key = p.window_key AND m.mts = p.ts"
+            "SELECT window_key, used_pct, resets_at, ts FROM plan_snapshots"
         ).fetchall()
     except sqlite3.OperationalError:  # store predates the table
         return {}
+
+    def rank(r):
+        resets_at = r["resets_at"]
+        return (1 if resets_at is not None else 0, resets_at or "", r["ts"] or "")
+
+    best: dict[str, sqlite3.Row] = {}
+    for r in rows:
+        key = r["window_key"]
+        if key not in best or rank(r) > rank(best[key]):
+            best[key] = r
     return {
-        r["window_key"]: {
+        key: {
             "used_pct": r["used_pct"],
             "resets_at": r["resets_at"],
             "ts": r["ts"],
         }
-        for r in rows
+        for key, r in best.items()
     }
 
 

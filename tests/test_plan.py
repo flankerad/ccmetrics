@@ -301,12 +301,58 @@ def test_v3_to_v4_migration_creates_plan_snapshots_no_data_loss(cc_env):
 # --- 6. plan trend: replayed measurements, never invented --------------------
 
 
-def _insert_snapshot(conn, ts: str, window_key: str, used_pct):
+def _insert_snapshot(conn, ts: str, window_key: str, used_pct, resets_at=None):
     conn.execute(
         "INSERT INTO plan_snapshots (ts, window_key, used_pct, resets_at, session_id) "
-        "VALUES (?, ?, ?, NULL, NULL)",
-        (ts, window_key, used_pct),
+        "VALUES (?, ?, ?, ?, NULL)",
+        (ts, window_key, used_pct, resets_at),
     )
+
+
+# --- latest_plan_windows: a reset window never outranks the current one (D58) -
+
+def test_latest_plan_windows_expired_but_newer_ts_loses_to_the_fresh_window(conn):
+    """The exact bug: one session keeps rewriting a pre-reset snapshot every
+    ~20s (newest `ts`, but its own window already reset); another session
+    reports the true post-reset reading with an older `ts`. The fresh
+    window must win regardless of which `ts` is newer."""
+    fresh_reset = BASE + _dt.timedelta(days=7)
+    stale_reset = BASE - _dt.timedelta(hours=4)  # already in the past
+
+    _insert_snapshot(conn, _iso(BASE), "seven_day", 1.0, resets_at=_iso(fresh_reset))
+    _insert_snapshot(
+        conn, _iso(BASE + _dt.timedelta(minutes=1)), "seven_day", 96.0,
+        resets_at=_iso(stale_reset),
+    )
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn)
+    assert latest["seven_day"]["used_pct"] == pytest.approx(1.0)
+    assert latest["seven_day"]["resets_at"] == _iso(fresh_reset)
+
+
+def test_latest_plan_windows_all_null_resets_at_still_picks_max_ts(conn):
+    """No `resets_at` at all on either row (plan.extract kept them anyway) --
+    falls back to the old max-`ts` behaviour."""
+    _insert_snapshot(conn, _iso(BASE), "five_hour", 10.0)
+    _insert_snapshot(conn, _iso(BASE + _dt.timedelta(minutes=1)), "five_hour", 25.0)
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn)
+    assert latest["five_hour"]["used_pct"] == pytest.approx(25.0)
+
+
+def test_latest_plan_windows_returns_a_lone_expired_reading(conn):
+    """The store still reports an expired reading when nothing fresher has
+    arrived yet -- withholding it as 'unknown' is windows._headroom's H4
+    call to make, not the store's."""
+    expired = BASE - _dt.timedelta(hours=4)
+    _insert_snapshot(conn, _iso(BASE), "seven_day", 96.0, resets_at=_iso(expired))
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn)
+    assert latest["seven_day"]["used_pct"] == pytest.approx(96.0)
+    assert latest["seven_day"]["resets_at"] == _iso(expired)
 
 
 def test_plan_payload_empty_store_has_no_trend_key_change(conn):

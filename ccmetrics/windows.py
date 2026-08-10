@@ -819,6 +819,13 @@ def projection(conn, blocks=None, caps=None, live_tiles=None, now=None) -> dict:
     resets_at = wk.get("resets_at")
     reset_dt = parse_iso(resets_at)
 
+    # H4 (`_headroom`'s own rule): a reading whose own window has already
+    # reset describes a window that no longer exists, so it is never shown
+    # as the current percentage -- same as headroom's stale-reset row goes
+    # to unknown rather than keep printing the pre-reset figure.
+    if reset_dt is not None and reset_dt < now:
+        used_pct = None
+
     # `resets_at` is optional in the store: plan.extract keeps a row as soon as
     # used_pct parses, even when the reset epoch did not. No reset instant means
     # no clock to be ahead of or behind, and the verdict says so rather than

@@ -342,6 +342,21 @@ def test_projection_ignores_weekly_scoped_snapshot(conn):
     assert hero["resets_at"] is None
 
 
+def test_projection_used_pct_null_when_the_reading_has_already_reset(conn):
+    """D58 Fix 2: the hero must agree with `_headroom`'s H4 -- a reading
+    whose own window has already reset is not shown as the current
+    percentage, even though the store still holds it (the store reports,
+    the display layer decides)."""
+    expired = BASE - _dt.timedelta(hours=4)
+    _snap(conn, windows.iso(BASE - _dt.timedelta(hours=5)), "seven_day", 96.0, windows.iso(expired))
+    conn.commit()
+    _set_last_ingest(conn, BASE)
+
+    hero = windows.projection(conn, blocks=[], caps={}, now=BASE)
+    assert hero["used_pct"] is None
+    assert hero["resets_at"] == windows.iso(expired)  # still surfaced, just not as "current"
+
+
 # --- headroom labelling: the parsed cache label must reach the row (6.4f) ---
 
 def test_headroom_scoped_key_falls_back_to_deunderscored_label(conn):
