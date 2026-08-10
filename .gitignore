@@ -30,4 +30,5 @@ USER.md
 SPEC.md
 PLAN-*.md
 *.bak
-.claude/
+.claude/*
+!.claude/skills/
