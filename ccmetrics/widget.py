@@ -543,7 +543,11 @@ class Widget:
         the port; and `_dash_fails` reaching `DASH_SPAWN_ATTEMPTS` stops
         spawning altogether once a dash has proved it cannot stay up --
         without that cap a dash that can never bind the port would get
-        relaunched every `DASH_SPAWN_COOLDOWN` seconds forever.
+        relaunched every `DASH_SPAWN_COOLDOWN` seconds forever. A dead
+        `_dash_proc` is dropped the same call it is counted in, so the
+        strike is tied to one spawn, not to how many polls land while its
+        cooldown is still running -- do not hold onto the handle past the
+        count (e.g. to read its exit code) without re-checking that.
         """
         if self._dash_proc is not None and self._dash_proc.poll() is None:
             return
