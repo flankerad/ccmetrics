@@ -72,6 +72,10 @@ The minimize button collapses it to one line — the face, the percentage left, 
 
 ![the collapsed ccmetrics widget: one line with the face, the percentage left, and the week's fuse with its flame](docs/assets/widget-min.png)
 
+The face tracks the burn. When the week runs low, the widget says so:
+
+![the collapsed widget near-dry: the sweating face, 4% left, the fuse burnt almost to its end](docs/assets/widget-min-dry.png)
+
 ## The status line
 
 ccmetrics wires itself into Claude Code's status line on first run, so the plan numbers reach you without opening anything:
