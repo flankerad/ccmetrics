@@ -223,8 +223,14 @@ def _cap_week_sub(left: float | None, week_left: float | None, tail: str) -> str
     """Percent of the cap left and how much of the week remains -- the two
     figures a burn pace can actually be judged against. Replaces the old
     clock-lead/lag phrasing: not a metric that can be quantified or useful,
-    per the page's own change. `tail` distinguishes the branches so the
-    headline and this line never contradict each other.
+    per the page's own change. `tail` distinguishes the branches.
+
+    D61: the headline no longer comes from `behind` (this ratio's own
+    used_pct-vs-clock_pct comparison) -- `_verdict` now derives it from the
+    projected empty time (`runs_out_at`/`early_hours`), the same single
+    source EMPTY AT reads, so the headline and this line -- and EMPTY AT --
+    can never disagree. This function still renders the two figures; it
+    just no longer decides which branch fires.
     """
     parts = []
     if left is not None:
@@ -254,8 +260,21 @@ def _fuse_top(clock_pct: float | None, used_pct: float, source: str) -> int:
 
 def _verdict(hero: dict, caps_known: bool, hook_ran: bool) -> tuple[str, str]:
     """The page's ladder, in its own order -- staleness first, then absolute
-    exhaustion, then pace. Reordering it would let a 2%-left week be described
-    as "comfortably inside" because the flame happens to trail the clock.
+    exhaustion (VERDICT_EDGES), then the forecast. Reordering it would let a
+    2%-left week be described as "comfortably inside" because the flame
+    happens to trail the clock.
+
+    D61: the pace read below comes from `runs_out_at`/`early_hours`, gated
+    exactly like `draw`'s own EMPTY AT cell (`runs_out_at` truthy AND
+    `early_hours is not None` -- early_hours is None whenever the week
+    HOLDS at the current burn rate, per DECISIONS 2026-08-06) -- never from
+    `behind`, a plain used_pct-vs-clock_pct ratio that used to drive this
+    and can read "comfortable" while the very same hero dict's forecast
+    says the week runs dry before it resets. Gating on the identical
+    condition EMPTY AT uses is what keeps the headline and that cell from
+    ever naming different outcomes. `behind` only drives the softer
+    comfortable/ahead/faster read below, for when no forecast is available
+    yet (no burn rate, or the week already holds).
     """
     age = hero.get("reading_age_hours")
     if age is not None and age >= 12:
@@ -274,6 +293,12 @@ def _verdict(hero: dict, caps_known: bool, hook_ran: bool) -> tuple[str, str]:
         return ("Nearly spent.", f"{left:.0f}% of the cap is left.")
     if left is not None and left < VERDICT_EDGES[2]:
         return ("Getting tight.", f"{left:.0f}% of the cap is left.")
+    runs_out_at = hero.get("runs_out_at")
+    early_hours = hero.get("early_hours")
+    if runs_out_at and early_hours is not None:
+        day = fmt_day_clock(runs_out_at).split(" ")[0]
+        return (f"On pace to run out {day}.",
+                _cap_week_sub(left, week_left, "— on pace to empty before the week resets."))
     if behind is not None and behind > 6:
         return ("Burning faster than it refills.", _cap_week_sub(left, week_left, ""))
     if behind is not None and behind > 0:

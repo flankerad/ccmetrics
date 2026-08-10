@@ -239,6 +239,69 @@ def test_verdict_comfortably_inside_has_no_points_language():
     assert "40% of the week to go" in sub
 
 
+# --- _verdict / D61: the headline comes from the forecast (runs_out_at vs
+# resets_at, via early_hours), not from `behind`'s used_pct-vs-clock_pct
+# ratio -- gated exactly like `draw`'s own EMPTY AT cell, so the two can
+# never disagree (DECISIONS 2026-08-06: early_hours is None means the week
+# holds).
+
+def test_verdict_warns_when_runs_out_before_resets_even_at_97_percent_left():
+    # The defect itself: plenty of cap left, but the forecast says the week
+    # empties before the reset -- the headline must warn, not say "plenty
+    # of room", no matter how little of the cap is burnt.
+    hero = {
+        "used_pct": 3.0, "clock_pct": 3.0, "behind": 0.0,
+        "runs_out_at": "2026-08-14T18:36:00Z", "early_hours": 66.0,
+    }
+    verdict, sub = widget._verdict(hero, caps_known=True, hook_ran=True)
+    assert verdict.startswith("On pace to run out ")
+    assert verdict.endswith(".")
+    day = widget.fmt_day_clock(hero["runs_out_at"]).split(" ")[0]
+    assert day in verdict
+    assert "97% of the cap is left" in sub
+
+
+def test_verdict_is_comfortable_when_runs_out_lands_after_resets():
+    # early_hours null means the week HOLDS at this pace -- the same gate
+    # that hides EMPTY AT must also keep the headline off the warning.
+    hero = {
+        "used_pct": 30.0, "clock_pct": 30.0, "behind": 0.0,
+        "runs_out_at": "2026-08-19T18:36:00Z", "early_hours": None,
+    }
+    verdict, _ = widget._verdict(hero, caps_known=True, hook_ran=True)
+    assert verdict == "Comfortably inside the week."
+
+
+def test_verdict_absolute_exhaustion_still_wins_over_the_forecast():
+    # 2% left is a crisis at any pace -- even one whose forecast holds.
+    hero = {
+        "used_pct": 98.0, "clock_pct": 10.0, "behind": 88.0,
+        "runs_out_at": "2026-08-25T00:00:00Z", "early_hours": None,
+    }
+    verdict, _ = widget._verdict(hero, caps_known=True, hook_ran=True)
+    assert verdict == "The week is almost gone."
+
+
+def test_verdict_falls_back_to_behind_when_runs_out_at_is_missing():
+    # No forecast at all (no burn rate yet) -- today's behind-based read,
+    # unchanged, and no crash for the missing fields.
+    hero = {"used_pct": 50.0, "clock_pct": 30.0, "behind": 20.0}
+    verdict, _ = widget._verdict(hero, caps_known=True, hook_ran=True)
+    assert verdict == "Burning faster than it refills."
+
+
+def test_verdict_never_warns_when_early_hours_is_missing_even_with_runs_out_at():
+    # `runs_out_at` alone is not the gate -- EMPTY AT itself also requires
+    # early_hours to be non-null (draw()'s own check); the headline must
+    # use exactly the same gate or the two can disagree again.
+    hero = {
+        "used_pct": 30.0, "clock_pct": 60.0, "behind": -30.0,
+        "runs_out_at": "2026-08-19T18:36:00Z",
+    }
+    verdict, _ = widget._verdict(hero, caps_known=True, hook_ran=True)
+    assert verdict == "Comfortably inside the week."
+
+
 # --- _close_rect / _hit_close: the top-right close X's hit box -------------
 
 def test_close_rect_sits_inside_the_border_top_right_corner():

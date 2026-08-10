@@ -460,6 +460,17 @@ function heroFuse() {
   var capWeekSub = pctLeftClause && weekLeftClause
     ? pctLeftClause + ", with " + weekLeftClause
     : (pctLeftClause || weekLeftClause || "");
+  /* 6.4g #2 / D61: runs_out_at can land after resets_at -- the week holds
+     at the current burn rate. The backend already keeps early_hours
+     strictly positive for that case (null instead), so this gate --
+     computed once, here, before the verdict below reads it -- is the
+     single source both the headline and the EMPTY AT cell further down
+     pick their copy from. Never invent a second "is it late" check in
+     either place. */
+  var DAY_UP = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  var earlyGateMet = capsKnown && !!hero.runs_out_at &&
+    hero.early_hours !== null && hero.early_hours !== undefined;
+  var runsOutDay = earlyGateMet ? DAY_UP[new Date(hero.runs_out_at).getDay()] : null;
   var verdict, verdictSub;
   /* The percentage only moves when /usage is opened. Once the reading is
      hours old the week has burned on without it, so a confident verdict off
@@ -488,6 +499,14 @@ function heroFuse() {
   } else if (gettingTight) {
     verdict = "Getting tight.";
     verdictSub = pctLeft.toFixed(0) + "% of the cap is left.";
+  } else if (earlyGateMet) {
+    /* D61: checked before `behind` -- a used_pct-vs-clock_pct ratio used to
+       reach "Comfortably inside the week" even when this same hero's own
+       forecast said the week would run dry before the reset. earlyGateMet
+       is the same condition EMPTY AT gates on (above), so the two can never
+       name different outcomes. */
+    verdict = "On pace to run out " + runsOutDay + ".";
+    verdictSub = capWeekSub + " — on pace to empty before the week resets.";
   } else if (behind !== null && behind > 6) {
     verdict = "Burning faster than the week refills.";
     verdictSub = capWeekSub + ".";
@@ -507,17 +526,13 @@ function heroFuse() {
   var burntLine = (burnt === null || burnt === undefined)
     ? fmtTok(null)
     : fmtTok(burnt) + ' <span class="px-faint" style="font-size:11px">' + fmtPct(usedPct) + '</span>';
-  /* 6.4g #2: runs_out_at can land after resets_at -- the week holds at the
-     current burn rate. The backend already keeps early_hours strictly
-     positive for that case (null instead), so the frontend need only pick
-     the right copy, never invent a "late" figure of its own. */
-  var DAY_UP = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  // D61: earlyGateMet/runsOutDay computed once, above, alongside the
+  // verdict -- this reads the same gate rather than re-deriving it.
   var runsOut, earlyBadge = "";
   if (!capsKnown) {
     runsOut = "—";
-  } else if (hero.runs_out_at && hero.early_hours !== null && hero.early_hours !== undefined) {
-    var runsOutDate = new Date(hero.runs_out_at);
-    runsOut = DAY_UP[runsOutDate.getDay()] + " " + fmtClock(hero.runs_out_at);
+  } else if (earlyGateMet) {
+    runsOut = runsOutDay + " " + fmtClock(hero.runs_out_at);
     var eh = Math.round(hero.early_hours);
     earlyBadge = ' <span class="px-faint">' + eh + "h early</span>";
   } else if (hero.resets_at) {
