@@ -721,8 +721,14 @@ class Widget:
         Only sets the transient placeholder and hands off to the worker
         thread -- the pid read, the signal, the bounded wait and the
         respawn all happen there, off this (the Tk) thread.
+
+        Also guarded on `self._restarting`: a second click while one is
+        already in flight must not start a second worker thread -- two
+        overlapping kill/spawn sequences could otherwise have the first
+        one's `finally` flip the flag off (and this method draw "done")
+        while the second is still off tearing down or bringing up a dash.
         """
-        if self._closing:
+        if self._closing or self._restarting:
             return
         self.data = None
         self.error = "restarting dash…"
@@ -780,9 +786,16 @@ class Widget:
             if self._closing:
                 return
             # A restart the user explicitly asked for must not be refused by
-            # the D54 cooldown/strike cap meant to stop silent auto-spawns.
+            # the D54 cooldown/strike cap meant to stop silent auto-spawns --
+            # nor by a stale `_dash_proc` handle from an earlier auto-spawn:
+            # `_maybe_spawn_dash` skips spawning while that handle's own
+            # `poll()` still reads as alive, which can otherwise race the
+            # kill+wait above (the port going quiet does not guarantee
+            # `poll()` has observed the exit at this exact instant). Cleared
+            # here rather than trusted to that race resolving in time.
             self._dash_spawn_at = None
             self._dash_fails = 0
+            self._dash_proc = None
             self._maybe_spawn_dash()
             self._fetch()
         finally:

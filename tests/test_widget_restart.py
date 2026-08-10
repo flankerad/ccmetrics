@@ -78,6 +78,20 @@ def test_restart_dash_does_nothing_while_closing(monkeypatch):
     assert w._restarting is False
 
 
+def test_restart_dash_ignores_a_second_click_while_one_is_in_flight(monkeypatch):
+    # Two overlapping kill/spawn sequences would race on the same flag:
+    # whichever worker's `finally` runs first flips `_restarting` off (and
+    # the first draws "done") while the second could still be tearing down
+    # or bringing up a dash.
+    started = []
+    monkeypatch.setattr(widget.threading, "Thread", lambda *a, **k: started.append(1))
+    w = _bare(_restarting=True, data="sentinel", error="sentinel-err")
+    widget.Widget._restart_dash(w)
+    assert started == []
+    assert w.data == "sentinel"
+    assert w.error == "sentinel-err"
+
+
 # --- _restart_worker: the pid-file-driven restart itself --------------------
 
 
@@ -91,7 +105,14 @@ def test_restart_worker_resets_cooldown_and_strikes_on_a_valid_pid(monkeypatch):
     monkeypatch.setattr(widget.Widget, "_maybe_spawn_dash", lambda self: calls.append("spawn"))
     monkeypatch.setattr(widget.Widget, "_fetch", lambda self: calls.append("fetch"))
 
-    w = _bare(_dash_spawn_at=123.0, _dash_fails=2, _restarting=True)
+    class _StillAlive:
+        def poll(self):
+            return None  # would make `_maybe_spawn_dash` skip a real spawn
+
+    w = _bare(
+        _dash_spawn_at=123.0, _dash_fails=2, _restarting=True,
+        _dash_proc=_StillAlive(),
+    )
     widget.Widget._restart_worker(w)
 
     assert ("kill", 111, widget.signal.SIGTERM) in calls
@@ -101,7 +122,57 @@ def test_restart_worker_resets_cooldown_and_strikes_on_a_valid_pid(monkeypatch):
     assert calls.index("wait") < calls.index("spawn") < calls.index("fetch")
     assert w._dash_spawn_at is None  # D54's cooldown reset...
     assert w._dash_fails == 0  # ...and its 2-strike cap, both cleared
+    # ...and the stale "still alive" handle cleared too -- left in place, a
+    # real (unstubbed) `_maybe_spawn_dash` would see `poll() is None` and
+    # skip spawning a replacement entirely (see the unstubbed test below).
+    assert w._dash_proc is None
     assert w._restarting is False  # _poll_restart's cue that this is done
+
+
+def test_restart_worker_spawns_a_fresh_dash_even_if_dash_proc_looked_still_alive(monkeypatch):
+    """Regression: `_maybe_spawn_dash` (unstubbed here) skips spawning while
+    `_dash_proc.poll()` still reads as alive -- a real race right after the
+    kill+wait, since the old dash's port going quiet does not guarantee
+    `poll()` has observed its exit at that exact instant. `_restart_worker`
+    must clear `_dash_proc` itself rather than lean on that race resolving
+    in time, or a user-requested restart can kill the old dash and spawn
+    nothing in its place.
+    """
+    monkeypatch.setattr(widget, "_read_pid_file", lambda path: (111, 7433))
+    monkeypatch.setattr(widget, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(widget, "_dash_answers", lambda port, timeout=1.5: True)
+    monkeypatch.setattr(widget, "_wait_port_silent", lambda port: None)
+    monkeypatch.setattr(widget.os, "kill", lambda pid, sig: None)
+
+    class _StillAlive:
+        def poll(self):
+            return None
+
+    class _JustSpawned:
+        def poll(self):
+            return None  # still starting -- `_fetch`'s own conn-refused
+            # branch calls `_maybe_spawn_dash` again and must not respawn on
+            # top of the one this test is checking for.
+
+    spawned = []
+
+    def _fake_popen(*a, **k):
+        spawned.append((a, k))
+        return _JustSpawned()
+
+    monkeypatch.setattr(widget.subprocess, "Popen", _fake_popen)
+
+    def _raise(*_a, **_k):
+        raise widget.urllib.error.URLError(ConnectionRefusedError())
+
+    monkeypatch.setattr(widget.urllib.request, "urlopen", _raise)
+
+    w = _bare(_dash_proc=_StillAlive(), _restarting=True, scope=None)
+    widget.Widget._restart_worker(w)
+
+    assert len(spawned) == 1  # the restart itself spawned a fresh dash
+    assert w.error == "starting dash on :7433…"  # _fetch's own outcome text
+    assert w._restarting is False
 
 
 def test_restart_worker_with_no_pid_file_only_refetches(monkeypatch):

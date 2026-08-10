@@ -54,6 +54,18 @@ def test_write_pid_file_records_pid_and_port(cc_env, monkeypatch):
     assert body == {"pid": 4242, "port": 9991}
 
 
+def test_write_pid_file_creates_a_missing_data_dir(tmp_path, monkeypatch):
+    # CCMETRICS_DB pointed at a subpath whose directory has never been
+    # created (no `store.connect()` call ran first to make it) -- the pid
+    # write must not depend on that having already happened.
+    nested = tmp_path / "nested" / "sub" / "state.db"
+    monkeypatch.setenv("CCMETRICS_DB", str(nested))
+    assert not nested.parent.exists()
+    dash_server._write_pid_file(9991)
+    assert dash_server.pid_path().parent == nested.parent
+    assert json.loads(dash_server.pid_path().read_text())["port"] == 9991
+
+
 def test_remove_pid_file_clears_its_own_pid(cc_env, monkeypatch):
     monkeypatch.setattr(dash_server.os, "getpid", lambda: 4242)
     dash_server._write_pid_file(9991)
