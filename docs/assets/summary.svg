@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" role="img" aria-label="ccmetrics terminal summary: spend floor, plan percentages, token mix, per-model table, and the top leak with its paste-ready fix">
+  <style>
+    text { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 15px; fill: #58d365; white-space: pre; }
+    .dim { fill: #3f9a4a; }
+    .hd  { fill: #7bec86; font-weight: 700; }
+    .wh  { fill: #c9e8cc; }
+  </style>
+  <rect width="960" height="500" rx="10" fill="#0c110c"/>
+  <text xml:space="preserve" x="24" y="38" class="hd">ccmetrics · your-project · last 30 days</text>
+  <text xml:space="preserve" x="24" y="76"><tspan class="hd">SPEND</tspan><tspan class="wh">   at least $41.20</tspan></text>
+  <text xml:space="preserve" x="24" y="98" class="dim">        + est. output $6.10–$9.15   (a range, never added to the number above)</text>
+  <text xml:space="preserve" x="24" y="136"><tspan class="hd">PLAN</tspan><tspan class="wh">    wk 62% (resets Mon 17:30) · 5h 31% (resets Sat 22:20)</tspan></text>
+  <text xml:space="preserve" x="24" y="158" class="dim">        your plan, straight from Anthropic via Claude Code's status line</text>
+  <text xml:space="preserve" x="24" y="196" class="hd">TOKENS</text>
+  <rect x="110" y="183" width="150" height="16" fill="#58d365"/>
+  <rect x="260" y="183" width="14" height="16" fill="#2a5230"/>
+  <text xml:space="preserve" x="288" y="196">read 61.4M · write-5m 1.1M · write-1h 903K</text>
+  <text xml:space="preserve" x="24" y="218" class="dim">        cache-hit 94% · 612 turns · 9 sessions · 2 compactions</text>
+  <text xml:space="preserve" x="24" y="256"><tspan class="hd">MODELS</tspan><tspan class="dim">  turns  cache-read  write-5m  write-1h  at least $</tspan></text>
+  <text xml:space="preserve" x="24" y="278">          412       48.2M      0.8M      620K      $28.11  claude-opus-5</text>
+  <text xml:space="preserve" x="24" y="300">          200       13.2M      0.3M      283K      $13.09  claude-haiku-4-5</text>
+  <text xml:space="preserve" x="24" y="338" class="hd">TOP LEAKS (ranked by tokens saved vs how hard the fix is)</text>
+  <text xml:space="preserve" x="24" y="360"><tspan class="wh">  1. Premium model on small turns      ~  1.2M tok   $12.83  effort:paste</tspan></text>
+  <text xml:space="preserve" x="24" y="382">     WHAT:  Send the quick turns to a cheaper model.</text>
+  <text xml:space="preserve" x="24" y="404">     DO:    /model claude-haiku-4-5 — switch back when the work gets hard.</text>
+  <text xml:space="preserve" x="24" y="426" class="dim">     WATCH: a settings.json model line routes EVERY turn there — review first.</text>
+  <text xml:space="preserve" x="24" y="464" class="dim">run ccmetrics --all-leaks for every finding, ccmetrics constants for sources</text>
+</svg>
