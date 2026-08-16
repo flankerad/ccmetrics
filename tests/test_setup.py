@@ -295,37 +295,91 @@ def test_apply_command_with_single_quotes_survives_into_the_backup(tmp_path):
     assert json.loads(backup.read_text())["statusLine"]["command"] == original
 
 
-def test_apply_unparseable_json_refused_and_file_untouched(tmp_path):
+def test_apply_unparseable_json_backs_up_the_raw_text_and_writes_a_fresh_file(tmp_path):
+    """Nothing in an unparseable file can be merged, so apply never refuses:
+    the raw text is copied to the backup whole and a fresh file holding only
+    our statusLine takes its place."""
     settings = tmp_path / "settings.json"
     settings.write_text("{not json")
 
-    with pytest.raises(plan.SetupError):
-        plan.apply_setup(settings)
+    result = plan.apply_setup(settings)
 
-    assert settings.read_text() == "{not json"
-    assert not (tmp_path / "settings.json.bak-ccmetrics").exists()
+    assert result["changed"] is True
+    assert result["old"] == "(unreadable file)"
+    assert json.loads(settings.read_text()) == {
+        "statusLine": {"type": "command", "command": "ccmetrics statusline", "refreshInterval": 5}
+    }
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    assert backup.read_text() == "{not json"  # byte-for-byte, not re-serialized
+    assert result["backup"] == backup
+    # the message must say what happened, where the original went, and how back
+    assert "was not valid JSON" in result["message"]
+    assert str(backup) in result["message"]
+    assert "ccmetrics setup --revert" in result["message"]
 
 
-def test_apply_unknown_statusline_shape_refused(tmp_path):
+def test_apply_non_dict_json_is_rebuilt_like_an_unreadable_file(tmp_path):
+    """Parseable JSON that isn't an object has no place to put statusLine
+    either — same rebuild-plus-backup path."""
     settings = tmp_path / "settings.json"
-    original = json.dumps({"statusLine": "just-a-string"})
+    settings.write_text("[1, 2]")
+
+    result = plan.apply_setup(settings)
+
+    assert result["old"] == "(unreadable file)"
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    assert (tmp_path / "settings.json.bak-ccmetrics").read_text() == "[1, 2]"
+
+
+def test_apply_unknown_statusline_shape_is_replaced_with_ours(tmp_path):
+    """A statusLine that isn't a command dict is backed up and overwritten —
+    every other key in the file survives."""
+    settings = tmp_path / "settings.json"
+    original = json.dumps({"statusLine": "just-a-string", "keepMe": True})
     settings.write_text(original)
 
-    with pytest.raises(plan.SetupError):
-        plan.apply_setup(settings)
+    result = plan.apply_setup(settings)
 
-    assert settings.read_text() == original
+    assert result["changed"] is True
+    assert result["old"] == "just-a-string"
+    written = json.loads(settings.read_text())
+    assert written["statusLine"] == {"type": "command", "command": "ccmetrics statusline",
+                                      "refreshInterval": 5}
+    assert written["keepMe"] is True
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    assert backup.read_text() == original
+    assert "'just-a-string'" in result["message"]
+    assert str(backup) in result["message"]
+    assert "ccmetrics setup --revert" in result["message"]
 
 
-def test_apply_statusline_wrong_type_refused(tmp_path):
+def test_apply_statusline_wrong_type_is_replaced_with_ours(tmp_path):
     settings = tmp_path / "settings.json"
-    original = json.dumps({"statusLine": {"type": "script", "command": "x"}})
+    original = json.dumps({"statusLine": {"type": "script", "command": "x"}, "keepMe": True})
     settings.write_text(original)
 
-    with pytest.raises(plan.SetupError):
-        plan.apply_setup(settings)
+    result = plan.apply_setup(settings)
 
-    assert settings.read_text() == original
+    assert result["old"] == {"type": "script", "command": "x"}
+    written = json.loads(settings.read_text())
+    assert written["statusLine"]["command"] == "ccmetrics statusline"
+    assert written["keepMe"] is True
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    assert backup.read_text() == original
+    assert repr({"type": "script", "command": "x"}) in result["message"]
+    assert "ccmetrics setup --revert" in result["message"]
+
+
+def test_apply_statusline_with_an_empty_command_is_replaced_with_ours(tmp_path):
+    settings = tmp_path / "settings.json"
+    original = json.dumps({"statusLine": {"type": "command", "command": "   "}})
+    settings.write_text(original)
+
+    result = plan.apply_setup(settings)
+
+    assert result["old"] == "   "
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    assert (tmp_path / "settings.json.bak-ccmetrics").read_text() == original
 
 
 # --- revert ---------------------------------------------------------------
@@ -410,6 +464,47 @@ def test_revert_with_a_corrupt_backup_file_removes_statusline(tmp_path):
     settings.write_text(json.dumps({"statusLine": {"type": "command", "command": "my-tool"}}))
     plan.apply_setup(settings)
     (tmp_path / "settings.json.bak-ccmetrics").write_text("{not json")
+
+    result = plan.revert_setup(settings)
+
+    assert result["changed"] is True
+    assert "statusLine" not in json.loads(settings.read_text())
+
+
+def test_revert_restores_a_malformed_statusline_exactly(tmp_path):
+    """Apply overwrites a statusLine it can't read, so revert owes the user
+    that exact value back — not a stripped slot, not a command string."""
+    settings = tmp_path / "settings.json"
+    original = {"statusLine": {"type": "script", "command": "x"}, "keepMe": True}
+    settings.write_text(json.dumps(original))
+    plan.apply_setup(settings)
+
+    result = plan.revert_setup(settings)
+
+    assert result["changed"] is True
+    assert json.loads(settings.read_text()) == original
+
+
+def test_revert_restores_a_statusline_that_was_just_a_string(tmp_path):
+    settings = tmp_path / "settings.json"
+    original = {"statusLine": "just-a-string", "keepMe": True}
+    settings.write_text(json.dumps(original))
+    plan.apply_setup(settings)
+
+    plan.revert_setup(settings)
+
+    assert json.loads(settings.read_text()) == original
+
+
+def test_revert_after_an_unreadable_file_rebuild_removes_statusline(tmp_path):
+    """The raw text of an unparseable file can't be restored automatically —
+    it isn't JSON, so there is no statusLine value to put back. Revert falls
+    back to vacating the slot; the original stays in the backup for the user
+    to salvage by hand until then."""
+    settings = tmp_path / "settings.json"
+    settings.write_text("{not json")
+    plan.apply_setup(settings)
+    assert (tmp_path / "settings.json.bak-ccmetrics").read_text() == "{not json"
 
     result = plan.revert_setup(settings)
 
@@ -666,11 +761,17 @@ def test_cli_setup_apply_then_check_round_trip(cc_env, tmp_path, capsys):
     assert "wired to ccmetrics" in out
 
 
-def test_cli_setup_apply_refuses_bad_json_and_exits_nonzero(tmp_path, capsys):
+def test_cli_setup_apply_rebuilds_bad_json_and_exits_zero(tmp_path, capsys):
     settings = tmp_path / "settings.json"
     settings.write_text("{not json")
 
     rc = main(["setup", "--apply", "--settings", str(settings)])
 
-    assert rc != 0
-    assert settings.read_text() == "{not json"
+    assert rc == 0
+    assert json.loads(settings.read_text())["statusLine"]["command"] == "ccmetrics statusline"
+    backup = tmp_path / "settings.json.bak-ccmetrics"
+    assert backup.read_text() == "{not json"
+    out = capsys.readouterr().out
+    assert "was not valid JSON" in out
+    assert str(backup) in out
+    assert "ccmetrics setup --revert" in out

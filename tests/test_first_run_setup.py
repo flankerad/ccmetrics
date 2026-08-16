@@ -195,11 +195,30 @@ def test_upgrade_names_the_backup_by_path_without_claiming_its_contents(
     assert "your old command is saved in" not in out
 
 
-def test_setup_error_path_prints_one_line_and_marks_meta(cc_env, capsys, monkeypatch, conn, _settings):
+def test_unreadable_settings_are_rebuilt_and_the_rebuild_is_announced(
+    cc_env, capsys, monkeypatch, conn, _settings
+):
+    """An unparseable settings.json is no longer a reason to leave the status
+    line unwired: the original is backed up, a fresh file is written, and the
+    first run says so and names the backup."""
     _make_tty(monkeypatch, True)
     _settings.write_text("{not json")
+
     assert main(["--no-ingest"]) == 0
     out = capsys.readouterr().out
-    assert "ccmetrics left your status line alone:" in out
-    assert "wired its status line" not in out
+
+    backup = _settings.with_name(_settings.name + ".bak-ccmetrics")
+    assert (
+        "ccmetrics found ~/.claude/settings.json wasn't valid JSON, so it "
+        "backed up the original and wrote a fresh file with just its "
+        "status line in it." in out
+    )
+    assert f"the unreadable file is saved in {backup}" in out
+    assert "undo any time: ccmetrics setup --revert" in out
+    # nothing was displaced by name, so it must not claim an old command
+    assert "your old command:" not in out
+    assert backup.read_text() == "{not json"
+    written = json.loads(_settings.read_text())
+    assert written["statusLine"] == {"type": "command", "command": "ccmetrics statusline",
+                                      "refreshInterval": 5}
     assert store.get_meta(conn, "statusline_autowire") is not None

@@ -1077,20 +1077,22 @@ def _command_resolves(command: str) -> bool:
     return shutil.which(exe) is not None
 
 
-def _load_settings(settings_path: Path) -> tuple[dict, str | None]:
-    """Returns (data, raw). `raw` is None when the file did not exist yet."""
+def _load_settings(settings_path: Path) -> tuple[dict | None, str | None]:
+    """Returns (data, raw). `raw` is None when the file did not exist yet;
+    `data` is None when `raw` exists but isn't a parseable JSON object --
+    invalid JSON or a non-dict top level. Never raises: `apply_setup`
+    overwrites unconditionally after backing up the raw text, and read-only
+    callers report the same condition instead of refusing.
+    """
     if not settings_path.exists():
         return {}, None
     raw = settings_path.read_text()
     try:
         data = json.loads(raw) if raw.strip() else {}
-    except ValueError as e:
-        raise SetupError(
-            f"{settings_path} is not valid JSON ({e}) — leaving it untouched. "
-            "Fix or remove it, then run `ccmetrics setup --apply` again."
-        ) from e
+    except ValueError:
+        return None, raw
     if not isinstance(data, dict):
-        raise SetupError(f"{settings_path} is not a JSON object — leaving it untouched.")
+        return None, raw
     return data, raw
 
 
@@ -1114,31 +1116,83 @@ def _refresh_interval(sl) -> int | float:
 def apply_setup(settings_path: Path) -> dict:
     """Wire `ccmetrics statusline` into statusLine.command.
 
-    Returns {"changed": bool, "message": str, ...}. Raises SetupError, and
-    changes nothing, when the existing file can't be safely understood.
+    Returns {"changed": bool, "message": str, ...}. Never refuses: whatever
+    is there -- unreadable file, malformed statusLine, someone else's
+    command -- is backed up and then overwritten with ours. This is a
+    deliberate product decision, not an oversight; the backup plus the
+    printed `ccmetrics setup --revert` hint is the safety net.
     """
     data, raw = _load_settings(settings_path)
-    sl = data.get("statusLine")
     invocation, invocation_warning = resolve_invocation()
     plain_command = f"{invocation} statusline"
+
+    if data is None:
+        # `raw` exists but isn't a parseable JSON object -- nothing in it
+        # can be merged, so back up the raw text whole and start fresh.
+        backup_path = _backup(settings_path, raw)
+        interval = _refresh_interval(None)
+        data = {"statusLine": {"type": "command", "command": plain_command,
+                                "refreshInterval": interval}}
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+        lines = []
+        if invocation_warning:
+            lines.append(invocation_warning)
+        lines += [
+            f"{settings_path} was not valid JSON — backed it up and wrote a "
+            "fresh file holding only our statusLine.",
+            f"written to {settings_path}",
+            f"backup of the unreadable file: {backup_path}",
+            "to restore it: ccmetrics setup --revert",
+        ]
+        return {
+            "changed": True,
+            "old": "(unreadable file)",
+            "new": plain_command,
+            "backup": backup_path,
+            "invocation_warning": invocation_warning,
+            "message": "\n".join(lines),
+        }
+
+    sl = data.get("statusLine")
     interval = _refresh_interval(sl)
+
+    def _replace_malformed(old_desc, note: str) -> dict:
+        # Shared tail for both "statusLine isn't a command dict" and
+        # "statusLine.command isn't a usable string" -- same fix either
+        # way: back up the raw file, keep every other top-level key, and
+        # drop in ours.
+        backup_path = _backup(settings_path, raw)
+        data["statusLine"] = {"type": "command", "command": plain_command,
+                               "refreshInterval": interval}
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+        lines = []
+        if invocation_warning:
+            lines.append(invocation_warning)
+        lines += [
+            f"{note} ({old_desc!r}) replaced with ours.",
+            f"statusLine.command: {old_desc!r} -> {plain_command!r}",
+            f"written to {settings_path}",
+            f"backup: {backup_path}",
+            "to restore it: ccmetrics setup --revert",
+        ]
+        return {
+            "changed": True,
+            "old": old_desc,
+            "new": plain_command,
+            "backup": backup_path,
+            "invocation_warning": invocation_warning,
+            "message": "\n".join(lines),
+        }
 
     if sl is None:
         old_desc = "(none)"
         new_command = plain_command
     else:
         if not isinstance(sl, dict) or sl.get("type") != "command":
-            raise SetupError(
-                f"{settings_path} has a statusLine we don't understand "
-                f"({sl!r}) — leaving it untouched. Fix or remove it by hand, "
-                "then run `ccmetrics setup --apply` again."
-            )
+            return _replace_malformed(sl, "statusLine we don't understand")
         current = sl.get("command")
         if not isinstance(current, str) or not current.strip():
-            raise SetupError(
-                f"{settings_path} has a statusLine.command we don't understand "
-                f"({current!r}) — leaving it untouched."
-            )
+            return _replace_malformed(current, "statusLine.command we don't understand")
         if _is_ours_command(current):
             wrapped = _extract_passthrough(current)
             if wrapped is None:
@@ -1254,6 +1308,31 @@ def _read_backed_up_command(settings_path: Path) -> str | None:
     return command
 
 
+def _read_backed_up_statusline(settings_path: Path) -> tuple[bool, object]:
+    """The raw `statusLine` value the `.bak-ccmetrics` sibling held, exactly
+    as JSON left it -- for the case `_read_backed_up_command` isn't built
+    for: `apply_setup` replaced a statusLine that wasn't a usable command
+    at all (wrong type, missing/empty command, non-dict). That value, not
+    just its command, is what revert must put back. Returns (True, value)
+    when the backup has a statusLine key that isn't already ours; (False,
+    None) when the backup is missing, unreadable, has no statusLine key, or
+    already holds ours.
+    """
+    backup_path = settings_path.with_name(settings_path.name + ".bak-ccmetrics")
+    try:
+        data = json.loads(backup_path.read_text())
+    except (OSError, ValueError):
+        return False, None
+    if not isinstance(data, dict) or "statusLine" not in data:
+        return False, None
+    sl = data["statusLine"]
+    if isinstance(sl, dict) and sl.get("type") == "command":
+        command = sl.get("command")
+        if isinstance(command, str) and command.strip() and _is_ours_command(command):
+            return False, None
+    return True, sl
+
+
 def _read_backed_up_refresh_interval(settings_path: Path):
     """The refreshInterval the `.bak-ccmetrics` sibling's statusLine block
     held before ccmetrics ever touched it, if any. `apply_setup` promises to
@@ -1290,6 +1369,8 @@ def revert_setup(settings_path: Path) -> dict:
     data, raw = _load_settings(settings_path)
     if raw is None:
         return {"changed": False, "message": f"{settings_path} does not exist — nothing to revert."}
+    if data is None:
+        return {"changed": False, "message": f"{settings_path} is not valid JSON — nothing to revert."}
     sl = data.get("statusLine")
     if not isinstance(sl, dict) or sl.get("type") != "command":
         return {"changed": False, "message": "statusLine is not wired to ccmetrics — nothing to revert."}
@@ -1306,6 +1387,14 @@ def revert_setup(settings_path: Path) -> dict:
     # promised on the way in to leave alone (see `_read_backed_up_refresh_interval`).
     displaced = None if passthrough else _read_backed_up_command(settings_path)
     old_interval = _read_backed_up_refresh_interval(settings_path)
+    # Only relevant when neither of the above found anything usable --
+    # `apply_setup` may have replaced a statusLine that wasn't a command at
+    # all (case handled by neither helper above), and that raw value is
+    # what belongs back, not a stripped statusLine.
+    malformed_present, malformed_value = (
+        (False, None) if passthrough or displaced is not None
+        else _read_backed_up_statusline(settings_path)
+    )
 
     backup_path = _backup(settings_path, raw)
     if passthrough:
@@ -1322,6 +1411,9 @@ def revert_setup(settings_path: Path) -> dict:
         else:
             data["statusLine"]["refreshInterval"] = old_interval
         new_desc = displaced
+    elif malformed_present:
+        data["statusLine"] = malformed_value
+        new_desc = malformed_value
     else:
         del data["statusLine"]
         new_desc = "(removed)"
@@ -1346,16 +1438,13 @@ def check_setup(settings_path: Path, conn=None) -> str:
     last hear from Claude Code. Never writes anything.
     """
     lines: list[str] = []
-    data = None
-    raw = None
-    try:
-        data, raw = _load_settings(settings_path)
-    except SetupError as e:
-        lines.append(str(e))
+    data, raw = _load_settings(settings_path)
 
-    if raw is None and not lines:
+    if raw is None:
         lines.append(f"{settings_path}: no settings file — status line not wired.")
-    elif data is not None:
+    elif data is None:
+        lines.append(f"{settings_path} is not valid JSON — status line can't be checked.")
+    else:
         sl = data.get("statusLine")
         if not isinstance(sl, dict) or sl.get("type") != "command":
             lines.append("status line: not wired to ccmetrics.")

@@ -191,53 +191,56 @@ def _first_run_statusline(conn, args) -> None:
         return
 
     try:
-        try:
-            result = plan_mod.apply_setup(plan_mod.default_settings_path())
-        except plan_mod.SetupError as e:
-            print(f"ccmetrics left your status line alone: {e}")
-        else:
-            # `old == new` means apply_setup only added a missing
-            # refreshInterval to an already-wired command (item 5) -- the
-            # command itself never moved, so there is nothing here worth the
-            # loud first-run announcement; stay as silent as the
-            # already-wired/no-op case this refines. Relies on the
-            # invariant that every apply_setup() return with changed=True
-            # sets both "old" and "new" -- true of all four return sites
-            # today; a future one that changes settings without setting
-            # both would silently swallow the announcement here.
-            if result.get("changed") and result.get("old") != result.get("new"):
-                old = result.get("old")
-                wrapped = (
-                    plan_mod._extract_passthrough(old)
-                    if old and old != "(none)" and plan_mod._is_ours_command(old)
-                    else None
+        result = plan_mod.apply_setup(plan_mod.default_settings_path())
+        # `old == new` means apply_setup only added a missing
+        # refreshInterval to an already-wired command (item 5) -- the
+        # command itself never moved, so there is nothing here worth the
+        # loud first-run announcement; stay as silent as the
+        # already-wired/no-op case this refines. Relies on the
+        # invariant that every apply_setup() return with changed=True
+        # sets both "old" and "new" -- true of all return sites today; a
+        # future one that changes settings without setting both would
+        # silently swallow the announcement here.
+        if result.get("changed") and result.get("old") != result.get("new"):
+            old = result.get("old")
+            wrapped = (
+                plan_mod._extract_passthrough(old)
+                if old and old != "(none)" and plan_mod._is_ours_command(old)
+                else None
+            )
+            if not old or old == "(none)":
+                print(
+                    "ccmetrics wired its status line into ~/.claude/settings.json — "
+                    "your plan usage (5h and weekly %) now shows there."
                 )
-                if not old or old == "(none)":
-                    print(
-                        "ccmetrics wired its status line into ~/.claude/settings.json — "
-                        "your plan usage (5h and weekly %) now shows there."
-                    )
-                elif wrapped is not None:
-                    # `old` is ours already (an older build's chained
-                    # command) -- the backup holds the chained command, not
-                    # `old` itself, so name that.
-                    print(
-                        "ccmetrics stopped running the status line command "
-                        "it was chaining."
-                    )
-                    print(f"that command was: {wrapped}")
-                    print(f"the backup next to settings.json is {result.get('backup')}")
-                else:
-                    print(
-                        "ccmetrics wired its status line into ~/.claude/settings.json, "
-                        "replacing the status line command that was already there."
-                    )
-                    print(f"your old command: {old}")
-                    print(f"your old command is saved in {result.get('backup')}")
-                print("undo any time: ccmetrics setup --revert")
-                warning = result.get("invocation_warning")
-                if warning:
-                    print(warning)
+            elif old == "(unreadable file)":
+                print(
+                    "ccmetrics found ~/.claude/settings.json wasn't valid JSON, so it "
+                    "backed up the original and wrote a fresh file with just its "
+                    "status line in it."
+                )
+                print(f"the unreadable file is saved in {result.get('backup')}")
+            elif wrapped is not None:
+                # `old` is ours already (an older build's chained
+                # command) -- the backup holds the chained command, not
+                # `old` itself, so name that.
+                print(
+                    "ccmetrics stopped running the status line command "
+                    "it was chaining."
+                )
+                print(f"that command was: {wrapped}")
+                print(f"the backup next to settings.json is {result.get('backup')}")
+            else:
+                print(
+                    "ccmetrics wired its status line into ~/.claude/settings.json, "
+                    "replacing the status line command that was already there."
+                )
+                print(f"your old command: {old}")
+                print(f"your old command is saved in {result.get('backup')}")
+            print("undo any time: ccmetrics setup --revert")
+            warning = result.get("invocation_warning")
+            if warning:
+                print(warning)
     except Exception:
         pass
     finally:
