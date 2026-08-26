@@ -385,6 +385,97 @@ def test_latest_plan_windows_returns_a_lone_expired_reading(conn):
     assert latest["seven_day"]["resets_at"] == _iso(expired)
 
 
+# --- latest_plan_windows: a NULL resets_at ages out by its window's span (D83)
+#
+# Sorting every NULL-`resets_at` row as live meant one such row ranked live
+# forever: months later it still outranked every dated row, so the statusline
+# kept showing a reading from a window that had reset many times over. A NULL
+# row is now only live while its own `ts` is within its window's span.
+
+def test_latest_plan_windows_null_resets_older_than_its_span_loses_to_a_newer_expired_row(conn):
+    """The shipped bug, with its real dates: an August 6th NULL-`resets_at`
+    row still outranked the August 23rd reading three weeks later. 20 days is
+    well past seven_day's 168h span, so the NULL row is expired too -- and
+    between two expired rows the freshest `ts` wins."""
+    now = _dt.datetime(2026, 8, 26, 12, 0, 0, tzinfo=_dt.timezone.utc)
+    august_6 = _dt.datetime(2026, 8, 6, 9, 0, 0, tzinfo=_dt.timezone.utc)
+    august_23 = _dt.datetime(2026, 8, 23, 9, 0, 0, tzinfo=_dt.timezone.utc)
+    august_25 = _dt.datetime(2026, 8, 25, 9, 0, 0, tzinfo=_dt.timezone.utc)
+
+    _insert_snapshot(conn, _iso(august_6), "seven_day", 45.0, resets_at=None)
+    _insert_snapshot(  # dated, but its window reset the day before `now`
+        conn, _iso(august_23), "seven_day", 88.0, resets_at=_iso(august_25),
+    )
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn, now_iso=_iso(now))
+    assert latest["seven_day"]["used_pct"] == pytest.approx(88.0)
+    assert latest["seven_day"]["ts"] == _iso(august_23)
+
+
+def test_latest_plan_windows_null_resets_within_its_span_still_beats_an_expired_row(conn):
+    """The invariant D58 bought, kept: a NULL-`resets_at` row inside its span
+    is live, so it outranks an expired dated row even when that row's `ts` is
+    the newer of the two. Only age past the span demotes it."""
+    now = BASE
+    null_ts = BASE - _dt.timedelta(hours=100)  # < 168h -- still live
+    dated_ts = BASE - _dt.timedelta(hours=1)  # newer ts, but already reset
+
+    _insert_snapshot(conn, _iso(null_ts), "seven_day", 90.0, resets_at=None)
+    _insert_snapshot(
+        conn, _iso(dated_ts), "seven_day", 12.0,
+        resets_at=_iso(BASE - _dt.timedelta(minutes=30)),
+    )
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn, now_iso=_iso(now))
+    assert latest["seven_day"]["used_pct"] == pytest.approx(90.0)
+    assert latest["seven_day"]["resets_at"] is None
+
+
+def test_latest_plan_windows_null_resets_span_is_five_hours_for_five_hour(conn):
+    """The span is the window's own, not one global number: at 6h old a NULL
+    row is expired under five_hour (5h) and still live under seven_day (168h).
+    Both windows get identical timings so only the span can explain the
+    different winners."""
+    now = BASE
+    old_ts = BASE - _dt.timedelta(hours=6)
+    newer_ts = BASE - _dt.timedelta(hours=1)
+    already_reset = _iso(BASE - _dt.timedelta(minutes=30))
+
+    for key in ("five_hour", "seven_day"):
+        _insert_snapshot(conn, _iso(old_ts), key, 90.0, resets_at=None)
+        _insert_snapshot(conn, _iso(newer_ts), key, 12.0, resets_at=already_reset)
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn, now_iso=_iso(now))
+    # five_hour: 6h > 5h span -- the NULL row expired, the newer dated row wins
+    assert latest["five_hour"]["used_pct"] == pytest.approx(12.0)
+    assert latest["five_hour"]["resets_at"] == already_reset
+    # seven_day: 6h < 168h span -- the NULL row is still live and outranks it
+    assert latest["seven_day"]["used_pct"] == pytest.approx(90.0)
+    assert latest["seven_day"]["resets_at"] is None
+
+
+def test_latest_plan_windows_row_with_no_ts_at_all_does_not_raise(conn):
+    """A row carrying neither `resets_at` nor `ts` has nothing to age it. The
+    current schema declares `ts NOT NULL`, so this can only reach us from a
+    store written under a looser one -- rebuilt here as such. It must rank as
+    before (never expired) instead of crashing the whole lookup."""
+    conn.executescript(
+        "DROP TABLE plan_snapshots;"
+        "CREATE TABLE plan_snapshots ("
+        " ts TEXT, window_key TEXT NOT NULL, used_pct REAL,"
+        " resets_at TEXT, session_id TEXT);"
+    )
+    _insert_snapshot(conn, None, "seven_day", 55.0, resets_at=None)
+    conn.commit()
+
+    latest = store.latest_plan_windows(conn, now_iso=_iso(BASE))
+    assert latest["seven_day"]["used_pct"] == pytest.approx(55.0)
+    assert latest["seven_day"]["ts"] is None
+
+
 def test_plan_payload_empty_store_has_no_trend_key_change(conn):
     """USER story 3: without snapshots the payload is exactly the old empty
     shape -- the page's hint contract, asserted whole."""
