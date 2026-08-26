@@ -569,6 +569,18 @@ def insert_plan_snapshot(
     return len(rows)
 
 
+def _null_resets_span_hours(window_key: str) -> int:
+    """How long a NULL-`resets_at` row from `window_key` still counts as fresh.
+
+    Not imported from `windows.py` (`windows` imports `store`, so importing
+    back would cycle) -- just enough of its span story to age out a NULL row
+    once it's plainly stale, without ever importing the real thing.
+    """
+    if window_key in ("session", "five_hour"):
+        return 5
+    return 168  # seven_day, weekly_all, weekly_scoped_*, and anything unknown
+
+
 def latest_plan_windows(conn: sqlite3.Connection, now_iso: str | None = None) -> dict:
     """The freshest snapshot of each window: {window: {used_pct, resets_at, ts}}.
 
@@ -586,6 +598,13 @@ def latest_plan_windows(conn: sqlite3.Connection, now_iso: str | None = None) ->
     wins. A `resets_at` that outranks unconditionally on its own value would
     let a stale-but-dated row bury a fresher NULL one, which is its own
     version of the same bug.
+
+    A NULL `resets_at` isn't live forever, though: it's only fresh while its
+    `ts` is within its own window's span of `now_iso` (`_null_resets_span_hours`
+    -- 5h for session/five_hour, 168h otherwise). Past that it's expired too,
+    same as a dated row, so it can't outrank every dated row indefinitely just
+    because it never learned a reset epoch. A row with no `ts` either has
+    nothing to age it, so it ranks as before.
 
     `now_iso` lets a caller with its own clock (`windows.projection`) keep the
     hero and the store from disagreeing about "now"; callers with no opinion
@@ -606,8 +625,19 @@ def latest_plan_windows(conn: sqlite3.Connection, now_iso: str | None = None) ->
 
     def rank(r):
         resets_at = r["resets_at"]
-        expired = resets_at is not None and resets_at < now_iso
-        return (0 if expired else 1, r["ts"] or "")
+        ts = r["ts"]
+        if resets_at is not None:
+            expired = resets_at < now_iso
+        elif ts is None:
+            expired = False
+        else:
+            span = _null_resets_span_hours(r["window_key"])
+            cutoff = (
+                _dt.datetime.strptime(now_iso, "%Y-%m-%dT%H:%M:%SZ")
+                - _dt.timedelta(hours=span)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            expired = ts < cutoff
+        return (0 if expired else 1, ts or "")
 
     best: dict[str, sqlite3.Row] = {}
     for r in rows:
